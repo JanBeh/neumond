@@ -65,6 +65,21 @@ function _M.handle(handlers, ...)
       else
         local handler = handlers[...]
         if handler then
+          -- This would ensure that each resume function is only used once,
+          -- but the check is ommitted for performance reasons because it
+          -- would create a new closure that needs to be garbage collected:
+          --
+          --local resumed = false
+          --local function resume_once(...)
+          --  if resumed then
+          --    error("cannot resume twice", 1)
+          --  end
+          --  resumed = true
+          --  return resume(...)
+          --end
+          --return handler(resume_once, select(2, ...))
+          --
+          -- Instead, the already existing resume closure is returned:
           return handler(resume, select(2, ...))
         elseif coroutine_isyieldable() then
           return resume(coroutine_yield(...))
