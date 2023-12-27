@@ -96,16 +96,15 @@ function _M.handle(handlers, ...)
     if coroutine_status(action_thread) == "dead" then
       if success then
         return ...
-      else
-        if ... == early_return_marker then
-          if error_message then
-            error(error_message, 0)
-          else
-            return table_unpack(return_values, 1, return_values.n)
-          end
+      end
+      if ... == early_return_marker then
+        if error_message then
+          error(error_message, 0)
         else
-          error(..., 0)
+          return table_unpack(return_values, 1, return_values.n)
         end
+      else
+        error(..., 0)
       end
     else
       if success then
