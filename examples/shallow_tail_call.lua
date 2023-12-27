@@ -1,3 +1,5 @@
+local effect = require "effect"
+
 local pingpong = effect.new("pingpong")
 
 local handlers1, handlers2

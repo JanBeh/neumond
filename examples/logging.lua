@@ -1,3 +1,5 @@
+local effect = require "effect"
+
 local log = effect.new("log")
 
 function foo()

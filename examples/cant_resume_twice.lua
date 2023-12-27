@@ -1,3 +1,5 @@
+local effect = require "effect"
+
 local eff1 = effect.new("eff1")
 local eff2 = effect.new("eff2")
 
