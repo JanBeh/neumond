@@ -59,9 +59,8 @@ function _M.handle(handlers, ...)
         local success, result = ...
         if success then
           return select(2, ...)
-        else
-          error(result, 0)
         end
+        error(result, 0)
       else
         local handler = handlers[...]
         if handler then
@@ -81,11 +80,11 @@ function _M.handle(handlers, ...)
           --
           -- Instead, the already existing resume closure is returned:
           return handler(resume, select(2, ...))
-        elseif coroutine_isyieldable() then
-          return resume(coroutine_yield(...))
-        else
-          error("unhandled effect or yield: " .. tostring((...)), 0)
         end
+        if coroutine_isyieldable() then
+          return resume(coroutine_yield(...))
+        end
+        error("unhandled effect or yield: " .. tostring((...)), 0)
       end
     else
       error("unhandled error in coroutine: " .. tostring((...)))
@@ -131,6 +130,77 @@ function _M.handle(handlers, ...)
     end
   end
   return close(xpcall(resume, debug_traceback, ...))
+end
+
+local action_threads_cache = setmetatable({}, { __mode = "k" })
+
+local function pass_action_results(resume, coro_success, ...)
+  if coro_success then
+    if coroutine_status(action_threads_cache[resume]) == "dead" then
+      local success, result = ...
+      if success then
+        return select(2, ...)
+      end
+      error(result, 0)
+    else
+      if coroutine_isyieldable() then
+        return resume(coroutine_yield(...))
+      end
+      error("unhandled effect or yield: " .. tostring((...)), 0)
+    end
+  else
+    error("unhandled error in coroutine: " .. tostring((...)))
+  end
+end
+
+function _M.handle_once(handlers, ...)
+  local action_thread = action_threads_cache[...]
+  local resume2
+  local process_action_results
+  local function resume(...)
+    children[coroutine_running()] = action_thread
+    return process_action_results(coroutine_resume(action_thread, ...))
+  end
+  function process_action_results(coro_success, ...)
+    if coro_success then
+      if coroutine_status(action_thread) == "dead" then
+        local success, result = ...
+        if success then
+          return select(2, ...)
+        end
+        error(result, 0)
+      else
+        local handler = handlers[...]
+        if handler then
+          if not resume2 then
+            function resume2(...)
+              children[coroutine_running()] = action_thread
+              return pass_action_results(
+                resume2,
+                coroutine_resume(action_thread, ...)
+              )
+            end
+            action_threads_cache[resume2] = action_thread
+          end
+          return handler(resume2, select(2, ...))
+        end
+        if coroutine_isyieldable() then
+          return resume(coroutine_yield(...))
+        end
+        error("unhandled effect or yield: " .. tostring((...)), 0)
+      end
+    else
+      error("unhandled error in coroutine: " .. tostring((...)))
+    end
+  end
+  -- TODO: provide discontinue function for shallow handling
+  if action_thread then
+    resume2 = ...
+    return resume(select(2, ...))
+  else
+    action_thread = coroutine_create(action_wrapper)
+    return resume(...)
+  end
 end
 
 function _M.new(name)
