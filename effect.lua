@@ -192,13 +192,20 @@ function _M.handle_once(handlers, ...)
       error("unhandled error in coroutine: " .. tostring((...)))
     end
   end
-  -- TODO: provide discontinue function for shallow handling
   if action_thread then
     resume2 = ...
     return resume(select(2, ...))
   else
     action_thread = coroutine_create(action_wrapper)
     return resume(...)
+  end
+end
+
+function _M.discontinue(resume)
+  local early_return_marker = setmetatable({}, early_return_mt)
+  local success, result = xpcall(resume, debug_traceback, early_return_marker)
+  if result ~= early_return_marker then
+    error(result, 0)
   end
 end
 
