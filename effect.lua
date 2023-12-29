@@ -40,6 +40,17 @@ function _M.perform(...)
   return catch_early_return(coroutine_yield(...))
 end
 
+function _M.new(name)
+  if type(name) ~= "string" then
+    error("effect name is not a string", 2)
+  end
+  local str = name .. " effect"
+  return setmetatable({}, {
+    __call = _M.perform,
+    __tostring = function() return str end,
+  })
+end
+
 local children = setmetatable({}, { __mode = "k" })
 
 local function action_wrapper(action, ...)
@@ -209,17 +220,6 @@ function _M.discontinue(resume)
   elseif result ~= early_return_marker then
     error(result, 0)
   end
-end
-
-function _M.new(name)
-  if type(name) ~= "string" then
-    error("effect name is not a string", 2)
-  end
-  local str = name .. " effect"
-  return setmetatable({}, {
-    __call = _M.perform,
-    __tostring = function() return str end,
-  })
 end
 
 return _M
