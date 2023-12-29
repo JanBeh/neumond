@@ -143,7 +143,19 @@ function _M.main(...)
     local args = table.pack(...)
     attrs.resume = function()
       attrs.started = true
-      return table.pack(func(table.unpack(args, 1, args.n)))
+      attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
+      fibers[fiber] = nil
+      local waiting_fibers = attrs.waiting_fibers
+      if waiting_fibers then
+        while true do
+          local waiting_fiber = waiting_fibers:pop()
+          if not waiting_fiber then
+            break
+          end
+          wake(waiting_fiber)
+        end
+      end
+      return resume_scheduled()
     end
     attrs.woken_fibers = woken_fibers
     attrs.spawn = spawn
@@ -166,18 +178,7 @@ function _M.main(...)
     if resume then
       attrs.resume = nil
       current_fiber = fiber
-      attrs.results = effect.handle_once(handlers, resume)
-      fibers[fiber] = nil
-      local waiting_fibers = attrs.waiting_fibers
-      if waiting_fibers then
-        while true do
-          local waiting_fiber = waiting_fibers:pop()
-          if not waiting_fiber then
-            break
-          end
-          wake(waiting_fiber)
-        end
-      end
+      return effect.handle_once(handlers, resume)
     end
     return resume_scheduled()
   end
