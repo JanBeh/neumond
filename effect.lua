@@ -213,6 +213,9 @@ function _M.handle_once(handlers, ...)
 end
 
 function _M.discontinue(resume)
+  if not action_threads_cache[resume] then
+    error("argument to discontinue is not a continuation", 2)
+  end
   local early_return_marker = setmetatable({}, early_return_mt)
   local success, result = xpcall(resume, debug_traceback, early_return_marker)
   if success then
