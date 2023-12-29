@@ -16,15 +16,16 @@ local function fifoset()
     push = function(self, value)
       if not set[value] then
         queue[input_idx] = value
-        input_idx = input_idx + 1
         set[value] = true
+        input_idx = input_idx + 1
       end
     end,
     pop = function(self)
       if output_idx ~= input_idx then
         local value = queue[output_idx]
-        output_idx = output_idx + 1
+        queue[output_idx] = nil
         set[value] = nil
+        output_idx = output_idx + 1
         return value
       else
         return nil
