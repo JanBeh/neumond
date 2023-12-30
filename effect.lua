@@ -163,7 +163,7 @@ local function pass_action_results(resume, coro_success, ...)
   end
 end
 
-function _M.handle_once(handlers, ...)
+function _M.handle_once(handlers, action, ...)
   local action_thread = action_threads_cache[...]
   local resume2
   local process_action_results
@@ -204,11 +204,11 @@ function _M.handle_once(handlers, ...)
     end
   end
   if action_thread then
-    resume2 = ...
-    return resume(select(2, ...))
+    resume2 = action
+    return resume(...)
   else
     action_thread = coroutine_create(action_wrapper)
-    return resume(...)
+    return resume(action, ...)
   end
 end
 
