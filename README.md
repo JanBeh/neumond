@@ -1,4 +1,4 @@
-# Algebraic effect handling and asynchronous I/O in Lua
+# One-shot algebraic effect handling and asynchronous I/O in Lua
 
 This library is work in progress.
 
@@ -79,3 +79,6 @@ A fiber handle `f` provides the following attributes and methods:
   * **`f:await()`** puts the currently running fiber to sleep until fiber `f`
     has terminated. The method then returns its return values.
 
+## Related work
+
+See also ["One-shot Algebraic Eﬀects as Coroutines"](http://logic.cs.tsukuba.ac.jp/~sat/pdf/tfp2020-postsymposium.pdf), 21st International Symposium on Trends in Functional Programming (TFP), 2020, (post symposium) by Satoru Kawahara and Yukiyoshi Kameyama, Department of Computer Science, University of Tsukuba, Japan, who provide theoretic background and also presented a similar [implementation](https://github.com/Nymphium/eff.lua) of (one-shot) algebraic effects in Lua based on coroutines.
