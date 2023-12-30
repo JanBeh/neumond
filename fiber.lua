@@ -62,6 +62,9 @@ _M.yield = function()
   return yield()
 end
 
+-- Internally used effect when fiber terminates:
+local terminate = effect.new("fiber.terminate")
+
 -- Internal marker for attributes in the "fiber_meths" table:
 local getter_magic = {}
 
@@ -192,6 +195,13 @@ local function schedule(nested, ...)
       -- Jump to main loop:
       return resume_scheduled()
     end,
+    -- Effect invoked when fiber has terminated:
+    [terminate] = function(resume)
+      -- Discontinue continuation:
+      effect.discontinue(resume)
+      -- Jump to main loop:
+      return resume_scheduled()
+    end
   }
   -- Implementation of spawn function for current scheduler:
   local function spawn(func, ...)
@@ -221,6 +231,8 @@ local function schedule(nested, ...)
           waiting_fiber:wake()
         end
       end
+      -- Leave effect handling context and jump to main loop:
+      return terminate()
     end
     -- Store certain upvalues as private attributes:
     attrs.woken_fibers = woken_fibers
@@ -293,8 +305,8 @@ local function schedule(nested, ...)
       attrs.resume = nil
       -- Set current_fiber:
       current_fiber = fiber
-      -- Run resume function with effect handling:
-      effect.handle_once(handlers, resume)
+      -- Run resume function with effect handling as tail-call:
+      return effect.handle_once(handlers, resume)
     end
     -- Repeat main loop:
     return resume_scheduled()
