@@ -327,4 +327,8 @@ function _M.handle(handlers, ...)
   return effect.handle(handlers, schedule, true, ...)
 end
 
+-- Modified "effect" module with its "handle" method replaced with this
+-- module's handle method:
+_M.effect_mod = setmetatable({ handle = _M.handle }, { __index = effect })
+
 return _M

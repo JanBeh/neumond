@@ -35,6 +35,22 @@ module.
 Note that it is required to run `fiber.main(action, ...)` before any other
 functions of this module can be used. All other functions *must* be called from
 within the `action` function.
+In order to automatically apply effect handlers also to all spawned fibers, it
+can be helpful to use the module **`fiber.effect_mod`**, which contains all
+items from `effect` but replaces the `handle` function with `fiber.handle`,
+that is aware of fibers.
+A typical program could thus look as follows:
+
+```
+local fiber = require "fiber"
+local effect = fiber.effect_mod -- use modded effect module
+
+return fiber.main(function()
+  -- code goes here
+end)
+```
+
+The fiber module provides the following functions:
 
   * **`fiber.main(action, ...)`** runs the `action` function with given
     arguments as main fiber which may spawn additional fibers. It returns the
@@ -53,6 +69,7 @@ within the `action` function.
   * **`fiber.handle(handlers, action, ...)`** acts like `effect.handle` but
     additionally applies the effect handling to all spawned fibers. Thus
     `fiber.handle` will not return until all fibers have terminated.
+    This function is also available as `fiber.effect_mod.handle`.
 
 A fiber handle `f` provides the following attributes and methods:
 

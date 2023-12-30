@@ -1,6 +1,6 @@
 local fiber = require "fiber"
 
-fiber.main(function()
+return fiber.main(function()
   fiber.spawn(function()
     local guard <close> = setmetatable({}, {
       __close = function()

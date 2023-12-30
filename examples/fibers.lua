@@ -1,10 +1,10 @@
-local effect = require "effect"
 local fiber = require "fiber"
+local effect = fiber.effect_mod -- use modified "effect" module from "fiber"
 
 local log = effect.new("log")
 
 local function logging(...)
-  return fiber.handle({
+  return effect.handle({
     [log] = function(resume, message)
       print("LOG: " .. tostring(message))
       return resume()
@@ -13,7 +13,7 @@ local function logging(...)
 end
 
 local function silence(...)
-  return fiber.handle({
+  return effect.handle({
     [log] = function(resume, message)
       return resume()
     end,
