@@ -23,7 +23,7 @@ end
 local retval = fiber.main(function()
   local v
   local producer, consumer
-  logging(function()
+  local retval = logging(function()
     producer = fiber.spawn(function()
       log("Producer started")
       for i = 1, 10 do
@@ -47,7 +47,9 @@ local retval = fiber.main(function()
       end
       return "Consumer finished"
     end)
+    return "Logging block done"
   end)
+  assert(retval == "Logging block done")
   silence(function()
     fiber.spawn(function()
       log("This is not logged")

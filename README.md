@@ -33,7 +33,7 @@ Module for lightweight threads implemented in pure Lua by using the `effect`
 module.
 
 Note that it is required to run `fiber.main(action, ...)` before any other
-functions of this module can be used. All other functions *must* be called
+functions of this module can be used. All other functions *must* be called from
 within the `action` function.
 
   * **`fiber.main(action, ...)`** runs the `action` function with given
@@ -49,6 +49,10 @@ within the `action` function.
 
   * **`fiber.spawn(action, ...)`** runs the `action` function with given
     arguments in a separate fiber and returns a handle for the spawned fiber.
+
+  * **`fiber.handle(handlers, action, ...)`** acts like `effect.handle` but
+    additionally applies the effect handling to all spawned fibers. Thus
+    `fiber.handle` will not return until all fibers have terminated.
 
 A fiber handle `f` provides the following attributes and methods:
 
