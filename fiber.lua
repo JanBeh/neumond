@@ -56,13 +56,11 @@ local fiber_meths = {
 }
 
 local function wake(fiber)
-  -- Code for (future) nested scheduling:
-  --while fiber do
-  --  local attrs = fiber_attrs[fiber]
-  --  attrs.woken_fibers:push(fiber)
-  --  fiber = attrs.parent_fiber
-  --end
-  fiber_attrs[fiber].woken_fibers:push(fiber)
+  while fiber do
+    local attrs = fiber_attrs[fiber]
+    attrs.woken_fibers:push(fiber)
+    fiber = attrs.parent_fiber
+  end
 end
 
 function fiber_meths.wake(self)
@@ -117,7 +115,11 @@ local fibers_metatbl = {
   end,
 }
 
-function _M.main(...)
+local function schedule(nested, ...)
+  local parent_fiber
+  if nested then
+    parent_fiber = get_current()
+  end
   local fibers <close> = setmetatable({}, fibers_metatbl)
   local woken_fibers = fifoset()
   local current_fiber
@@ -132,7 +134,7 @@ function _M.main(...)
       return resume_scheduled()
     end,
     [yield] = function(resume)
-      wake(current_fiber)
+      woken_fibers:push(current_fiber)
       fiber_attrs[current_fiber].resume = resume
       return resume_scheduled()
     end,
@@ -159,14 +161,29 @@ function _M.main(...)
     end
     attrs.woken_fibers = woken_fibers
     attrs.spawn = spawn
+    attrs.parent_fiber = parent_fiber
     fibers[fiber] = true
     woken_fibers:push(fiber)
     return fiber
   end
   local main = spawn(...)
+  if nested then
+    woken_fibers:push(false)
+  end
   resume_scheduled = function()
     local fiber = woken_fibers:pop()
-    if fiber == nil then
+    if fiber == false and next(fibers) then
+      fiber = woken_fibers:pop()
+      if fiber then
+        yield()
+        woken_fibers:push(false)
+      else
+        sleep()
+        woken_fibers:push(false)
+        return resume_scheduled()
+      end
+    end
+    if not fiber then
       local results = main.results
       if results then
         return table.unpack(results, 1, results.n)
@@ -183,6 +200,14 @@ function _M.main(...)
     return resume_scheduled()
   end
   return resume_scheduled()
+end
+
+function _M.main(...)
+  return schedule(false, ...)
+end
+
+function _M.handle(handlers, ...)
+  return effect.handle(handlers, schedule, true, ...)
 end
 
 return _M

@@ -1,34 +1,61 @@
+local effect = require "effect"
 local fiber = require "fiber"
+
+local log = effect.new("log")
+
+local function logging(...)
+  return fiber.handle({
+    [log] = function(resume, message)
+      print("LOG: " .. tostring(message))
+      return resume()
+    end,
+  }, ...)
+end
+
+local function silence(...)
+  return fiber.handle({
+    [log] = function(resume, message)
+      return resume()
+    end,
+  }, ...)
+end
 
 local retval = fiber.main(function()
   local v
   local producer, consumer
-  producer = fiber.spawn(function()
-    for i = 1, 10 do
-      while v ~= nil do
-        fiber.sleep()
+  logging(function()
+    producer = fiber.spawn(function()
+      log("Producer started")
+      for i = 1, 10 do
+        while v ~= nil do
+          fiber.sleep()
+        end
+        v = i
+        consumer:wake()
       end
-      v = i
-      consumer:wake()
-    end
-    return "Producer finished"
-  end)
-  consumer = fiber.spawn(function()
-    while producer.results == nil do
-      while v == nil do
-        fiber.sleep()
+      log("Producer finished")
+      return "Producer finished"
+    end)
+    consumer = fiber.spawn(function()
+      while producer.results == nil do
+        while v == nil do
+          fiber.sleep()
+        end
+        print(v)
+        v = nil
+        producer:wake()
       end
-      print(v)
-      v = nil
-      producer:wake()
-    end
-    return "Consumer finished"
+      return "Consumer finished"
+    end)
   end)
-  local x = fiber.spawn(function()
-    local result = producer:await()
-    print("Awaited value: " .. result)
-    local result = consumer:await()
-    print("Awaited value: " .. result)
+  silence(function()
+    fiber.spawn(function()
+      log("This is not logged")
+      local result = producer:await()
+      print("Awaited value: " .. result)
+      local result = consumer:await()
+      print("Awaited value: " .. result)
+    end)
   end)
   return "Done"
 end)
