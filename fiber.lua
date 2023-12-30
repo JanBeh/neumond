@@ -43,9 +43,9 @@ end
 
 -- Internally used effects (which are not exported) for
 -- "current", "sleep", and "yield" functions:
-local get_current = effect.new("current")
-local sleep = effect.new("sleep")
-local yield = effect.new("yield")
+local get_current = effect.new("fiber.current")
+local sleep = effect.new("fiber.sleep")
+local yield = effect.new("fiber.yield")
 
 -- Function returning a handle of the currently running fiber:
 _M.current = function()
