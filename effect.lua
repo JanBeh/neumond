@@ -1,3 +1,5 @@
+-- Module for algebraic effect handling
+
 -- Explicitly import certain items from Lua's standard library as local
 -- variables for performance improvements to avoid table lookups:
 local error        = error
