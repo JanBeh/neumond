@@ -156,7 +156,6 @@ function _M.main(...)
           wake(waiting_fiber)
         end
       end
-      return resume_scheduled()
     end
     attrs.woken_fibers = woken_fibers
     attrs.spawn = spawn
@@ -179,7 +178,7 @@ function _M.main(...)
     if resume then
       attrs.resume = nil
       current_fiber = fiber
-      return effect.handle_once(handlers, resume)
+      effect.handle_once(handlers, resume)
     end
     return resume_scheduled()
   end
