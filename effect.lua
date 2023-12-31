@@ -276,7 +276,7 @@ end
 -- discontinue(resume) is necessary to properly unwind the stack and execute
 -- finalizers.
 --
-function _M.handle_once(handlers, action, ...)
+function _M.handle_once(handlers, ...)
   -- Check if the action function is a resume function that has been previously
   -- passed to an effect handler, and extract the corresponding coroutine in
   -- that case:
@@ -335,17 +335,17 @@ function _M.handle_once(handlers, action, ...)
   if action_thread then
     -- action is a previously returned resume function.
     -- Use action as resume2 function:
-    resume2 = action
+    resume2 = ...
     -- Use resume function to resume coroutine, which performs effect handling
     -- once:
-    return resume(...)
+    return resume(select(2, ...))
   else
     -- action is not a previously returned resume function.
     -- Create new coroutine with action_wrapper:
     action_thread = coroutine_create(action_wrapper)
     -- Use resume function to start coroutine for the first time, in which case
     -- the action needs to be passed as first argument:
-    return resume(action, ...)
+    return resume(...)
   end
 end
 
