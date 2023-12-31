@@ -86,6 +86,8 @@ The fiber module provides the following functions:
 
 A fiber handle `f` provides the following attributes and methods:
 
+  * **`f:wake()`** wakes up fiber `f`.
+
   * **`f.results`** is a table containing the return value of the action
     function of fiber `f`, or `nil` if the action has not terminated yet.
 
