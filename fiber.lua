@@ -38,6 +38,9 @@ local function fifoset()
         return nil
       end
     end,
+    peek = function(self, index)
+      return queue[output_idx + index]
+    end,
   }
 end
 
@@ -135,6 +138,23 @@ _M.fiber_metatbl = {
 -- arguments to the action function:
 function _M.spawn(...)
   return fiber_attrs[get_current()].spawn(...)
+end
+
+-- Function checking if there is any woken fiber:
+function _M.pending()
+  local fiber = get_current()
+  while fiber do
+    local attrs = fiber_attrs[fiber]
+    local woken_fibers = attrs.woken_fibers
+    -- Check first two positions in woken_fibers FIFO because first position
+    -- could be a special (false) marker:
+    if woken_fibers:peek(0) or woken_fibers:peek(1) then
+      return true
+    end
+    -- Repeat procedure for all parent fibers:
+    fiber = attrs.parent_fiber
+  end
+  return false
 end
 
 -- Internal metatable for set of all open (unfinished) fibers:

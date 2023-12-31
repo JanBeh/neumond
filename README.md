@@ -79,6 +79,10 @@ The fiber module provides the following functions:
   * **`fiber.spawn(action, ...)`** runs the `action` function with given
     arguments in a separate fiber and returns a handle for the spawned fiber.
 
+  * **`fiber.pending()`** returns `true` if there is any woken fiber. This
+    function can be used to check if it's okay to make a main event loop wait
+    for I/O (e.g. by using an OS call that blocks execution).
+
   * **`fiber.handle(handlers, action, ...)`** acts like `effect.handle` but
     additionally applies the effect handling to all spawned fibers. Thus
     `fiber.handle` will not return until all fibers have terminated.
