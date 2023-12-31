@@ -6,14 +6,23 @@ This library is work in progress.
 
 Module for algebraic effect handling implemented in pure Lua.
 
-  * **`perform(eff)`** performs the effect `eff`.
+  * **`new(name)`** returns an object that is suitable to be used as an effect.
+    Note that any other object can be used as an effect as well, but an object
+    `x` returned by this function is automatically callable such that `x(...)`
+    is a short form for `effect.perform(x, ...)`. Moreover, the generated
+    object has a string representation (using the `__tostring` metamethod)
+    based on the `name` and a suffix, which may be useful for debugging.
+
+  * **`perform(eff, ...)`** performs the effect `eff` with optional arguments.
 
   * **`handle(handlers, action, ...)`** calls the `action` function with given
     arguments and, during execution of the action function, handles those
     effects which are listed as key in the `handlers` table. The value in the
     handlers table is the corresponding handler, which is is a function that
     retrieves a continuation function (usually named "`resume`") as first
-    argument. The handler may resume the action only *before* returning.
+    argument followed by optional arguments that have been passed to the
+    `perform` function. Handlers in the `handlers` table passed to the `handle`
+    function may resume the action only *before* returning.
 
   * **`handle_once(handlers, action, ...)`** does the same as `handle`, but:
 
