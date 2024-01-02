@@ -140,6 +140,25 @@ function _M.spawn(...)
   return fiber_attrs[get_current()].spawn(...)
 end
 
+-- Function checking if there is any fiber except the current one
+-- (sleeping or pending):
+function _M.other()
+  local fiber = get_current()
+  while fiber do
+    local attrs = fiber_attrs[fiber]
+    local open_fibers = attrs.open_fibers
+    -- Check if there are at least two fibers in current context:
+    if next(open_fibers, next(open_fibers)) then
+      -- There are at least two fibers in current context,
+      -- i.e. there is at least one other fiber.
+      return true
+    end
+    -- Repeat procedure for all parent fibers:
+    fiber = attrs.parent_fiber
+  end
+  return false
+end
+
 -- Function checking if there is any woken fiber:
 function _M.pending()
   local fiber = get_current()
@@ -149,6 +168,8 @@ function _M.pending()
     -- Check first two positions in woken_fibers FIFO because first position
     -- could be a special (false) marker:
     if woken_fibers:peek(0) or woken_fibers:peek(1) then
+      -- There is an entry in woken_fibers, which is not false,
+      -- i.e. there is a woken fiber.
       return true
     end
     -- Repeat procedure for all parent fibers:
@@ -182,7 +203,7 @@ local function schedule(nested, ...)
   if nested then
     parent_fiber = get_current()
   end
-  -- Remember all open fibers for later cleanup:
+  -- Remember all open fibers in a set with a cleanup handler:
   local open_fibers <close> = setmetatable({}, open_fibers_metatbl)
   -- FIFO set of woken fibers:
   local woken_fibers = fifoset()
@@ -255,6 +276,7 @@ local function schedule(nested, ...)
       return terminate()
     end
     -- Store certain upvalues as private attributes:
+    attrs.open_fibers = open_fibers
     attrs.woken_fibers = woken_fibers
     attrs.spawn = spawn
     attrs.parent_fiber = parent_fiber
