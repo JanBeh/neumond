@@ -65,7 +65,8 @@ _M.yield = function()
   return yield()
 end
 
--- Internally used effect when fiber terminates:
+-- Internally used effect when fiber terminates due to returning or being
+-- killed:
 local terminate = effect.new("fiber.terminate")
 
 -- Internal marker for attributes in the "fiber_meths" table:
@@ -77,7 +78,8 @@ local fiber_attrs = setmetatable({}, { __mode = "k" })
 -- Table containing all methods of fibers, plus public attributes where the
 -- value in this table must be set to "getter_magic":
 local fiber_meths = {
-  results = getter_magic,
+  results = getter_magic, -- return value of fiber's function
+  killed = getter_magic, -- true if fiber has been killed by an effect
 }
 
 -- Method waking up the fiber (note that "self" is named "fiber" below):
@@ -93,12 +95,23 @@ end
 -- Method putting the currently executed fiber to sleep until being able to
 -- return the given fiber's ("self"'s) result:
 function fiber_meths.await(self)
-  -- Try first if result is already available:
   local attrs = fiber_attrs[self]
+  -- Try first if result is already available:
   local results = attrs.results
   if results then
+    -- Result is already available.
+    -- Return available results:
     return table.unpack(results, 1, results.n)
   end
+  -- Result is not yet available.
+  -- Check if awaited fiber has been killed:
+  if attrs.killed then
+    -- Awaited fiber has already been killed.
+    -- Kill and terminate this fiber too:
+    fiber_attrs[get_current()].killed = true
+    return terminate()
+  end
+  -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
   local waiting_fibers = attrs.waiting_fibers
   if not waiting_fibers then
@@ -106,12 +119,17 @@ function fiber_meths.await(self)
     attrs.waiting_fibers = waiting_fibers
   end
   waiting_fibers:push(get_current())
-  -- Sleep until result is available:
+  -- Sleep until result is available or awaited fiber has been killed and
+  -- proceed same as above:
   while true do
     sleep()
     local results = attrs.results
     if results then
       return table.unpack(results, 1, results.n)
+    end
+    if attrs.killed then
+      fiber_attrs[get_current()].killed = true
+      return terminate()
     end
   end
 end
@@ -192,6 +210,23 @@ local open_fibers_metatbl = {
         -- Discontinue the continuation:
         effect.discontinue(resume)
       end
+      -- Check if results are missing:
+      if not attrs.results then
+        -- Fiber did not generate a return value.
+        -- Mark fiber as killed:
+        attrs.killed = true
+      end
+      -- Wakeup all fibers that are waiting for this fiber's return values:
+      local waiting_fibers = attrs.waiting_fibers
+      if waiting_fibers then
+        while true do
+          local waiting_fiber = waiting_fibers:pop()
+          if not waiting_fiber then
+            break
+          end
+          waiting_fiber:wake()
+        end
+      end
     end
   end,
 }
@@ -238,31 +273,14 @@ local function schedule(nested, ...)
     end,
     -- Effect invoked when fiber has terminated:
     [terminate] = function(resume)
+      -- Note that this effect should not be invoked unless a result (return
+      -- values) has been stored or the fiber has been killed.
       -- Discontinue continuation:
       effect.discontinue(resume)
-      -- Jump to main loop:
-      return resume_scheduled()
-    end
-  }
-  -- Implementation of spawn function for current scheduler:
-  local function spawn(func, ...)
-    -- Create new fiber handle:
-    local fiber = setmetatable({}, _M.fiber_metatbl)
-    -- Create storage table for attributes in ephemeron:
-    local attrs = {}
-    fiber_attrs[fiber] = attrs
-    -- Pack arguments to spawned fiber's function:
-    local args = table.pack(...)
-    -- Initialize resume function for first run:
-    attrs.resume = function()
-      -- Mark fiber as started, such that cleanup may take place later:
-      attrs.started = true
-      -- Run fiber's function and store its return values:
-      attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
       -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
-      open_fibers[fiber] = nil
+      open_fibers[current_fiber] = nil
       -- Wakeup all fibers that are waiting for this fiber's return values:
-      local waiting_fibers = attrs.waiting_fibers
+      local waiting_fibers = fiber_attrs[current_fiber].waiting_fibers
       if waiting_fibers then
         while true do
           local waiting_fiber = waiting_fibers:pop()
@@ -272,14 +290,37 @@ local function schedule(nested, ...)
           waiting_fiber:wake()
         end
       end
-      -- Leave effect handling context and jump to main loop:
+      -- Jump to main loop:
+      return resume_scheduled()
+    end
+  }
+  -- Implementation of spawn function for current scheduler:
+  local function spawn(func, ...)
+    -- Create new fiber handle:
+    local fiber = setmetatable({}, _M.fiber_metatbl)
+    -- Create storage table for fiber's attributes:
+    local attrs = {
+      -- Store certain upvalues as private attributes:
+      open_fibers = open_fibers,
+      woken_fibers = woken_fibers,
+      spawn = spawn,
+      parent_fiber = parent_fiber,
+      -- Initialize "killed" attribute to false:
+      killed = false,
+    }
+    -- Store attribute table in ephemeron:
+    fiber_attrs[fiber] = attrs
+    -- Pack arguments to spawned fiber's function:
+    local args = table.pack(...)
+    -- Initialize resume function for first run:
+    attrs.resume = function()
+      -- Mark fiber as started, such that cleanup may take place later:
+      attrs.started = true
+      -- Run fiber's function and store its return values:
+      attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
+      -- Terminate fiber through effect:
       return terminate()
     end
-    -- Store certain upvalues as private attributes:
-    attrs.open_fibers = open_fibers
-    attrs.woken_fibers = woken_fibers
-    attrs.spawn = spawn
-    attrs.parent_fiber = parent_fiber
     -- Remember fiber as being open so it can be cleaned up later:
     open_fibers[fiber] = true
     -- Wakeup fiber for the first time (no need to wake parents):
@@ -334,7 +375,7 @@ local function schedule(nested, ...)
       end
       -- Main fiber has not returned, thus there is a deadlock.
       -- Throw an exception:
-      error("main fiber did not terminate", 0)
+      error("fiber did not return", 0)
     end
     -- Obtain resume function (if exists):
     local attrs = fiber_attrs[fiber]

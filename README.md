@@ -97,10 +97,16 @@ A fiber handle `f` provides the following attributes and methods:
   * **`f:wake()`** wakes up fiber `f`.
 
   * **`f.results`** is a table containing the return value of the action
-    function of fiber `f`, or `nil` if the action has not terminated yet.
+    function of fiber `f`, or `nil` if the action has not terminated yet or if
+    it has been killed due to a non-resuming effect.
+
+  * **`f.killed`** is `true` if fiber `f` got killed due to a non-resuming
+    effect before its action function could return; otherwise `false`.
 
   * **`f:await()`** puts the currently running fiber to sleep until fiber `f`
-    has terminated. The method then returns its return values.
+    has terminated. The method then returns its return values. If the awaited
+    fiber got killed due to a non-resuming effect, the current fiber will be
+    killed as well.
 
 ## Related work
 
