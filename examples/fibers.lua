@@ -24,7 +24,7 @@ local retval = fiber.main(function()
   local v
   local producer, consumer
   local retval = logging(function()
-    return fiber.group(function()
+    return fiber.scope(function()
       producer = fiber.spawn(function()
         log("Producer started")
         for i = 1, 10 do

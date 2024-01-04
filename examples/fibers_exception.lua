@@ -13,7 +13,7 @@ local retval = fiber.main(function()
       end,
     },
     function()
-      fiber.group(function()
+      fiber.scope(function()
         producer = fiber.spawn(function()
           for i = 1, 10 do
             if i == 5 then

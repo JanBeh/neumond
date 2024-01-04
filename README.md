@@ -56,12 +56,12 @@ The fiber module provides the following functions:
     return values of the main fiber when execution of all fibers has stopped
     (i.e. when all fibers have terminated or are sleeping).
 
-  * **`fiber.group(action, ...)`** runs the `action` function with given
+  * **`fiber.scope(action, ...)`** runs the `action` function with given
     arguments and handles spawning (but still requires `fiber.main` to be
     already running). It does not return until all spawned fibers within the
     action have terminated, and, in turn, allows any effects caused by spawned
     fibers to be handled by effect handlers that have been installed before
-    calling `fiber.group`.
+    calling `fiber.scope`.
 
   * **`fiber.current()`** obtains a handle for the currently running fiber.
 

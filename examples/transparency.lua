@@ -1,4 +1,4 @@
--- This program demonstrates the use of function fiber.group.
+-- This program demonstrates the use of function fiber.scope.
 
 local effect = require "effect"
 local fiber = require "fiber"
@@ -29,10 +29,10 @@ local function logging_important(...)
 end
 
 -- This function is generic and not aware of any particular effects (but needs
--- to use fiber.group to spawn the fibers in the current context):
+-- to use fiber.scope to spawn the fibers in the current context):
 local function do_twice_parallel(...)
   -- Spawn fibers in current context, so all installed effect handlers apply:
-  return fiber.group(
+  return fiber.scope(
     function(...)
       local f1 = fiber.spawn(...)
       local f2 = fiber.spawn(...)
@@ -65,7 +65,7 @@ fiber.main(function()
   logging(function()
     -- Do not leave this context until all spawned fibers are done, so it is
     -- possible to use the log effect:
-    fiber.group(function()
+    fiber.scope(function()
       foo()
       fiber.spawn(function()
         for i = 1, 5 do

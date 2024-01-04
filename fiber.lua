@@ -404,10 +404,10 @@ function _M.main(...)
   return schedule(false, ...)
 end
 
--- group(action, ...) runs the given "action" function with given arguments and
+-- scope(action, ...) runs the given "action" function with given arguments and
 -- handles spawning. It does not return until all spawned fibers have
 -- terminated.
-function _M.group(...)
+function _M.scope(...)
   return schedule(true, ...)
 end
 
