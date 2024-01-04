@@ -404,14 +404,17 @@ function _M.main(...)
   return schedule(false, ...)
 end
 
--- handle(action, ...) acts like effect.handle(action, ...) but also applies to
--- the spawned fibers:
+-- group(action, ...) runs the given "action" function with given arguments and
+-- handles spawning. It does not return until all spawned fibers have
+-- terminated.
+function _M.group(...)
+  return schedule(true, ...)
+end
+
+-- handle(handlers, action, ...) acts like effect.handle(action, ...) but also
+-- applies to spawned fibers within the action.
 function _M.handle(handlers, ...)
   return effect.handle(handlers, schedule, true, ...)
 end
-
--- Modified "effect" module with its "handle" method replaced with this
--- module's handle method:
-_M.effect_mod = setmetatable({ handle = _M.handle }, { __index = effect })
 
 return _M

@@ -1,5 +1,5 @@
+local effect = require "effect"
 local fiber = require "fiber"
-local effect = fiber.effect_mod -- use modified "effect" module from "fiber"
 
 local log = effect.new("log")
 
@@ -24,40 +24,40 @@ local retval = fiber.main(function()
   local v
   local producer, consumer
   local retval = logging(function()
-    producer = fiber.spawn(function()
-      log("Producer started")
-      for i = 1, 10 do
-        while v ~= nil do
-          fiber.sleep()
+    return fiber.group(function()
+      producer = fiber.spawn(function()
+        log("Producer started")
+        for i = 1, 10 do
+          while v ~= nil do
+            fiber.sleep()
+          end
+          v = i
+          consumer:wake()
         end
-        v = i
-        consumer:wake()
-      end
-      log("Producer finished")
-      return "Producer finished"
-    end)
-    consumer = fiber.spawn(function()
-      while producer.results == nil do
-        while v == nil do
-          fiber.sleep()
+        log("Producer finished")
+        return "Producer finished"
+      end)
+      consumer = fiber.spawn(function()
+        while producer.results == nil do
+          while v == nil do
+            fiber.sleep()
+          end
+          print(v)
+          v = nil
+          producer:wake()
         end
-        print(v)
-        v = nil
-        producer:wake()
-      end
-      return "Consumer finished"
+        return "Consumer finished"
+      end)
+      return "Inner block done"
     end)
-    return "Logging block done"
   end)
-  assert(retval == "Logging block done")
+  assert(retval == "Inner block done")
   silence(function()
-    fiber.spawn(function()
-      log("This is not logged")
-      local result = producer:await()
-      print("Awaited value: " .. result)
-      local result = consumer:await()
-      print("Awaited value: " .. result)
-    end)
+    log("This is not logged")
+    local result = producer:await()
+    print("Awaited value: " .. result)
+    local result = consumer:await()
+    print("Awaited value: " .. result)
   end)
   return "Done"
 end)
