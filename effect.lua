@@ -48,7 +48,13 @@ end
 
 -- Performs an effect:
 function _M.perform(...)
-  return catch_early_return(coroutine_yield(...))
+  if coroutine_isyieldable() then
+    return catch_early_return(coroutine_yield(...))
+  end
+  error(
+    "no effect handler installed while performing effect: " .. tostring((...)),
+    2
+  )
 end
 
 -- Convenience function, which creates an object that is suitable to be used as
