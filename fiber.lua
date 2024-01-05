@@ -69,7 +69,7 @@ end
 -- killed:
 local terminate = effect.new("fiber.terminate")
 
--- Internal marker for attributes in the "fiber_meths" table:
+-- Internal marker for attributes in the "fiber_methods" table:
 local getter_magic = {}
 
 -- Ephemeron storing fibers' attributes:
@@ -77,13 +77,13 @@ local fiber_attrs = setmetatable({}, { __mode = "k" })
 
 -- Table containing all methods of fibers, plus public attributes where the
 -- value in this table must be set to "getter_magic":
-local fiber_meths = {
+local fiber_methods = {
   results = getter_magic, -- return value of fiber's function
   killed = getter_magic, -- true if fiber has been killed by an effect
 }
 
 -- Method waking up the fiber (note that "self" is named "fiber" below):
-function fiber_meths.wake(fiber)
+function fiber_methods.wake(fiber)
   while fiber do
     local attrs = fiber_attrs[fiber]
     attrs.woken_fibers:push(fiber)
@@ -94,7 +94,7 @@ end
 
 -- Method putting the currently executed fiber to sleep until being able to
 -- return the given fiber's ("self"'s) result:
-function fiber_meths.await(self)
+function fiber_methods.await(self)
   local attrs = fiber_attrs[self]
   -- Try first if result is already available:
   local results = attrs.results
@@ -138,7 +138,7 @@ end
 _M.fiber_metatbl = {
   __index = function(self, key)
     -- Lookup method or attribute magic:
-    local value = fiber_meths[key]
+    local value = fiber_methods[key]
     -- Check if key is a public attribute:
     if value == getter_magic then
       -- Key is an attribute.
