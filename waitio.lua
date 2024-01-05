@@ -7,7 +7,7 @@ local lkq = require "lkq"
 
 local get_eventqueue = effect.new("waitio.get_eventqueue")
 
-function _M.unregister_fd(fd)
+function _M.deregister_fd(fd)
   return get_eventqueue():deregister_fd(fd)
 end
 
@@ -29,7 +29,7 @@ local function wake(self)
   return self:wake()
 end
 
-function _M.provide(...)
+function _M.main(...)
   local eventqueue = lkq.new_queue()
   fiber.handle(
     {

@@ -3,7 +3,7 @@ local fiber = require "fiber"
 local waitio = require "waitio"
 
 fiber.main(
-  waitio.provide,
+  waitio.main,
   function()
     print("reader started")
     fiber.yield()
