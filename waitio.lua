@@ -26,7 +26,7 @@ function _M.wait_fd_write(fd)
 end
 
 local function wake(self)
-  self:wake()
+  return self:wake()
 end
 
 function _M.provide(...)
