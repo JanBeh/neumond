@@ -355,7 +355,7 @@ function _M.handle_once(handlers, action, ...)
   end
 end
 
--- Function that ionvalidates a resume function previously returned by
+-- Function that invalidates a resume function previously returned by
 -- handle_once, and which unwinds the stack and executes finalizers:
 function _M.discontinue(resume)
   -- Check if argument is a resume function previously returned by handle_once:
