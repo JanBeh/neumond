@@ -44,7 +44,7 @@ function handle_methods:read(maxlen, terminator)
     end
   end
   local done = #old_chunk
-  if done >= maxlen then
+  if maxlen and done >= maxlen then
     self.read_buffer = string.sub(old_chunk, maxlen + 1)
     return string.sub(old_chunk, 1, maxlen)
   end
@@ -55,7 +55,7 @@ function handle_methods:read(maxlen, terminator)
       local pos = nil
       if terminator then
         local pos = string.find(chunk, terminator)
-        if pos and done + pos <= maxlen then
+        if pos and (not maxlen or done + pos <= maxlen) then
           chunks[#chunks+1] = string.sub(chunk, 1, pos)
           self.read_buffer = string.sub(chunk, pos + 1)
           return table.concat(chunks)
@@ -72,9 +72,14 @@ function handle_methods:read(maxlen, terminator)
       break
     end
   end
-  local all = table.concat(chunks)
-  self.read_buffer = string.sub(all, maxlen + 1)
-  return (string.sub(all, 1, maxlen))
+  if maxlen then
+    local all = table.concat(chunks)
+    self.read_buffer = string.sub(all, maxlen + 1)
+    return (string.sub(all, 1, maxlen))
+  else
+    self.read_buffer = ""
+    return table.concat(chunks)
+  end
 end
 
 function handle_methods:write_unbuffered(...)
