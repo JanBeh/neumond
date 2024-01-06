@@ -31,15 +31,15 @@ local _M = {}
 
 -- Metatable for special "early return markers" passed to the resume function,
 -- which indicate that the effect handler does not wish to resume the action:
-local early_return_mt = {
+local early_return_metatbl = {
   __tostring = function() return "effect handler did not resume" end,
 }
-_M.early_return_mt = early_return_mt
+_M.early_return_metatbl = early_return_metatbl
 
 -- Function filtering coroutine.yield's return values, which turns
 -- "early return markers" into exceptions that unwind the stack:
 local function catch_early_return(...)
-  if getmetatable((...)) == early_return_mt then
+  if getmetatable((...)) == early_return_metatbl then
     error((...))
   else
     return ...
@@ -175,7 +175,7 @@ function _M.handle(handlers, ...)
   -- xpcall(resume, ...). The close function ensures cleanup in case of an
   -- exception or an early return in a handler as well as proper stack traces.
   local return_values, error_message
-  local early_return_marker = setmetatable({}, early_return_mt)
+  local early_return_marker = setmetatable({}, early_return_metatbl)
   local function close(success, ...)
     -- Check if coroutine finished execution or if there was an early return:
     if coroutine_status(action_thread) == "dead" then
@@ -368,7 +368,7 @@ function _M.discontinue(resume)
   -- Create an "early return marker" and resume coroutine by passing that
   -- marker to the coroutine, which then unwinds the stack by throwing the
   -- marker, and re-catch that marker using xpcall:
-  local early_return_marker = setmetatable({}, early_return_mt)
+  local early_return_marker = setmetatable({}, early_return_metatbl)
   local success, result = xpcall(resume, debug_traceback, early_return_marker)
   -- Check if any exception was caught:
   if success then
