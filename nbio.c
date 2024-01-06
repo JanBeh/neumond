@@ -143,7 +143,7 @@ static int nbio_tcplisten(lua_State *L) {
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
-  hints.ai_flags = AI_ADDRCONFIG;
+  hints.ai_flags = AI_ADDRCONFIG | AI_PASSIVE;
   struct addrinfo *res;
   int errcode = getaddrinfo(host, port, &hints, &res);
   if (errcode) {
