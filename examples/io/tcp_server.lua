@@ -9,7 +9,7 @@ fiber.main(
     while true do
       local conn = listener:accept()
       fiber.spawn(function()
-        conn:write_unbuffered("Hello\n")
+        conn:write("Hello World!\n")
         conn:close()
       end)
     end
