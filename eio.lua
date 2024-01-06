@@ -5,6 +5,8 @@ local effect = require "effect"
 local nbio = require "nbio"
 local waitio = require "waitio"
 
+local chunksize = 1024
+
 _M.main = waitio.main
 
 local handle_methods = {}
@@ -20,18 +22,87 @@ _M.handle_metatbl = {
   __index = handle_methods,
 }
 
-function handle_methods:read(len)
+function handle_methods:read_unbuffered(len)
   waitio.wait_fd_read(self.nbio_handle.fd)
   return self.nbio_handle:read(len)
 end
 
-function handle_methods:write(len)
+function handle_methods:read(maxlen, terminator)
+  -- TODO: improve performance / buffering behavior
+  if terminator then
+    if #terminator ~= 1 then
+      error("terminator must be a single byte", 2)
+    end
+    terminator = string.gsub(terminator, "[^0-9A-Za-z]", "%%%0")
+  end
+  local old_chunk = self.read_buffer
+  if terminator then
+    local pos = string.find(old_chunk, terminator)
+    if pos and pos <= maxlen then
+      self.read_buffer = string.sub(old_chunk, pos + 1)
+      return string.sub(old_chunk, 1, pos)
+    end
+  end
+  local done = #old_chunk
+  if done >= maxlen then
+    self.read_buffer = string.sub(old_chunk, maxlen + 1)
+    return string.sub(old_chunk, 1, maxlen)
+  end
+  local chunks = { old_chunk }
+  while not maxlen or done < maxlen do
+    local chunk, errmsg = self:read_unbuffered(chunksize)
+    if chunk then
+      local pos = nil
+      if terminator then
+        local pos = string.find(chunk, terminator)
+        if pos and done + pos <= maxlen then
+          chunks[#chunks+1] = string.sub(chunk, 1, pos)
+          self.read_buffer = string.sub(chunk, pos + 1)
+          return table.concat(chunks)
+        end
+      end
+      chunks[#chunks+1] = chunk
+      done = done + #chunk
+    elseif chunk == nil then
+      self.read_buffer = table.concat(chunks)
+      return nil, errmsg
+    elseif done == 0 then
+      return false, errmsg
+    else
+      break
+    end
+  end
+  local all = table.concat(chunks)
+  self.read_buffer = string.sub(all, maxlen + 1)
+  return (string.sub(all, 1, maxlen))
+end
+
+function handle_methods:write_unbuffered(...)
   waitio.wait_fd_write(self.nbio_handle.fd)
-  return self.nbio_handle:write(len)
+  return self.nbio_handle:write(...)
+end
+
+function handle_methods:write(data)
+  local start = 1
+  local total = #data
+  while start <= total do
+    local result, errmsg = self:write_unbuffered(data, start)
+    if result then
+      start = start + result
+    else
+      return result, errmsg
+    end
+  end
 end
 
 local function wrap_handle(handle)
-  return setmetatable({ nbio_handle = handle }, _M.handle_metatbl)
+  return setmetatable(
+    {
+      nbio_handle = handle,
+      read_buffer = "",
+    },
+    _M.handle_metatbl
+  )
 end
 
 function _M.tcpconnect(...)
@@ -71,5 +142,9 @@ function _M.tcplisten(...)
   end
   return wrap_listener(listener)
 end
+
+_M.stdin = wrap_handle(nbio.stdin())
+_M.stdout = wrap_handle(nbio.stdout())
+_M.stderr = wrap_handle(nbio.stderr())
 
 return _M

@@ -27,6 +27,7 @@
 
 typedef struct {
   int fd;
+  int dont_close;
   void *buf;
 } nbio_handle_t;
 
@@ -35,7 +36,7 @@ typedef struct {
   sa_family_t addrfam;
 } nbio_listener_t;
 
-static int nbio_push_handle(lua_State *L, int fd) {
+static int nbio_push_handle(lua_State *L, int fd, int dont_close) {
   nbio_handle_t *handle = lua_newuserdatauv(L, sizeof(*handle), 0);
   handle->buf = malloc(NBIO_BUFSIZE);
   if (!handle->buf) {
@@ -43,13 +44,14 @@ static int nbio_push_handle(lua_State *L, int fd) {
     return luaL_error(L, "buffer allocation failed");
   }
   handle->fd = fd;
+  handle->dont_close = dont_close;
   luaL_setmetatable(L, NBIO_HANDLE_MT_REGKEY);
   return 1;
 }
 
 static int nbio_handle_close(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
-  if (handle->fd != -1) close(handle->fd);
+  if (handle->fd != -1 && !handle->dont_close) close(handle->fd);
   handle->fd = -1;
   free(handle->buf);
   handle->buf = NULL;
@@ -61,6 +63,18 @@ static int nbio_listener_close(lua_State *L) {
   if (listener->fd != -1) close(listener->fd);
   listener->fd = -1;
   return 0;
+}
+
+static int nbio_stdin(lua_State *L) {
+  return nbio_push_handle(L, 0, 1);
+}
+
+static int nbio_stdout(lua_State *L) {
+  return nbio_push_handle(L, 1, 1);
+}
+
+static int nbio_stderr(lua_State *L) {
+  return nbio_push_handle(L, 2, 1);
 }
 
 static int nbio_tcpconnect(lua_State *L) {
@@ -118,7 +132,7 @@ static int nbio_tcpconnect(lua_State *L) {
   } else {
     freeaddrinfo(res);
   }
-  return nbio_push_handle(L, fd);
+  return nbio_push_handle(L, fd, 0);
 }
 
 static int nbio_tcplisten(lua_State *L) {
@@ -349,12 +363,15 @@ static int nbio_listener_accept(lua_State *L) {
         close(fd);
         luaL_error(L, "error in fcntl call: %s", errmsg);
       }
-      return nbio_push_handle(L, fd);
+      return nbio_push_handle(L, fd, 0);
     }
   }
 }
 
 static const struct luaL_Reg nbio_module_funcs[] = {
+  {"stdin", nbio_stdin},
+  {"stdout", nbio_stdout},
+  {"stderr", nbio_stderr},
   {"tcpconnect", nbio_tcpconnect},
   {"tcplisten", nbio_tcplisten},
   {NULL, NULL}
