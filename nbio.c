@@ -331,7 +331,7 @@ static int nbio_listener_accept(lua_State *L) {
     fd = accept(listener->fd, NULL, NULL);
     if (fd != -1) {
       if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1) {
-        nbio_prepare_errmsg();
+        nbio_prepare_errmsg(errno);
         close(fd);
         luaL_error(L, "error in fcntl call: %s", errmsg);
       }
