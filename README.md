@@ -100,6 +100,80 @@ A fiber handle `f` provides the following attributes and methods:
     fiber got killed due to a non-resuming effect, the current fiber will be
     killed as well.
 
+## Module `eio`
+
+Module for asynchronous I/O, working with the `effect` and `fiber` modules.
+The usual way to use this module is:
+
+```
+local effect = require "effect"
+local fiber = require "fiber"
+local eio = require "eio"
+
+fiber.main(
+  eio.main,
+  function()
+    -- code goes here
+  end
+)
+```
+
+Available functions:
+
+  * **`eio.stdin()`**, **`eio.stdout()`**, **`eio.stderr()`** open the standard
+    input, output, or error stream, respectively and return an I/O handle.
+
+  * **`eio.tcpconnect(host, port)`** initiates opening a TCP connection to the
+    given `host` and `port` and returns an I/O handle on success (`nil` and
+    error message otherwise).
+
+  * **`eio.tcplisten(host, port)`** runs a TCP server at the given interface
+    (`host`) and `port` and returns a listener handle on success (`nil` and
+    error message otherwise).
+
+Note that name resolution is blocking, even though any other I/O is handled
+async.
+
+A listener handle `l` provides the following attributes and methods:
+
+  * **`l.fd`** is the underlying file descriptor.
+
+  * **`l.accept()`** puts the currently running fiber to sleep until an
+    incoming connection or I/O error. Returns an I/O handle on success (`nil`
+    and error message otherwise).
+
+An I/O handle `h` provides the following attributes and methods:
+
+  * **`h.fd`** is the underlying file descriptor.
+
+  * **`h:read(maxlen, terminator)`** repeatedly puts the currently running
+    fiber to sleep until `maxlen` bytes could be read, a `terminator` byte was
+    read, EOF occurred, or an I/O error occurred (whichever happens first). If
+    at least some bytes could be read, it returns a string containing the read
+    data. This method may read more bytes than requested and/or read beyond the
+    terminator byte and will then buffer that data for the next invocation of
+    the `read` method.
+
+  * **`h:write(data)`** repeatedly puts the currently running fiber to sleep
+    until all `data` could be written out and/or be stored in a buffer.
+
+  * **`h:flush()`** repeatedly puts the currently fiber to sleep until all
+    buffered data could be written out.
+
+  * **`h:read_unbuffered(maxlen)`** puts the currently running fiber to sleep
+    until some data is available for reading or an I/O error occurred. It then
+    reads a maximum number of `maxlen` bytes.
+
+  * **`h:write_unbuffered(data, from, to)`** puts the currently running fiber
+    to sleep until some data can be written or an I/O error occurred. If
+    possible, it writes some bytes of `data`, optionally from a given starting
+    position (`from`) to a maximum ending position (`to`) within the `data`,
+    and returns the number of bytes written.
+
+The methods for reading and writing return `nil` and an error message in case
+of I/O errors, but `false` and an error message in case of EOF (when reading)
+or broken pipe (when writing).
+
 ## Related work
 
 See also ["One-shot Algebraic Effects as Coroutines"](http://logic.cs.tsukuba.ac.jp/~sat/pdf/tfp2020-postsymposium.pdf), 21st International Symposium on Trends in Functional Programming (TFP), 2020, (post symposium) by Satoru Kawahara and Yukiyoshi Kameyama, Department of Computer Science, University of Tsukuba, Japan, who provide theoretic background and also presented a similar [implementation](https://github.com/Nymphium/eff.lua) of (one-shot) algebraic effects in Lua based on coroutines.
