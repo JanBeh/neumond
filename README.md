@@ -174,6 +174,18 @@ The methods for reading and writing return `nil` and an error message in case
 of I/O errors, but `false` and an error message in case of EOF (when reading)
 or broken pipe (when writing).
 
+## Caveats
+
+On Linux, [`libkqueue`] is needed. Some older versions of this library do not
+properly support waiting for either reading or writing on the same file
+descriptor at the same time. See the [release notes] for `libkqueue`
+version 2.4.0. Unfortunately, some Linux distributions ship with old versions
+of that library. For example, Ubuntu 22.04 LTS ships with version 2.3.1, which
+is subject to this bug.
+
+[`libkqueue`]: https://github.com/mheily/libkqueue
+[release notes]: https://github.com/mheily/libkqueue/releases/tag/v2.4.0
+
 ## Related work
 
 See also ["One-shot Algebraic Effects as Coroutines"](http://logic.cs.tsukuba.ac.jp/~sat/pdf/tfp2020-postsymposium.pdf), 21st International Symposium on Trends in Functional Programming (TFP), 2020, (post symposium) by Satoru Kawahara and Yukiyoshi Kameyama, Department of Computer Science, University of Tsukuba, Japan, who provide theoretic background and also presented a similar [implementation](https://github.com/Nymphium/eff.lua) of (one-shot) algebraic effects in Lua based on coroutines.
