@@ -142,7 +142,7 @@ function _M.handle(handlers, ...)
           --local resumed = false
           --local function resume_once(...)
           --  if resumed then
-          --    error("cannot resume twice", 1)
+          --    error("cannot resume twice", 2)
           --  end
           --  resumed = true
           --  return resume(...)
