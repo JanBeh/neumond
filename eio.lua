@@ -88,6 +88,7 @@ function handle_methods:write_unbuffered(...)
 end
 
 function handle_methods:write(data)
+  -- TODO: improve performance / buffering behavior
   local start = 1
   local total = #data
   while start <= total do
@@ -98,6 +99,10 @@ function handle_methods:write(data)
       return result, errmsg
     end
   end
+end
+
+function handle_methods:flush()
+  -- TODO, not necessary yet because write method always flushes
 end
 
 local function wrap_handle(handle)

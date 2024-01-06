@@ -10,6 +10,7 @@ fiber.main(
       local conn = listener:accept()
       fiber.spawn(function()
         conn:write("Hello World!\n")
+        conn:flush()
         conn:close()
       end)
     end

@@ -14,7 +14,9 @@ fiber.main(
         error(errmsg)
       end
       eio.stdout:write("Got: " .. line .. "\n")
+      eio.stdout:flush()
     end
     eio.stdout:write("EOF\n")
+    eio.stdout:flush()
   end
 )
