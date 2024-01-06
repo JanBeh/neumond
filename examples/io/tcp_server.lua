@@ -5,7 +5,7 @@ local eio = require "eio"
 fiber.main(
   eio.main,
   function()
-    local listener = eio.tcplisten(nil, 1234)
+    local listener = assert(eio.tcplisten(nil, 1234))
     while true do
       local conn = listener:accept()
       fiber.spawn(function()
