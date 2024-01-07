@@ -31,7 +31,7 @@ KQUEUE_INCLUDE_FLAGS ?= -I /usr/include/kqueue
 KQUEUE_FLAGS ?= -lkqueue
 .else
 # Default configuration for other Linux distributions
-.warning Could not determine Linux distribution. You might need to set LUA_INCLUDE, LUA_LIBDIR, LUA_LIBRARY, and UTIL_FLAGS manually!
+.warning Could not determine Linux distribution. You might need to set LUA_INCLUDE, LUA_LIBDIR, LUA_LIBRARY, KQUEUE_INCLUDE_FLAGS, and KQUEUE_FLAGS manually!
 LUA_INCLUDE ?= /usr/include
 LUA_LIBDIR  ?= /usr/lib
 LUA_LIBRARY ?= lua
@@ -40,11 +40,11 @@ KQUEUE_FLAGS ?= -lkqueue
 
 .else
 # Default configuration for other systems
-.warning Could not determine Platform. You might need to set LUA_INCLUDE, LUA_LIBDIR, LUA_LIBRARY, and UTIL_FLAGS manually!
+.warning Could not determine Platform. You might need to set LUA_INCLUDE, LUA_LIBDIR, LUA_LIBRARY, KQUEUE_INCLUDE_FLAGS, and KQUEUE_FLAGS manually!
 LUA_INCLUDE ?= /usr/include
 LUA_LIBDIR  ?= /usr/lib
 LUA_LIBRARY ?= lua
-UTIL_FLAGS  ?= -lutil
+KQUEUE_FLAGS ?= -lkqueue
 .endif
 
 all:: lkq.so nbio.so
