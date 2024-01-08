@@ -32,6 +32,7 @@ typedef struct {
   size_t readbuf_capacity;
   size_t readbuf_written;
   size_t readbuf_read;
+  int readbuf_checked_terminator;
   void *writebuf;
   size_t writebuf_written;
   size_t writebuf_read;
@@ -50,6 +51,7 @@ static int nbio_push_handle(lua_State *L, int fd, int dont_close) {
   handle->readbuf_capacity = 0;
   handle->readbuf_written = 0;
   handle->readbuf_read = 0;
+  handle->readbuf_checked_terminator = -1;
   handle->writebuf = NULL;
   handle->writebuf_written = 0;
   handle->writebuf_read = 0;
@@ -328,16 +330,20 @@ static int nbio_handle_read_buffered(lua_State *L) {
     void *start = handle->readbuf + handle->readbuf_read;
     size_t available = handle->readbuf_written - handle->readbuf_read;
     size_t uselen = maxlen;
-    if (terminator) {
-      for (size_t i=0; i<available; i++) {
-        if (((char *)start)[i] == *terminator) {
-          uselen = i + 1;
-          break;
+    if (terminator != NULL) {
+      if ((unsigned char)*terminator != handle->readbuf_checked_terminator) {
+        handle->readbuf_checked_terminator = (unsigned char)*terminator;
+        for (size_t i=0; i<available; i++) {
+          if (((char *)start)[i] == *terminator) {
+            uselen = i + 1;
+            handle->readbuf_checked_terminator = -1;
+            break;
+          }
         }
       }
     }
     if (available < uselen) {
-      if (handle->readbuf_read != 0) {
+      if (handle->readbuf_read > 0) {
         memmove(handle->readbuf, start, available);
         handle->readbuf_written = available;
         handle->readbuf_read = 0;
@@ -379,18 +385,23 @@ static int nbio_handle_read_buffered(lua_State *L) {
       size_t old_written = handle->readbuf_written;
       handle->readbuf_written += result;
       size_t uselen = maxlen;
-      if (terminator) {
+      if (terminator != NULL) {
+        handle->readbuf_checked_terminator = (unsigned char)*terminator;
         for (size_t i=old_written; i<handle->readbuf_written; i++) {
           if (((char *)handle->readbuf)[i] == *terminator) {
             uselen = i + 1;
+            handle->readbuf_checked_terminator = -1;
             break;
           }
         }
+      } else {
+        handle->readbuf_checked_terminator = -1;
       }
       if (handle->readbuf_written >= uselen) {
         lua_pushlstring(L, handle->readbuf, uselen);
-        handle->readbuf_read += uselen;
-        if (handle->readbuf_read == handle->readbuf_written) {
+        if (handle->readbuf_written > uselen) {
+          handle->readbuf_read = uselen;
+        } else {
           handle->readbuf_written = 0;
           handle->readbuf_read = 0;
         }
