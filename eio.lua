@@ -22,63 +22,35 @@ _M.handle_metatbl = {
   __index = handle_methods,
 }
 
-function handle_methods:read_unbuffered(len)
-  waitio.wait_fd_read(self.nbio_handle.fd)
-  return self.nbio_handle:read(len)
+function handle_methods:read_unbuffered(maxlen)
+  if len == 0 then
+    return ""
+  end
+  local result, errmsg = self.nbio_handle:read_unbuffered(maxlen)
+  if result == "" then
+    waitio.wait_fd_read(self.nbio_handle.fd)
+    return self.nbio_handle:read(len)
+  end
+  if result then
+    return result
+  else
+    return result, errmsg
+  end
 end
 
 function handle_methods:read(maxlen, terminator)
-  -- TODO: improve performance / buffering behavior
-  if terminator then
-    if #terminator ~= 1 then
-      error("terminator must be a single byte", 2)
+  if len == 0 then
+    return ""
+  end
+  while true do
+    local result, errmsg = self.nbio_handle:read_buffered(maxlen, terminator)
+    if not result then
+      return result, errmsg
     end
-    terminator = string.gsub(terminator, "[^0-9A-Za-z]", "%%%0")
-  end
-  local old_chunk = self.read_buffer
-  if terminator then
-    local pos = string.find(old_chunk, terminator)
-    if pos and pos <= maxlen then
-      self.read_buffer = string.sub(old_chunk, pos + 1)
-      return string.sub(old_chunk, 1, pos)
+    if result ~= "" then
+      return result
     end
-  end
-  local done = #old_chunk
-  if maxlen and done >= maxlen then
-    self.read_buffer = string.sub(old_chunk, maxlen + 1)
-    return string.sub(old_chunk, 1, maxlen)
-  end
-  local chunks = { old_chunk }
-  while not maxlen or done < maxlen do
-    local chunk, errmsg = self:read_unbuffered(chunksize)
-    if chunk then
-      local pos = nil
-      if terminator then
-        local pos = string.find(chunk, terminator)
-        if pos and (not maxlen or done + pos <= maxlen) then
-          chunks[#chunks+1] = string.sub(chunk, 1, pos)
-          self.read_buffer = string.sub(chunk, pos + 1)
-          return table.concat(chunks)
-        end
-      end
-      chunks[#chunks+1] = chunk
-      done = done + #chunk
-    elseif chunk == nil then
-      self.read_buffer = table.concat(chunks)
-      return nil, errmsg
-    elseif done == 0 then
-      return false, errmsg
-    else
-      break
-    end
-  end
-  if maxlen then
-    local all = table.concat(chunks)
-    self.read_buffer = string.sub(all, maxlen + 1)
-    return (string.sub(all, 1, maxlen))
-  else
-    self.read_buffer = ""
-    return table.concat(chunks)
+    waitio.wait_fd_read(self.nbio_handle.fd)
   end
 end
 

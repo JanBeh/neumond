@@ -11,7 +11,7 @@
 #include <lua.h>
 #include <lauxlib.h>
 
-#define NBIO_BUFSIZE 4096
+#define NBIO_CHUNKSIZE 8192
 #define NBIO_LISTEN_BACKLOG 256
 
 #define NBIO_MAXSTRERRORLEN 160
@@ -28,7 +28,10 @@
 typedef struct {
   int fd;
   int dont_close;
-  void *buf;
+  void *readbuf;
+  size_t readbuf_capacity;
+  size_t readbuf_written;
+  size_t readbuf_read;
 } nbio_handle_t;
 
 typedef struct {
@@ -38,13 +41,12 @@ typedef struct {
 
 static int nbio_push_handle(lua_State *L, int fd, int dont_close) {
   nbio_handle_t *handle = lua_newuserdatauv(L, sizeof(*handle), 0);
-  handle->buf = malloc(NBIO_BUFSIZE);
-  if (!handle->buf) {
-    close(fd);
-    return luaL_error(L, "buffer allocation failed");
-  }
   handle->fd = fd;
   handle->dont_close = dont_close;
+  handle->readbuf = NULL;
+  handle->readbuf_capacity = 0;
+  handle->readbuf_written = 0;
+  handle->readbuf_read = 0;
   luaL_setmetatable(L, NBIO_HANDLE_MT_REGKEY);
   return 1;
 }
@@ -53,8 +55,8 @@ static int nbio_handle_close(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   if (handle->fd != -1 && !handle->dont_close) close(handle->fd);
   handle->fd = -1;
-  free(handle->buf);
-  handle->buf = NULL;
+  free(handle->readbuf);
+  handle->readbuf = NULL;
   return 0;
 }
 
@@ -255,29 +257,152 @@ static int nbio_listener_index(lua_State *L) {
   return 1;
 }
 
-static int nbio_handle_read(lua_State *L) {
+static int nbio_handle_read_unbuffered(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
-  lua_Integer bufsize = luaL_optinteger(L, 2, NBIO_BUFSIZE);
+  lua_Integer maxlen = luaL_optinteger(L, 2, NBIO_CHUNKSIZE);
   if (handle->fd == -1) {
     return luaL_error(L, "read from closed handle");
   }
-  if (bufsize <= 0) {
+  if (maxlen <= 0) {
     return luaL_argerror(L, 2, "maximum byte count must be positive");
   }
-  if (bufsize > NBIO_BUFSIZE) bufsize = NBIO_BUFSIZE;
-  while (1) {
-    ssize_t used = read(handle->fd, handle->buf, bufsize);
-    if (used > 0) {
-      lua_pushlstring(L, handle->buf, used);
+  if (handle->readbuf_written > 0) {
+    void *start = handle->readbuf + handle->readbuf_read;
+    size_t available = handle->readbuf_written - handle->readbuf_read;
+    if (maxlen < available) {
+      lua_pushlstring(L, start, maxlen);
+      handle->readbuf_read += maxlen;
+    } else {
+      lua_pushlstring(L, start, available);
+      handle->readbuf_written = 0;
+      handle->readbuf_read = 0;
+    }
+    return 1;
+  }
+  if (maxlen > handle->readbuf_capacity) {
+    void *newbuf = realloc(handle->readbuf, maxlen);
+    if (!newbuf) return luaL_error(L, "buffer allocation failed");
+    handle->readbuf = newbuf;
+    handle->readbuf_capacity = maxlen;
+  }
+  ssize_t result = read(handle->fd, handle->readbuf, maxlen);
+  if (result > 0) {
+    lua_pushlstring(L, handle->readbuf, result);
+    return 1;
+  } else if (result == 0) {
+    lua_pushboolean(L, 0);
+    lua_pushliteral(L, "end of data");
+    return 2;
+  } else if (errno == EAGAIN || errno == EINTR) {
+    lua_pushlstring(L, NULL, 0);
+    return 1;
+  } else {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+}
+
+static int nbio_handle_read_buffered(lua_State *L) {
+  nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
+  lua_Integer maxlen = luaL_optinteger(L, 2, NBIO_CHUNKSIZE);
+  size_t terminator_len;
+  const char *terminator = lua_tolstring(L, 3, &terminator_len);
+  if (handle->fd == -1) {
+    return luaL_error(L, "read from closed handle");
+  }
+  if (maxlen <= 0) {
+    return luaL_argerror(L, 2, "maximum byte count must be positive");
+  }
+  if (terminator != NULL && terminator_len != 1) {
+    return luaL_argerror(L, 3, "optional terminator must be a single char");
+  }
+  if (handle->readbuf_written > 0) {
+    void *start = handle->readbuf + handle->readbuf_read;
+    size_t available = handle->readbuf_written - handle->readbuf_read;
+    size_t uselen = maxlen;
+    if (terminator) {
+      for (size_t i=0; i<available; i++) {
+        if (((char *)start)[i] == *terminator) {
+          uselen = i + 1;
+          break;
+        }
+      }
+    }
+    if (available < uselen) {
+      if (handle->readbuf_read != 0) {
+        memmove(handle->readbuf, start, available);
+        handle->readbuf_written = available;
+        handle->readbuf_read = 0;
+      }
+    } else {
+      lua_pushlstring(L, start, uselen);
+      if (uselen == available) {
+        handle->readbuf_written = 0;
+        handle->readbuf_read = 0;
+      } else {
+        handle->readbuf_read += uselen;
+      }
       return 1;
-    } else if (used == 0) {
+    }
+  }
+  // handle->readbuf_read is zero at this point
+  while (1) {
+    if (handle->readbuf_written > SIZE_MAX - NBIO_CHUNKSIZE) {
+      return luaL_error(L, "buffer allocation failed");
+    }
+    size_t needed_capacity = handle->readbuf_written + NBIO_CHUNKSIZE;
+    if (handle->readbuf_capacity < needed_capacity) {
+      if (handle->readbuf_capacity > SIZE_MAX / 2) {
+        return luaL_error(L, "buffer allocation failed");
+      }
+      size_t newcap = 2 * handle->readbuf_capacity;
+      if (newcap < needed_capacity) newcap = needed_capacity;
+      void *newbuf = realloc(handle->readbuf, newcap);
+      if (!newbuf) return luaL_error(L, "buffer allocation failed");
+      handle->readbuf = newbuf;
+      handle->readbuf_capacity = newcap;
+    }
+    ssize_t result = read(
+      handle->fd,
+      handle->readbuf + handle->readbuf_written,
+      NBIO_CHUNKSIZE
+    );
+    if (result > 0) {
+      size_t old_written = handle->readbuf_written;
+      handle->readbuf_written += result;
+      size_t uselen = maxlen;
+      if (terminator) {
+        for (size_t i=old_written; i<handle->readbuf_written; i++) {
+          if (((char *)handle->readbuf)[i] == *terminator) {
+            uselen = i + 1;
+            break;
+          }
+        }
+      }
+      if (handle->readbuf_written >= uselen) {
+        lua_pushlstring(L, handle->readbuf, uselen);
+        handle->readbuf_read += uselen;
+        if (handle->readbuf_read == handle->readbuf_written) {
+          handle->readbuf_written = 0;
+          handle->readbuf_read = 0;
+        }
+        return 1;
+      }
+    } else if (result == 0) {
+      if (handle->readbuf_written > 0) {
+        lua_pushlstring(L, handle->readbuf, handle->readbuf_written);
+        handle->readbuf_written = 0;
+        return 1;
+      }
       lua_pushboolean(L, 0);
       lua_pushliteral(L, "end of data");
       return 2;
-    } else if (errno == EAGAIN) {
+    } else if (errno == EAGAIN || errno == EINTR) {
       lua_pushlstring(L, NULL, 0);
       return 1;
-    } else if (errno != EINTR) {
+    } else {
       nbio_prepare_errmsg(errno);
       lua_pushnil(L);
       lua_pushstring(L, errmsg);
@@ -379,7 +504,8 @@ static const struct luaL_Reg nbio_module_funcs[] = {
 
 static const struct luaL_Reg nbio_handle_methods[] = {
   {"close", nbio_handle_close},
-  {"read", nbio_handle_read},
+  {"read_unbuffered", nbio_handle_read_unbuffered},
+  {"read_buffered", nbio_handle_read_buffered},
   {"write", nbio_handle_write},
   {NULL, NULL}
 };
