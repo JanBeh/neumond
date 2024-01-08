@@ -29,7 +29,7 @@ function handle_methods:read_unbuffered(maxlen)
   local result, errmsg = self.nbio_handle:read_unbuffered(maxlen)
   if result == "" then
     waitio.wait_fd_read(self.nbio_handle.fd)
-    return self.nbio_handle:read(len)
+    return self.nbio_handle:read_unbuffered(maxlen)
   end
   if result then
     return result
