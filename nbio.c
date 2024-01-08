@@ -32,6 +32,9 @@ typedef struct {
   size_t readbuf_capacity;
   size_t readbuf_written;
   size_t readbuf_read;
+  void *writebuf;
+  size_t writebuf_written;
+  size_t writebuf_read;
 } nbio_handle_t;
 
 typedef struct {
@@ -47,6 +50,9 @@ static int nbio_push_handle(lua_State *L, int fd, int dont_close) {
   handle->readbuf_capacity = 0;
   handle->readbuf_written = 0;
   handle->readbuf_read = 0;
+  handle->writebuf = NULL;
+  handle->writebuf_written = 0;
+  handle->writebuf_read = 0;
   luaL_setmetatable(L, NBIO_HANDLE_MT_REGKEY);
   return 1;
 }
@@ -411,12 +417,15 @@ static int nbio_handle_read_buffered(lua_State *L) {
   }
 }
 
-static int nbio_handle_write(lua_State *L) {
+static int nbio_handle_write_unbuffered(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   size_t bufsize;
   const char *buf = luaL_checklstring(L, 2, &bufsize);
   lua_Integer start = luaL_optinteger(L, 3, 1);
-  lua_Integer end = luaL_optinteger(L, 4, bufsize); // TODO: cast?
+  if (bufsize > LUA_MAXINTEGER) {
+    return luaL_error(L, "chunk length longer than LUA_MAXINTEGER");
+  }
+  lua_Integer end = luaL_optinteger(L, 4, (lua_Integer)bufsize);
   if (start <= -bufsize) start = 1;
   else if (start < 0) start = bufsize + start + 1;
   else if (start == 0) start = 1;
@@ -426,25 +435,144 @@ static int nbio_handle_write(lua_State *L) {
     start = 1;
     end = 0;
   }
-  while (1) {
-    ssize_t written = write(handle->fd, buf+start-1, end+1-start);
+  ssize_t written = write(handle->fd, buf-1+start, end-start+1);
+  if (written >= 0) {
+    lua_pushinteger(L, written);
+    return 1;
+  } else if (errno == EAGAIN || errno == EINTR) {
+    lua_pushinteger(L, 0);
+    return 1;
+  } else if (errno == EPIPE) {
+    lua_pushboolean(L, 0);
+    lua_pushliteral(L, "peer closed stream");
+    return 2;
+  } else {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+}
+
+static int nbio_handle_write_buffered(lua_State *L) {
+  nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
+  size_t bufsize;
+  const char *buf = luaL_checklstring(L, 2, &bufsize);
+  lua_Integer start = luaL_optinteger(L, 3, 1);
+  if (bufsize > LUA_MAXINTEGER) {
+    return luaL_error(L, "chunk length longer than LUA_MAXINTEGER");
+  }
+  lua_Integer end = luaL_optinteger(L, 4, (lua_Integer)bufsize);
+  if (start <= -bufsize) start = 1;
+  else if (start < 0) start = bufsize + start + 1;
+  else if (start == 0) start = 1;
+  if (end < 0) end = bufsize + end + 1;
+  else if (end > bufsize) end = bufsize;
+  if (end < start) {
+    start = 1;
+    end = 0;
+  }
+  size_t to_write = end - start + 1;
+  ssize_t written;
+  if (
+    handle->writebuf_written > 0 && (
+      to_write > NBIO_CHUNKSIZE || // avoids integer overflow
+      handle->writebuf_written + to_write > NBIO_CHUNKSIZE
+    )
+  ) {
+    written = write(
+      handle->fd,
+      handle->writebuf + handle->writebuf_read,
+      handle->writebuf_written - handle->writebuf_read
+    );
     if (written >= 0) {
-      lua_pushinteger(L, written);
-      return 1;
-    } else if (errno == EAGAIN) {
+      handle->writebuf_read += written;
+      if (handle->writebuf_read == handle->writebuf_written) {
+        handle->writebuf_written = 0;
+        handle->writebuf_read = 0;
+      } else {
+        lua_pushinteger(L, 0);
+        return 1;
+      }
+    } else if (errno == EAGAIN || errno == EINTR) {
       lua_pushinteger(L, 0);
       return 1;
     } else if (errno == EPIPE) {
       lua_pushboolean(L, 0);
       lua_pushliteral(L, "peer closed stream");
       return 2;
-    } else if (errno != EINTR) {
+    } else {
       nbio_prepare_errmsg(errno);
       lua_pushnil(L);
       lua_pushstring(L, errmsg);
       return 2;
     }
   }
+  if (
+    to_write <= NBIO_CHUNKSIZE && // avoids integer overflow
+    handle->writebuf_written + to_write <= NBIO_CHUNKSIZE
+  ) {
+    if (handle->writebuf == NULL) {
+      handle->writebuf = malloc(NBIO_CHUNKSIZE);
+      if (!handle->writebuf) return luaL_error(L, "buffer allocation failed");
+    }
+    memcpy(handle->writebuf + handle->writebuf_written, buf, to_write);
+    handle->writebuf_written += to_write;
+    lua_pushinteger(L, to_write);
+    return 1;
+  }
+  if (handle->writebuf_written > 0) {
+    lua_pushinteger(L, 0);
+    return 1;
+  }
+  written = write(handle->fd, buf-1+start, to_write);
+  if (written >= 0) {
+    lua_pushinteger(L, written);
+    return 1;
+  } else if (errno == EAGAIN || errno == EINTR) {
+    lua_pushinteger(L, 0);
+    return 1;
+  } else if (errno == EPIPE) {
+    lua_pushboolean(L, 0);
+    lua_pushliteral(L, "peer closed stream");
+    return 2;
+  } else {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+}
+
+static int nbio_handle_flush(lua_State *L) {
+  nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
+  if (handle->writebuf_written > 0) {
+    size_t written = write(
+      handle->fd,
+      handle->writebuf + handle->writebuf_read,
+      handle->writebuf_written - handle->writebuf_read
+    );
+    if (written >= 0) {
+      handle->writebuf_read += written;
+      if (handle->writebuf_read == handle->writebuf_written) {
+        handle->writebuf_written = 0;
+        handle->writebuf_read = 0;
+      }
+    } else if (errno == EAGAIN || errno == EINTR) {
+      // nothing
+    } else if (errno == EPIPE) {
+      lua_pushboolean(L, 0);
+      lua_pushliteral(L, "peer closed stream");
+      return 2;
+    } else {
+      nbio_prepare_errmsg(errno);
+      lua_pushnil(L);
+      lua_pushstring(L, errmsg);
+      return 2;
+    }
+  }
+  lua_pushinteger(L, handle->writebuf_written - handle->writebuf_read);
+  return 1;
 }
 
 static int nbio_listener_accept(lua_State *L) {
@@ -506,7 +634,9 @@ static const struct luaL_Reg nbio_handle_methods[] = {
   {"close", nbio_handle_close},
   {"read_unbuffered", nbio_handle_read_unbuffered},
   {"read_buffered", nbio_handle_read_buffered},
-  {"write", nbio_handle_write},
+  {"write_unbuffered", nbio_handle_write_unbuffered},
+  {"write_buffered", nbio_handle_write_buffered},
+  {"flush", nbio_handle_flush},
   {NULL, NULL}
 };
 

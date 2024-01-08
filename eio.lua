@@ -55,26 +55,42 @@ function handle_methods:read(maxlen, terminator)
 end
 
 function handle_methods:write_unbuffered(...)
-  waitio.wait_fd_write(self.nbio_handle.fd)
-  return self.nbio_handle:write(...)
+  local result, errmsg = self.nbio_handle:write_unbuffered(...)
+  if result == 0 then
+    waitio.wait_fd_write(self.nbio_handle.fd)
+    return self.nbio_handle:write_unbuffered(...)
+  end
+  if result then
+    return result
+  else
+    return result, errmsg
+  end
 end
 
 function handle_methods:write(data)
-  -- TODO: improve performance / buffering behavior
   local start = 1
   local total = #data
   while start <= total do
-    local result, errmsg = self:write_unbuffered(data, start)
+    local result, errmsg = self.nbio_handle:write_buffered(data, start)
     if result then
       start = start + result
     else
       return result, errmsg
     end
+    waitio.wait_fd_write(self.nbio_handle.fd)
   end
 end
 
 function handle_methods:flush()
-  -- TODO, not necessary yet because write method always flushes
+  while true do
+    local result, errmsg = self.nbio_handle:flush()
+    if result == 0 then
+      break
+    elseif not result then
+      return result, errmsg
+    end
+    waitio.wait_fd_write(self.nbio_handle.fd)
+  end
 end
 
 local function wrap_handle(handle)
