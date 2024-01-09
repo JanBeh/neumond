@@ -466,7 +466,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
       return 2;
     }
   }
-  if (start <= -bufsize) start = 1;
+  if (start <= -(lua_Integer)bufsize) start = 1;
   else if (start < 0) start = bufsize + start + 1;
   else if (start == 0) start = 1;
   if (end < 0) end = bufsize + end + 1;
@@ -503,7 +503,7 @@ static int nbio_handle_write_buffered(lua_State *L) {
     return luaL_error(L, "chunk length longer than LUA_MAXINTEGER");
   }
   lua_Integer end = luaL_optinteger(L, 4, (lua_Integer)bufsize);
-  if (start <= -bufsize) start = 1;
+  if (start <= -(lua_Integer)bufsize) start = 1;
   else if (start < 0) start = bufsize + start + 1;
   else if (start == 0) start = 1;
   if (end < 0) end = bufsize + end + 1;
@@ -556,7 +556,7 @@ static int nbio_handle_write_buffered(lua_State *L) {
       handle->writebuf = malloc(NBIO_CHUNKSIZE);
       if (!handle->writebuf) return luaL_error(L, "buffer allocation failed");
     }
-    memcpy(handle->writebuf + handle->writebuf_written, buf, to_write);
+    memcpy(handle->writebuf + handle->writebuf_written, buf-1+start, to_write);
     handle->writebuf_written += to_write;
     lua_pushinteger(L, to_write);
     return 1;
