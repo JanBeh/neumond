@@ -403,7 +403,6 @@ static int nbio_handle_read_buffered(lua_State *L) {
           handle->readbuf_read = uselen;
         } else {
           handle->readbuf_written = 0;
-          handle->readbuf_read = 0;
         }
         return 1;
       }
