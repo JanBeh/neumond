@@ -312,7 +312,7 @@ static int nbio_handle_read_unbuffered(lua_State *L) {
   }
 }
 
-static int nbio_handle_read_buffered(lua_State *L) {
+static int nbio_handle_read(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   lua_Integer maxlen = luaL_optinteger(L, 2, NBIO_CHUNKSIZE);
   size_t terminator_len;
@@ -494,7 +494,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
   }
 }
 
-static int nbio_handle_write_buffered(lua_State *L) {
+static int nbio_handle_write(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   size_t bufsize;
   const char *buf = luaL_checklstring(L, 2, &bufsize);
@@ -673,9 +673,9 @@ static const struct luaL_Reg nbio_module_funcs[] = {
 static const struct luaL_Reg nbio_handle_methods[] = {
   {"close", nbio_handle_close},
   {"read_unbuffered", nbio_handle_read_unbuffered},
-  {"read_buffered", nbio_handle_read_buffered},
+  {"read", nbio_handle_read},
   {"write_unbuffered", nbio_handle_write_unbuffered},
-  {"write_buffered", nbio_handle_write_buffered},
+  {"write", nbio_handle_write},
   {"flush", nbio_handle_flush},
   {NULL, NULL}
 };

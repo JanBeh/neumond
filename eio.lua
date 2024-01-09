@@ -43,7 +43,7 @@ function handle_methods:read(maxlen, terminator)
     return ""
   end
   while true do
-    local result, errmsg = self.nbio_handle:read_buffered(maxlen, terminator)
+    local result, errmsg = self.nbio_handle:read(maxlen, terminator)
     if not result then
       return result, errmsg
     end
@@ -71,7 +71,7 @@ function handle_methods:write(data)
   local start = 1
   local total = #data
   while start <= total do
-    local result, errmsg = self.nbio_handle:write_buffered(data, start)
+    local result, errmsg = self.nbio_handle:write(data, start)
     if result then
       start = start + result
     else
