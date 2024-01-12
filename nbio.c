@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -33,7 +34,7 @@
 typedef struct {
   int fd;
   sa_family_t addrfam;
-  int dont_close;
+  int shared;
   void *readbuf;
   size_t readbuf_capacity;
   size_t readbuf_written;
@@ -49,14 +50,42 @@ typedef struct {
   sa_family_t addrfam;
 } nbio_listener_t;
 
+static void nbio_handle_set_nopush(
+  lua_State *L, nbio_handle_t *handle, int nopush
+) {
+#if defined(TCP_NOPUSH) || defined(TCP_CORK)
+  if (
+    !(handle->addrfam == AF_INET6 || handle->addrfam == AF_INET) ||
+    handle->shared
+  ) return;
+#if defined(TCP_NOPUSH)
+  if (
+    setsockopt(handle->fd, IPPROTO_TCP, TCP_NOPUSH, &nopush, sizeof(nopush))
+  ) {
+    nbio_prepare_errmsg(errno);
+    luaL_error(L, "setsockopt TCP_NOPUSH=%d failed: %s", nopush, errmsg);
+  }
+#elif defined(TCP_CORK)
+  if (
+    setsockopt(handle->fd, IPPROTO_TCP, TCP_CORK, &nopush, sizeof(nopush))
+  ) {
+    nbio_prepare_errmsg(errno);
+    luaL_error(L, "setsockopt TCP_CORK=%d failed: %s", nopush, errmsg);
+  }
+#endif
+#else
+#warning Neither TCP_NOPUSH nor TCP_CORK is available.
+#endif
+}
+
 static int nbio_push_handle(
-  lua_State *L, int fd, sa_family_t addrfam, int dont_close
+  lua_State *L, int fd, sa_family_t addrfam, int shared
 ) {
   // TODO: catch out-of-memory error
   nbio_handle_t *handle = lua_newuserdatauv(L, sizeof(*handle), 0);
   handle->fd = fd;
   handle->addrfam = addrfam;
-  handle->dont_close = dont_close;
+  handle->shared = shared;
   handle->readbuf = NULL;
   handle->readbuf_capacity = 0;
   handle->readbuf_written = 0;
@@ -66,12 +95,13 @@ static int nbio_push_handle(
   handle->writebuf_written = 0;
   handle->writebuf_read = 0;
   luaL_setmetatable(L, NBIO_HANDLE_MT_REGKEY);
+  nbio_handle_set_nopush(L, handle, 1);
   return 1;
 }
 
 static int nbio_handle_close(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
-  if (handle->fd != -1 && !handle->dont_close) close(handle->fd);
+  if (handle->fd != -1 && !handle->shared) close(handle->fd);
   handle->fd = -1;
   free(handle->readbuf);
   handle->readbuf = NULL;
@@ -670,10 +700,6 @@ static int nbio_handle_flush(lua_State *L) {
     );
     if (written >= 0) {
       handle->writebuf_read += written;
-      if (handle->writebuf_read == handle->writebuf_written) {
-        handle->writebuf_written = 0;
-        handle->writebuf_read = 0;
-      }
     } else if (errno == EAGAIN || errno == EINTR) {
       // nothing
     } else if (errno == EPIPE) {
@@ -687,7 +713,14 @@ static int nbio_handle_flush(lua_State *L) {
       return 2;
     }
   }
-  lua_pushinteger(L, handle->writebuf_written - handle->writebuf_read);
+  size_t remaining = handle->writebuf_written - handle->writebuf_read;
+  if (remaining == 0) {
+    handle->writebuf_written = 0;
+    handle->writebuf_read = 0;
+    nbio_handle_set_nopush(L, handle, 0);
+    nbio_handle_set_nopush(L, handle, 1);
+  }
+  lua_pushinteger(L, remaining);
   return 1;
 }
 
