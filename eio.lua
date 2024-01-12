@@ -155,8 +155,8 @@ function _M.tcplisten(...)
   return wrap_listener(listener)
 end
 
-_M.stdin = wrap_handle(nbio.stdin())
-_M.stdout = wrap_handle(nbio.stdout())
-_M.stderr = wrap_handle(nbio.stderr())
+_M.stdin = wrap_handle(nbio.stdin)
+_M.stdout = wrap_handle(nbio.stdout)
+_M.stderr = wrap_handle(nbio.stderr)
 
 return _M

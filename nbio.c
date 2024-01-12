@@ -81,18 +81,6 @@ static int nbio_listener_close(lua_State *L) {
   return 0;
 }
 
-static int nbio_stdin(lua_State *L) {
-  return nbio_push_handle(L, 0, 1);
-}
-
-static int nbio_stdout(lua_State *L) {
-  return nbio_push_handle(L, 1, 1);
-}
-
-static int nbio_stderr(lua_State *L) {
-  return nbio_push_handle(L, 2, 1);
-}
-
 static int nbio_localconnect(lua_State *L) {
   const char *path;
   path = luaL_checkstring(L, 1);
@@ -740,9 +728,6 @@ static int nbio_listener_accept(lua_State *L) {
 }
 
 static const struct luaL_Reg nbio_module_funcs[] = {
-  {"stdin", nbio_stdin},
-  {"stdout", nbio_stdout},
-  {"stderr", nbio_stderr},
   {"localconnect", nbio_localconnect},
   {"tcpconnect", nbio_tcpconnect},
   {"locallisten", nbio_locallisten},
@@ -793,5 +778,11 @@ int luaopen_nbio(lua_State *L) {
   lua_pop(L, 1);
   lua_newtable(L);
   luaL_setfuncs(L, nbio_module_funcs, 0);
+  nbio_push_handle(L, 0, 1);
+  lua_setfield(L, -2, "stdin");
+  nbio_push_handle(L, 1, 1);
+  lua_setfield(L, -2, "stdout");
+  nbio_push_handle(L, 2, 1);
+  lua_setfield(L, -2, "stderr");
   return 1;
 }

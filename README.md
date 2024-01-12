@@ -119,9 +119,6 @@ fiber.main(
 
 Available functions:
 
-  * **`eio.stdin()`**, **`eio.stdout()`**, **`eio.stderr()`** open the standard
-    input, output, or error stream, respectively and return an I/O handle.
-
   * **`eio.localconnect(path)`** initiates opening a local socket connection
     with the socket on the filesystem given by `path` and returns an I/O handle
     on success (`nil` and error message otherwise).
@@ -176,6 +173,9 @@ An I/O handle `h` provides the following attributes and methods:
 The methods for reading and writing return `nil` and an error message in case
 of I/O errors, but `false` and an error message in case of EOF (when reading)
 or broken pipe (when writing).
+
+There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
+**`eio.stderr`**, which may exhibit blocking behavior, however.
 
 ## Caveats
 
