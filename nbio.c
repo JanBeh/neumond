@@ -3,6 +3,8 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/stat.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -16,6 +18,9 @@
 
 #define NBIO_MAXSTRERRORLEN 160
 #define NBIO_STRERROR_R_MSG "error detail unavailable due to noncompliant strerror_r() implementation"
+
+#define NBIO_SUN_PATH_MAXLEN (sizeof(struct sockaddr_un) - offsetof(struct sockaddr_un, sun_path) - 1)
+
 #define nbio_prepare_errmsg(errcode) \
   char errmsg[NBIO_MAXSTRERRORLEN] = NBIO_STRERROR_R_MSG; \
   strerror_r((errcode), errmsg, NBIO_MAXSTRERRORLEN)
@@ -87,6 +92,37 @@ static int nbio_stderr(lua_State *L) {
   return nbio_push_handle(L, 2, 1);
 }
 
+static int nbio_localconnect(lua_State *L) {
+  const char *path;
+  path = luaL_checkstring(L, 1);
+  if (strlen(path) > NBIO_SUN_PATH_MAXLEN) {
+    return luaL_error(L,
+      "path too long; only %d characters allowed",
+      NBIO_SUN_PATH_MAXLEN
+    );
+  }
+  struct sockaddr_un sockaddr = { .sun_family = AF_LOCAL };
+  strcpy(sockaddr.sun_path, path);
+  int fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+  if (fd == -1) {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+  if (
+    connect(fd, (struct sockaddr *)&sockaddr, sizeof(sockaddr)) &&
+    errno != EINPROGRESS && errno != EINTR
+  ) {
+    nbio_prepare_errmsg(errno);
+    close(fd);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+  return nbio_push_handle(L, fd, 0);
+}
+
 static int nbio_tcpconnect(lua_State *L) {
   const char *host, *port;
   host = luaL_checkstring(L, 1);
@@ -143,6 +179,48 @@ static int nbio_tcpconnect(lua_State *L) {
     freeaddrinfo(res);
   }
   return nbio_push_handle(L, fd, 0);
+}
+
+static int nbio_locallisten(lua_State *L) {
+  const char *path;
+  path = luaL_checkstring(L, 1);
+  if (strlen(path) > NBIO_SUN_PATH_MAXLEN) {
+    return luaL_error(L,
+      "path too long; only %d characters allowed",
+      NBIO_SUN_PATH_MAXLEN
+    );
+  }
+  struct stat sb;
+  if (stat(path, &sb) == 0) {
+    if (S_ISSOCK(sb.st_mode)) unlink(path);
+  }
+  struct sockaddr_un sockaddr = { .sun_family = AF_LOCAL };
+  strcpy(sockaddr.sun_path, path);
+  nbio_listener_t *listener = lua_newuserdatauv(L, sizeof(*listener), 0);
+  listener->addrfam = AF_LOCAL;
+  listener->fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (listener->fd == -1) {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+  if (bind(listener->fd, (struct sockaddr *)&sockaddr, sizeof(sockaddr))) {
+    nbio_prepare_errmsg(errno);
+    close(listener->fd);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+  if (listen(listener->fd, NBIO_LISTEN_BACKLOG)) {
+    nbio_prepare_errmsg(errno);
+    close(listener->fd);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+  luaL_setmetatable(L, NBIO_LISTENER_MT_REGKEY);
+  return 1;
 }
 
 static int nbio_tcplisten(lua_State *L) {
@@ -665,7 +743,9 @@ static const struct luaL_Reg nbio_module_funcs[] = {
   {"stdin", nbio_stdin},
   {"stdout", nbio_stdout},
   {"stderr", nbio_stderr},
+  {"localconnect", nbio_localconnect},
   {"tcpconnect", nbio_tcpconnect},
+  {"locallisten", nbio_locallisten},
   {"tcplisten", nbio_tcplisten},
   {NULL, NULL}
 };

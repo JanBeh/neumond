@@ -103,6 +103,14 @@ local function wrap_handle(handle)
   )
 end
 
+function _M.localconnect(...)
+  local handle, err = nbio.localconnect(...)
+  if not handle then
+    return handle, err
+  end
+  return wrap_handle(handle)
+end
+
 function _M.tcpconnect(...)
   local handle, err = nbio.tcpconnect(...)
   if not handle then
@@ -131,6 +139,14 @@ end
 
 local function wrap_listener(listener)
   return setmetatable({ nbio_listener = listener }, _M.listener_metatbl)
+end
+
+function _M.locallisten(...)
+  local listener, err = nbio.locallisten(...)
+  if not listener then
+    return listener, err
+  end
+  return wrap_listener(listener)
 end
 
 function _M.tcplisten(...)

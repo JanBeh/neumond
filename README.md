@@ -123,6 +123,10 @@ Available functions:
   * **`eio.stdin()`**, **`eio.stdout()`**, **`eio.stderr()`** open the standard
     input, output, or error stream, respectively and return an I/O handle.
 
+  * **`eio.localconnect(path)`** initiates opening a local socket connection
+    with the socket on the filesystem given by `path` and returns an I/O handle
+    on success (`nil` and error message otherwise).
+
   * **`eio.tcpconnect(host, port)`** initiates opening a TCP connection to the
     given `host` and `port` and returns an I/O handle on success (`nil` and
     error message otherwise).
