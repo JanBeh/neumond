@@ -106,7 +106,6 @@ Module for asynchronous I/O, working with the `effect` and `fiber` modules.
 The usual way to use this module is:
 
 ```
-local effect = require "effect"
 local fiber = require "fiber"
 local eio = require "eio"
 
