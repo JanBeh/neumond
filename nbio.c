@@ -69,6 +69,8 @@ static int nbio_handle_close(lua_State *L) {
   handle->fd = -1;
   free(handle->readbuf);
   handle->readbuf = NULL;
+  free(handle->writebuf);
+  handle->writebuf = NULL;
   return 0;
 }
 
