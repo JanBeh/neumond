@@ -52,6 +52,7 @@ typedef struct {
 static int nbio_push_handle(
   lua_State *L, int fd, sa_family_t addrfam, int dont_close
 ) {
+  // TODO: catch out-of-memory error
   nbio_handle_t *handle = lua_newuserdatauv(L, sizeof(*handle), 0);
   handle->fd = fd;
   handle->addrfam = addrfam;
