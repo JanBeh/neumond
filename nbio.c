@@ -32,6 +32,7 @@
 
 typedef struct {
   int fd;
+  sa_family_t addrfam;
   int dont_close;
   void *readbuf;
   size_t readbuf_capacity;
@@ -45,11 +46,15 @@ typedef struct {
 
 typedef struct {
   int fd;
+  sa_family_t addrfam;
 } nbio_listener_t;
 
-static int nbio_push_handle(lua_State *L, int fd, int dont_close) {
+static int nbio_push_handle(
+  lua_State *L, int fd, sa_family_t addrfam, int dont_close
+) {
   nbio_handle_t *handle = lua_newuserdatauv(L, sizeof(*handle), 0);
   handle->fd = fd;
+  handle->addrfam = addrfam;
   handle->dont_close = dont_close;
   handle->readbuf = NULL;
   handle->readbuf_capacity = 0;
@@ -109,7 +114,7 @@ static int nbio_localconnect(lua_State *L) {
     lua_pushstring(L, errmsg);
     return 2;
   }
-  return nbio_push_handle(L, fd, 0);
+  return nbio_push_handle(L, fd, AF_LOCAL, 0);
 }
 
 static int nbio_tcpconnect(lua_State *L) {
@@ -155,6 +160,7 @@ static int nbio_tcpconnect(lua_State *L) {
     lua_pushstring(L, errmsg);
     return 2;
   }
+  int addrfam = addrinfo->ai_family;
   if (connect(fd, addrinfo->ai_addr, addrinfo->ai_addrlen)) {
     freeaddrinfo(res);
     if (errno != EINPROGRESS && errno != EINTR) {
@@ -167,7 +173,7 @@ static int nbio_tcpconnect(lua_State *L) {
   } else {
     freeaddrinfo(res);
   }
-  return nbio_push_handle(L, fd, 0);
+  return nbio_push_handle(L, fd, addrfam, 0);
 }
 
 static int nbio_locallisten(lua_State *L) {
@@ -208,6 +214,7 @@ static int nbio_locallisten(lua_State *L) {
   }
   nbio_listener_t *listener = lua_newuserdatauv(L, sizeof(*listener), 0);
   listener->fd = fd;
+  listener->addrfam = AF_LOCAL;
   luaL_setmetatable(L, NBIO_LISTENER_MT_REGKEY);
   return 1;
 }
@@ -289,6 +296,7 @@ static int nbio_tcplisten(lua_State *L) {
     lua_pushstring(L, errmsg);
     return 2;
   }
+  int addrfam = addrinfo->ai_family;
   freeaddrinfo(res);
   if (listen(fd, NBIO_LISTEN_BACKLOG)) {
     nbio_prepare_errmsg(errno);
@@ -299,6 +307,7 @@ static int nbio_tcplisten(lua_State *L) {
   }
   nbio_listener_t *listener = lua_newuserdatauv(L, sizeof(*listener), 0);
   listener->fd = fd;
+  listener->addrfam = addrfam;
   luaL_setmetatable(L, NBIO_LISTENER_MT_REGKEY);
   return 1;
 }
@@ -722,7 +731,7 @@ static int nbio_listener_accept(lua_State *L) {
         close(fd);
         luaL_error(L, "error in fcntl call: %s", errmsg);
       }
-      return nbio_push_handle(L, fd, 0);
+      return nbio_push_handle(L, fd, listener->addrfam, 0);
     }
   }
 }
@@ -778,11 +787,11 @@ int luaopen_nbio(lua_State *L) {
   lua_pop(L, 1);
   lua_newtable(L);
   luaL_setfuncs(L, nbio_module_funcs, 0);
-  nbio_push_handle(L, 0, 1);
+  nbio_push_handle(L, 0, AF_UNSPEC, 1);
   lua_setfield(L, -2, "stdin");
-  nbio_push_handle(L, 1, 1);
+  nbio_push_handle(L, 1, AF_UNSPEC, 1);
   lua_setfield(L, -2, "stdout");
-  nbio_push_handle(L, 2, 1);
+  nbio_push_handle(L, 2, AF_UNSPEC, 1);
   lua_setfield(L, -2, "stderr");
   return 1;
 }
