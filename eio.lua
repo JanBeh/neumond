@@ -5,8 +5,6 @@ local effect = require "effect"
 local nbio = require "nbio"
 local waitio = require "waitio"
 
-local chunksize = 1024
-
 _M.main = waitio.main
 
 local handle_methods = {}
