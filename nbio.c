@@ -45,7 +45,6 @@ typedef struct {
 
 typedef struct {
   int fd;
-  sa_family_t addrfam;
 } nbio_listener_t;
 
 static int nbio_push_handle(lua_State *L, int fd, int dont_close) {
@@ -196,29 +195,29 @@ static int nbio_locallisten(lua_State *L) {
   }
   struct sockaddr_un sockaddr = { .sun_family = AF_LOCAL };
   strcpy(sockaddr.sun_path, path);
+  int fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (fd == -1) {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+  if (bind(fd, (struct sockaddr *)&sockaddr, sizeof(sockaddr))) {
+    nbio_prepare_errmsg(errno);
+    close(fd);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+  if (listen(fd, NBIO_LISTEN_BACKLOG)) {
+    nbio_prepare_errmsg(errno);
+    close(fd);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
   nbio_listener_t *listener = lua_newuserdatauv(L, sizeof(*listener), 0);
-  listener->addrfam = AF_LOCAL;
-  listener->fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0);
-  if (listener->fd == -1) {
-    nbio_prepare_errmsg(errno);
-    lua_pushnil(L);
-    lua_pushstring(L, errmsg);
-    return 2;
-  }
-  if (bind(listener->fd, (struct sockaddr *)&sockaddr, sizeof(sockaddr))) {
-    nbio_prepare_errmsg(errno);
-    close(listener->fd);
-    lua_pushnil(L);
-    lua_pushstring(L, errmsg);
-    return 2;
-  }
-  if (listen(listener->fd, NBIO_LISTEN_BACKLOG)) {
-    nbio_prepare_errmsg(errno);
-    close(listener->fd);
-    lua_pushnil(L);
-    lua_pushstring(L, errmsg);
-    return 2;
-  }
+  listener->fd = fd;
   luaL_setmetatable(L, NBIO_LISTENER_MT_REGKEY);
   return 1;
 }
@@ -254,14 +253,12 @@ static int nbio_tcplisten(lua_State *L) {
   }
   addrinfo = res;
   nbio_tcpconnect_found:;
-  nbio_listener_t *listener = lua_newuserdatauv(L, sizeof(*listener), 0);
-  listener->addrfam = addrinfo->ai_family;
-  listener->fd = socket(
+  int fd = socket(
     addrinfo->ai_family,  // incorrect to not use PF_* but AF_* constants here
     addrinfo->ai_socktype | SOCK_CLOEXEC | SOCK_NONBLOCK,
     addrinfo->ai_protocol
   );
-  if (listener->fd == -1) {
+  if (fd == -1) {
     nbio_prepare_errmsg(errno);
     freeaddrinfo(res);
     lua_pushnil(L);
@@ -271,11 +268,11 @@ static int nbio_tcplisten(lua_State *L) {
   {
     static const int reuseval = 1;
     if (setsockopt(
-      listener->fd, SOL_SOCKET, SO_REUSEADDR, &reuseval, sizeof(reuseval)
+      fd, SOL_SOCKET, SO_REUSEADDR, &reuseval, sizeof(reuseval)
     )) {
       nbio_prepare_errmsg(errno);
       freeaddrinfo(res);
-      close(listener->fd);
+      close(fd);
       lua_pushnil(L);
       lua_pushfstring(L, "cannot set SO_REUSEADDR socket option: %s", errmsg);
       return 2;
@@ -284,33 +281,34 @@ static int nbio_tcplisten(lua_State *L) {
   if (addrinfo->ai_family == AF_INET6) {
     const int ipv6onlyval = (host != NULL) ? 1 : 0;
     if (setsockopt(
-      listener->fd, IPPROTO_IPV6, IPV6_V6ONLY,
-      &ipv6onlyval, sizeof(ipv6onlyval)
+      fd, IPPROTO_IPV6, IPV6_V6ONLY, &ipv6onlyval, sizeof(ipv6onlyval)
     )) {
       nbio_prepare_errmsg(errno);
       freeaddrinfo(res);
-      close(listener->fd);
+      close(fd);
       lua_pushnil(L);
       lua_pushfstring(L, "cannot set IPV6_V6ONLY socket option: %s", errmsg);
       return 2;
     }
   }
-  if (bind(listener->fd, addrinfo->ai_addr, addrinfo->ai_addrlen)) {
+  if (bind(fd, addrinfo->ai_addr, addrinfo->ai_addrlen)) {
     nbio_prepare_errmsg(errno);
     freeaddrinfo(res);
-    close(listener->fd);
+    close(fd);
     lua_pushnil(L);
     lua_pushstring(L, errmsg);
     return 2;
   }
   freeaddrinfo(res);
-  if (listen(listener->fd, NBIO_LISTEN_BACKLOG)) {
+  if (listen(fd, NBIO_LISTEN_BACKLOG)) {
     nbio_prepare_errmsg(errno);
-    close(listener->fd);
+    close(fd);
     lua_pushnil(L);
     lua_pushstring(L, errmsg);
     return 2;
   }
+  nbio_listener_t *listener = lua_newuserdatauv(L, sizeof(*listener), 0);
+  listener->fd = fd;
   luaL_setmetatable(L, NBIO_LISTENER_MT_REGKEY);
   return 1;
 }
