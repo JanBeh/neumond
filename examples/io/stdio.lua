@@ -13,10 +13,8 @@ fiber.main(
       if not line then
         error(errmsg)
       end
-      eio.stdout:write("Got: " .. line .. "\n")
-      eio.stdout:flush()
+      eio.stdout:flush("Got: " .. line .. "\n")
     end
-    eio.stdout:write("EOF\n")
-    eio.stdout:flush()
+    eio.stdout:flush("EOF\n")
   end
 )

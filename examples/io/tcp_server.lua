@@ -9,8 +9,7 @@ fiber.main(
     while true do
       local conn = listener:accept()
       fiber.spawn(function()
-        conn:write("Hello World!\n")
-        conn:flush()
+        conn:flush("Hello World!\n")
         conn:close()
       end)
     end

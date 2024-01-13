@@ -154,19 +154,16 @@ An I/O handle `h` provides the following attributes and methods:
     and/or read beyond the terminator byte and will then buffer that data for
     the next invocation of the `read` method.
 
-  * **`h:write(data)`** repeatedly puts the currently running fiber to sleep
-    until all `data` could be stored in a buffer and/or written out.
-
-  * **`h:flush()`** repeatedly puts the currently fiber to sleep until all
-    buffered data could be written out.
-
   * **`h:read_unbuffered(maxlen)`** puts the currently running fiber to sleep
     until some data is available for reading or an I/O error occurred. It then
     reads a maximum number of `maxlen` bytes. The return value may be shorter
     than `maxlen` even if there was no EOF.
 
-  * **`h:write_unbuffered(data)`** acts like `h:write(data)` but does not
-    perform buffering.
+  * **`h:write(data)`** repeatedly puts the currently running fiber to sleep
+    until all `data` could be stored in a buffer and/or written out.
+
+  * **`h:flush(data)`** repeatedly puts the currently fiber to sleep until all
+    buffered data and the optionally passed `data` could be written out.
 
 The methods for reading and writing return `nil` and an error message in case
 of I/O errors, but `false` and an error message in case of EOF (when reading
