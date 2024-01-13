@@ -17,6 +17,8 @@
 #define NBIO_CHUNKSIZE 8192
 #define NBIO_LISTEN_BACKLOG 256
 
+#define NBIO_OPEN_DEFAULT_FLAGS "r"
+
 #define NBIO_MAXSTRERRORLEN 160
 #define NBIO_STRERROR_R_MSG "error detail unavailable due to noncompliant strerror_r() implementation"
 
@@ -115,6 +117,51 @@ static int nbio_listener_close(lua_State *L) {
   if (listener->fd != -1) close(listener->fd);
   listener->fd = -1;
   return 0;
+}
+
+static int nbio_cmp_flag(const char *s, size_t len, const char *f) {
+  for (size_t i=0; i<len; i++) {
+    if (s[i] != f[i] || !f[i]) return -1;
+  }
+  if (f[len]) return -1;
+  return 0;
+}
+
+static int nbio_open(lua_State *L) {
+  const char *path = luaL_checkstring(L, 1);
+  const char *flagsstr = luaL_optstring(L, 2, NBIO_OPEN_DEFAULT_FLAGS);
+  if (!flagsstr[0]) flagsstr = NBIO_OPEN_DEFAULT_FLAGS;
+  size_t flagslen = strlen(flagsstr);
+  int flags = O_NONBLOCK | O_CLOEXEC;
+  {
+    size_t i = 0;
+    for (size_t j=0; j<=flagslen; j++) {
+      if (flagsstr[j] == 0 || flagsstr[j] == ',') {
+        const char *s = flagsstr + i;
+        size_t k = j - i;
+        if (!nbio_cmp_flag(s, k, "r")) flags |= O_RDONLY;
+        else if (!nbio_cmp_flag(s, k, "w")) flags |= O_WRONLY;
+        else if (!nbio_cmp_flag(s, k, "rw")) flags |= O_RDWR;
+        else if (!nbio_cmp_flag(s, k, "append")) flags |= O_APPEND;
+        else if (!nbio_cmp_flag(s, k, "create")) flags |= O_CREAT;
+        else if (!nbio_cmp_flag(s, k, "exclusive")) flags |= O_EXCL;
+        else if (!nbio_cmp_flag(s, k, "sharedlock")) flags |= O_SHLOCK;
+        else if (!nbio_cmp_flag(s, k, "exclusivelock")) flags |= O_EXLOCK;
+        else return luaL_argerror(L, 2, "unknown flag");
+        i = j + 1;
+      }
+    }
+  }
+  int fd;
+  if (flags & O_CREAT) fd = open(path, flags, (mode_t)0666);
+  else fd = open(path, flags);
+  if (fd == -1) {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
+  return nbio_push_handle(L, fd, AF_UNSPEC, 0);
 }
 
 static int nbio_localconnect(lua_State *L) {
@@ -771,6 +818,7 @@ static int nbio_listener_accept(lua_State *L) {
 }
 
 static const struct luaL_Reg nbio_module_funcs[] = {
+  {"open", nbio_open},
   {"localconnect", nbio_localconnect},
   {"tcpconnect", nbio_tcpconnect},
   {"locallisten", nbio_locallisten},

@@ -101,6 +101,14 @@ local function wrap_handle(handle)
   )
 end
 
+function _M.open(...)
+  local handle, err = nbio.open(...)
+  if not handle then
+    return handle, err
+  end
+  return wrap_handle(handle)
+end
+
 function _M.localconnect(...)
   local handle, err = nbio.localconnect(...)
   if not handle then
