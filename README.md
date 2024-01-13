@@ -149,30 +149,29 @@ An I/O handle `h` provides the following attributes and methods:
   * **`h:read(maxlen, terminator)`** repeatedly puts the currently running
     fiber to sleep until `maxlen` bytes could be read, a `terminator` byte was
     read, EOF occurred, or an I/O error occurred (whichever happens first). If
-    at least some bytes could be read, it returns a string containing the read
-    data. This method may read more bytes than requested and/or read beyond the
-    terminator byte and will then buffer that data for the next invocation of
-    the `read` method.
+    all bytes or some bytes followed by EOF could be read, it returns a string
+    containing the read data. This method may read more bytes than requested
+    and/or read beyond the terminator byte and will then buffer that data for
+    the next invocation of the `read` method.
 
   * **`h:write(data)`** repeatedly puts the currently running fiber to sleep
-    until all `data` could be written out and/or be stored in a buffer.
+    until all `data` could be stored in a buffer and/or written out.
 
   * **`h:flush()`** repeatedly puts the currently fiber to sleep until all
     buffered data could be written out.
 
   * **`h:read_unbuffered(maxlen)`** puts the currently running fiber to sleep
     until some data is available for reading or an I/O error occurred. It then
-    reads a maximum number of `maxlen` bytes.
+    reads a maximum number of `maxlen` bytes. The return value may be shorter
+    than `maxlen` even if there was no EOF.
 
-  * **`h:write_unbuffered(data, from, to)`** puts the currently running fiber
-    to sleep until some data can be written or an I/O error occurred. If
-    possible, it writes some bytes of `data`, optionally from a given starting
-    position (`from`) to a maximum ending position (`to`) within the `data`,
-    and returns the number of bytes written.
+  * **`h:write_unbuffered(data)`** acts like `h:write(data)` but does not
+    perform buffering.
 
 The methods for reading and writing return `nil` and an error message in case
-of I/O errors, but `false` and an error message in case of EOF (when reading)
-or broken pipe (when writing).
+of I/O errors, but `false` and an error message in case of EOF (when reading
+and there wasn't at least one byte read) or broken pipe (when writing). The
+methods for writing and flushing return `true` on success.
 
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.

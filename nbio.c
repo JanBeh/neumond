@@ -45,6 +45,7 @@ typedef struct {
   void *writebuf;
   size_t writebuf_written;
   size_t writebuf_read;
+  int nopush;
 } nbio_handle_t;
 
 typedef struct {
@@ -57,8 +58,8 @@ static void nbio_handle_set_nopush(
 ) {
 #if defined(TCP_NOPUSH) || defined(TCP_CORK)
   if (
-    !(handle->addrfam == AF_INET6 || handle->addrfam == AF_INET) ||
-    handle->shared
+    handle->nopush == nopush || handle->shared ||
+    !(handle->addrfam == AF_INET6 || handle->addrfam == AF_INET)
   ) return;
 #if defined(TCP_NOPUSH)
   if (
@@ -96,8 +97,8 @@ static int nbio_push_handle(
   handle->writebuf = NULL;
   handle->writebuf_written = 0;
   handle->writebuf_read = 0;
+  handle->nopush = -1;
   luaL_setmetatable(L, NBIO_HANDLE_MT_REGKEY);
-  nbio_handle_set_nopush(L, handle, 1);
   return 1;
 }
 
@@ -589,6 +590,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
     return luaL_error(L, "chunk length longer than LUA_MAXINTEGER");
   }
   lua_Integer end = luaL_optinteger(L, 4, (lua_Integer)bufsize);
+  nbio_handle_set_nopush(L, handle, 0);
   ssize_t written;
   if (handle->writebuf_written > 0) {
     written = write(
@@ -656,6 +658,7 @@ static int nbio_handle_write(lua_State *L) {
     return luaL_error(L, "chunk length longer than LUA_MAXINTEGER");
   }
   lua_Integer end = luaL_optinteger(L, 4, (lua_Integer)bufsize);
+  nbio_handle_set_nopush(L, handle, 1);
   if (start <= -(lua_Integer)bufsize) start = 1;
   else if (start < 0) start = bufsize + start + 1;
   else if (start == 0) start = 1;

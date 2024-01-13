@@ -52,31 +52,46 @@ function handle_methods:read(maxlen, terminator)
   end
 end
 
-function handle_methods:write_unbuffered(...)
-  local result, errmsg = self.nbio_handle:write_unbuffered(...)
-  if result == 0 then
+function handle_methods:write_unbuffered(data)
+  if data == "" then
+    return true
+  end
+  local start = 1
+  local total = #data
+  while true do
+    local result, errmsg = self.nbio_handle:write_unbuffered(data, start)
+    if result then
+      start = start + result
+    else
+      return result, errmsg
+    end
+    if not (start <= total) then
+      break
+    end
     waitio.wait_fd_write(self.nbio_handle.fd)
-    return self.nbio_handle:write_unbuffered(...)
   end
-  if result then
-    return result
-  else
-    return result, errmsg
-  end
+  return true
 end
 
 function handle_methods:write(data)
+  if data == "" then
+    return true
+  end
   local start = 1
   local total = #data
-  while start <= total do
+  while true do
     local result, errmsg = self.nbio_handle:write(data, start)
     if result then
       start = start + result
     else
       return result, errmsg
     end
+    if not (start <= total) then
+      break
+    end
     waitio.wait_fd_write(self.nbio_handle.fd)
   end
+  return true
 end
 
 function handle_methods:flush()
@@ -89,6 +104,7 @@ function handle_methods:flush()
     end
     waitio.wait_fd_write(self.nbio_handle.fd)
   end
+  return true
 end
 
 local function wrap_handle(handle)
