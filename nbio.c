@@ -146,8 +146,12 @@ static int nbio_open(lua_State *L) {
         else if (!nbio_cmp_flag(s, k, "append")) flags |= O_APPEND;
         else if (!nbio_cmp_flag(s, k, "create")) flags |= O_CREAT;
         else if (!nbio_cmp_flag(s, k, "exclusive")) flags |= O_EXCL;
+#if defined(O_SHLOCK)
         else if (!nbio_cmp_flag(s, k, "sharedlock")) flags |= O_SHLOCK;
+#endif
+#if defined(O_EXLOCK)
         else if (!nbio_cmp_flag(s, k, "exclusivelock")) flags |= O_EXLOCK;
+#endif
         else return luaL_argerror(L, 2, "unknown flag");
         i = j + 1;
       }
