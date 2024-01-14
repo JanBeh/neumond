@@ -81,11 +81,20 @@ static void nbio_handle_set_nopush(
 #endif
 }
 
+static int nbio_create_handle_udata(lua_State *L) {
+  lua_newuserdatauv(L, sizeof(nbio_handle_t), 0);
+  return 1;
+}
+
 static int nbio_push_handle(
   lua_State *L, int fd, sa_family_t addrfam, int shared
 ) {
-  // TODO: catch out-of-memory error
-  nbio_handle_t *handle = lua_newuserdatauv(L, sizeof(*handle), 0);
+  lua_pushcfunction(L, nbio_create_handle_udata);
+  if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
+    if (!shared) close(fd);
+    return lua_error(L);
+  }
+  nbio_handle_t *handle = lua_touserdata(L, -1);
   handle->fd = fd;
   handle->addrfam = addrfam;
   handle->shared = shared;
