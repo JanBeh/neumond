@@ -25,6 +25,14 @@ function _M.wait_fd_write(fd)
   eventqueue:remove_fd_write(fd)
 end
 
+function _M.wait_signal(sig)
+  -- TODO: race friendly API?
+  local eventqueue = get_eventqueue()
+  eventqueue:add_signal(sig, fiber.current())
+  fiber.sleep()
+  eventqueue:remove_signal(sig)
+end
+
 local function wake(self)
   return self:wake()
 end

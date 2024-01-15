@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/event.h>
+#include <signal.h>
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -193,6 +194,52 @@ static int lkq_remove_fd_write(lua_State *L) {
   return 0;
 }
 
+static int lkq_add_signal(lua_State *L) {
+  lkq_queue_t *queue = lkq_check_queue(L, 1);
+  int sig = luaL_checkinteger(L, 2);
+  struct kevent event;
+  if (signal(sig, SIG_IGN) == SIG_ERR) {
+    lkq_prepare_errmsg(errno);
+    return luaL_error(L,
+      "could not ignore signal %d prior to installing handler: %s", sig, errmsg
+    );
+  }
+  EV_SET(&event, sig, EVFILT_SIGNAL, EV_ADD, 0, 0, NULL);
+  int nevent = kevent(queue->fd, &event, 1, NULL, 0, NULL);
+  if (nevent == -1 && errno != EINTR) {
+    lkq_prepare_errmsg(errno);
+    return luaL_error(L,
+      "adding handler for signal %d failed: %s", sig, errmsg
+    );
+  }
+
+  lua_settop(L, 3);
+  lua_getiuservalue(L, 1, LKQ_QUEUE_CALLBACK_ARGS_UVIDX);
+  lkq_push_filterid(L, sig, EVFILT_SIGNAL);
+  lua_pushvalue(L, 3);
+  lua_rawset(L, 4);
+  return 0;
+}
+
+static int lkq_remove_signal(lua_State *L) {
+  lkq_queue_t *queue = lkq_check_queue(L, 1);
+  int sig = luaL_checkinteger(L, 2);
+  lua_getiuservalue(L, 1, LKQ_QUEUE_CALLBACK_ARGS_UVIDX);
+  lkq_push_filterid(L, sig, EVFILT_SIGNAL);
+  lua_pushnil(L);
+  lua_rawset(L, -3);
+  struct kevent event;
+  EV_SET(&event, sig, EVFILT_SIGNAL, EV_DELETE, 0, 0, NULL);
+  int nevent = kevent(queue->fd, &event, 1, NULL, 0, NULL);
+  if (nevent == -1 && errno != EINTR && errno != ENOENT) {
+    lkq_prepare_errmsg(errno);
+    return luaL_error(L,
+      "removing handler for signal %d failed: %s", sig, errmsg
+    );
+  }
+  return 0;
+}
+
 static int lkq_add_timeout(lua_State *L) {
   lkq_queue_t *queue = lkq_check_queue(L, 1);
   lua_Number seconds = luaL_checknumber(L, 2);
@@ -327,6 +374,8 @@ static const struct luaL_Reg lkq_queue_methods[] = {
   {"add_fd_write_once", lkq_add_fd_write_once},
   {"add_fd_write", lkq_add_fd_write},
   {"remove_fd_write", lkq_remove_fd_write},
+  {"add_signal", lkq_add_signal},
+  {"remove_signal", lkq_remove_signal},
   {"add_timeout", lkq_add_timeout},
   {"remove_timeout", lkq_remove_timeout},
   {"wait", lkq_wait},
