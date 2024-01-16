@@ -86,19 +86,21 @@ The fiber module provides the following functions:
 
 A fiber handle `f` provides the following attributes and methods:
 
-  * **`f:wake()`** wakes up fiber `f`.
+  * **`f:wake()`** wakes up fiber `f` if it has not terminated yet.
+
+  * **`f:kill()`** kills fiber `f` if it has not terminated yet.
 
   * **`f.results`** is a table containing the return value of the action
     function of fiber `f`, or `nil` if the action has not terminated yet or if
-    it has been killed due to a non-resuming effect.
+    it has been killed.
 
-  * **`f.killed`** is `true` if fiber `f` got killed due to a non-resuming
-    effect before its action function could return; otherwise `false`.
+  * **`f.killed`** is `true` if fiber `f` got killed manually or due to a
+    non-resuming effect before its action function could return; otherwise
+    `false`.
 
   * **`f:await()`** puts the currently running fiber to sleep until fiber `f`
     has terminated. The method then returns its return values. If the awaited
-    fiber got killed due to a non-resuming effect, the current fiber will be
-    killed as well.
+    fiber got killed, the current fiber will be killed as well.
 
 ## Module `eio`
 

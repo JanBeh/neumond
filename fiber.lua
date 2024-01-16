@@ -134,6 +134,46 @@ function fiber_methods.await(self)
   end
 end
 
+-- Method killing the fiber, i.e. stopping its further execution:
+function fiber_methods.kill(self)
+  local attrs = fiber_attrs[self]
+  local resume = attrs.resume
+  -- Check if resume function exists:
+  if resume then
+    -- Check if resume function is a continuation:
+    if attrs.started then
+      -- "resume" is a continuation.
+      -- Discontinue the continuation:
+      effect.discontinue(resume)
+    end
+    -- Ensure that fiber is not continued when woken:
+    attrs.resume = nil
+  end
+  -- Check if results are missing:
+  if not attrs.results then
+    -- Fiber did not generate a return value.
+    -- Mark fiber as killed:
+    attrs.killed = true
+  end
+  -- Wakeup all fibers that are waiting for this fiber's return values:
+  local waiting_fibers = attrs.waiting_fibers
+  if waiting_fibers then
+    while true do
+      local waiting_fiber = waiting_fibers:pop()
+      if not waiting_fiber then
+        break
+      end
+      waiting_fiber:wake()
+    end
+  end
+  -- Check if killed fiber is current fiber:
+  if self == get_current() then
+    -- Killed fiber is currently running.
+    -- Terminate currently running fiber:
+    return terminate()
+  end
+end
+
 -- Metatable for fiber handles:
 _M.fiber_metatbl = {
   __index = function(self, key)
