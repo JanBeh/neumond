@@ -20,6 +20,7 @@ local function fifoset()
   local queue = {}
   local set = {}
   return {
+    -- Method appending a value to the queue if it doesn't exist in the queue:
     push = function(self, value)
       if not set[value] then
         queue[input_idx] = value
@@ -27,6 +28,7 @@ local function fifoset()
         input_idx = input_idx + 1
       end
     end,
+    -- Method removing and returning the oldest value in the queue:
     pop = function(self)
       if output_idx ~= input_idx then
         local value = queue[output_idx]
@@ -38,8 +40,11 @@ local function fifoset()
         return nil
       end
     end,
-    peek = function(self, index)
-      return queue[output_idx + index]
+    -- Method returning a value without removing it, skipping a certain count
+    -- of values from the beginning (a skip_count of zero returns the very next
+    -- value):
+    peek = function(self, skip_count)
+      return queue[output_idx + skip_count]
     end,
   }
 end
@@ -78,8 +83,8 @@ local fiber_attrs = setmetatable({}, { __mode = "k" })
 -- Table containing all methods of fibers, plus public attributes where the
 -- value in this table must be set to "getter_magic":
 local fiber_methods = {
-  results = getter_magic, -- return value of fiber's function
-  killed = getter_magic, -- true if fiber has been killed by an effect
+  results = getter_magic, -- table with return values of fiber's function
+  killed = getter_magic, -- true if fiber has been killed, e.g. by an effect
 }
 
 -- Method waking up the fiber (note that "self" is named "fiber" below):
@@ -195,6 +200,7 @@ _M.fiber_metatbl = {
 -- spawn(action, ...) spawns a new fiber with the given action function and
 -- arguments to the action function:
 function _M.spawn(...)
+  -- Use spawn function of current fiber:
   return fiber_attrs[get_current()].spawn(...)
 end
 
@@ -236,9 +242,11 @@ function _M.pending()
   return false
 end
 
--- Internal metatable for set of all open (unfinished) fibers:
+-- Internal metatable for set of all open (not yet terminated) fibers within
+-- the scheduler:
 local open_fibers_metatbl = {
-  -- Ensuring cleanup of all open fibers:
+  -- Ensuring cleanup of all open fibers when set of open fibers is closed,
+  -- e.g. due to a non-resumed effect or due to an error:
   __close = function(self)
     -- Iterate through all keys:
     for fiber in pairs(self) do
@@ -249,6 +257,9 @@ local open_fibers_metatbl = {
         -- "resume" is a continuation.
         -- Discontinue the continuation:
         effect.discontinue(resume)
+        -- Note that it's not necessary to set attrs.resume to nil here,
+        -- because when open_fibers is closed, there will be no scheduler
+        -- anymore that would call the resume function.
       end
       -- Check if results are missing:
       if not attrs.results then
@@ -271,9 +282,11 @@ local open_fibers_metatbl = {
   end,
 }
 
--- Implementation for module's "main" and "handle" functions:
+-- Implementation for top-level scheduling (used by module's "main" function,
+-- with argument "nested" set to false) and sub-level scheduling (used by
+-- module's "scope" function, with argument "nested" set to true):
 local function schedule(nested, ...)
-  -- Obtain parent fiber if applicable:
+  -- Obtain parent fiber unless running as top-level scheduler:
   local parent_fiber
   if nested then
     parent_fiber = get_current()
@@ -313,8 +326,8 @@ local function schedule(nested, ...)
     end,
     -- Effect invoked when fiber has terminated:
     [terminate] = function(resume)
-      -- Note that this effect should not be invoked unless a result (return
-      -- values) has been stored or the fiber has been killed.
+      -- Note that this effect must not be invoked unless a result (return
+      -- values) has been stored or the fiber has been marked as being killed.
       -- Discontinue continuation:
       effect.discontinue(resume)
       -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
@@ -363,15 +376,18 @@ local function schedule(nested, ...)
     end
     -- Remember fiber as being open so it can be cleaned up later:
     open_fibers[fiber] = true
-    -- Wakeup fiber for the first time (no need to wake parents):
+    -- Wakeup fiber for the first time (without waking parents because the
+    -- fiber's scheduler and all parent schedulers if existent are currently
+    -- running and will not sleep but only yield when there is a woken fiber):
     woken_fibers:push(fiber)
     -- Return fiber's handle:
     return fiber
   end
   -- Spawn main fiber:
   local main = spawn(...)
-  -- Include special marker (false) in "woken_fiber" FIFO to indicate that
-  -- control has to be yielded to the parent scheduler:
+  -- Unless running as top-level scheduler, include special marker (false) in
+  -- "woken_fiber" FIFO to indicate that control has to be yielded to the
+  -- parent scheduler:
   if nested then
     woken_fibers:push(false)
   end
