@@ -399,25 +399,21 @@ local function schedule(nested, ...)
     -- are still fibers left:
     if fiber == false and next(open_fibers) then
       -- Special marker has been found and there are fibers left.
-      -- Check if there is any other fiber to-be-woken and obtain that fiber:
-      fiber = woken_fibers:pop()
-      if fiber then
-        -- There is another to-be-woken, so we only yield control to the parent
-        -- scheduler (and do not sleep):
+      -- Check if there is any other fiber to-be-woken without removing it from
+      -- the FIFO:
+      if woken_fibers:peek(0) then
+        -- There is another fiber to-be-woken, so we only yield control to the
+        -- parent scheduler (and do not sleep):
         yield()
-        -- Re-insert special marker to yield control to the parent next time
-        -- again:
-        woken_fibers:push(false)
-        -- Do not return here, but use obtained woken fiber further below.
       else
         -- All fibers are sleeping, so we sleep as well:
         sleep()
-        -- Re-insert special marker to yield control to the parent next time
-        -- again:
-        woken_fibers:push(false)
-        -- Jump to beginning of main loop:
-        return resume_scheduled()
       end
+      -- Re-insert special marker to yield control to the parent next time
+      -- again:
+      woken_fibers:push(false)
+      -- Jump to beginning of main loop:
+      return resume_scheduled()
     end
     -- Check if there is no fiber to be woken and no parent:
     if not fiber then
