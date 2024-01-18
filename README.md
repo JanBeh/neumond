@@ -91,12 +91,12 @@ A fiber handle `f` provides the following attributes and methods:
   * **`f:kill()`** kills fiber `f` if it has not terminated yet.
 
   * **`f.results`** is a table containing the return value of the action
-    function of fiber `f`, or `nil` if the action has not terminated yet or if
-    it has been killed.
+    function of fiber `f`, or `nil` if the action has not terminated with a
+    return value yet or if it has been killed.
 
   * **`f.killed`** is `true` if fiber `f` got killed manually or due to a
-    non-resuming effect before its action function could return; otherwise
-    `false`.
+    non-resuming effect or due to an error before its action function could
+    return; otherwise `false`.
 
   * **`f:await()`** puts the currently running fiber to sleep until fiber `f`
     has terminated. The method then returns its return values. If the awaited
