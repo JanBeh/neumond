@@ -94,6 +94,16 @@ static int nbio_push_handle(
     if (!shared) close(fd);
     return lua_error(L);
   }
+  if (!shared) {
+    static const int val = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
+      nbio_prepare_errmsg(errno);
+      close(fd);
+      return luaL_error(L,
+        "cannot set SO_NOSIGPIPE socket option: %s", errmsg
+      );
+    }
+  }
   nbio_handle_t *handle = lua_touserdata(L, -1);
   handle->fd = fd;
   handle->addrfam = addrfam;
@@ -873,7 +883,6 @@ static const struct luaL_Reg nbio_listener_metamethods[] = {
 };
 
 int luaopen_nbio(lua_State *L) {
-  signal(SIGPIPE, SIG_IGN);  // generate I/O errors instead of signal 13
   luaL_newmetatable(L, NBIO_HANDLE_MT_REGKEY);
   lua_newtable(L);
   luaL_setfuncs(L, nbio_handle_methods, 0);
