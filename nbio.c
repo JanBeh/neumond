@@ -355,10 +355,8 @@ static int nbio_tcplisten(lua_State *L) {
     return 2;
   }
   {
-    static const int reuseval = 1;
-    if (setsockopt(
-      fd, SOL_SOCKET, SO_REUSEADDR, &reuseval, sizeof(reuseval)
-    )) {
+    static const int val = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val))) {
       nbio_prepare_errmsg(errno);
       freeaddrinfo(res);
       close(fd);
@@ -368,10 +366,8 @@ static int nbio_tcplisten(lua_State *L) {
     }
   }
   if (addrinfo->ai_family == AF_INET6) {
-    const int ipv6onlyval = (host != NULL) ? 1 : 0;
-    if (setsockopt(
-      fd, IPPROTO_IPV6, IPV6_V6ONLY, &ipv6onlyval, sizeof(ipv6onlyval)
-    )) {
+    const int val = (host != NULL) ? 1 : 0;
+    if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &val, sizeof(val))) {
       nbio_prepare_errmsg(errno);
       freeaddrinfo(res);
       close(fd);
