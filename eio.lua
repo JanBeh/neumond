@@ -21,23 +21,22 @@ _M.handle_metatbl = {
 }
 
 function handle_methods:read_unbuffered(maxlen)
-  if len == 0 then
+  if maxlen == 0 then
     return ""
   end
   local result, errmsg = self.nbio_handle:read_unbuffered(maxlen)
-  if result == "" then
-    waitio.wait_fd_read(self.nbio_handle.fd)
-    return self.nbio_handle:read_unbuffered(maxlen)
-  end
-  if result then
-    return result
-  else
+  if not result then
     return result, errmsg
   end
+  if result ~= "" then
+    return result
+  end
+  waitio.wait_fd_read(self.nbio_handle.fd)
+  return self.nbio_handle:read_unbuffered(maxlen)
 end
 
 function handle_methods:read(maxlen, terminator)
-  if len == 0 then
+  if maxlen == 0 then
     return ""
   end
   while true do
