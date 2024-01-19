@@ -653,19 +653,22 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
     end = 0;
   }
   written = write(handle->fd, buf-1+start, end-start+1);
-  nbio_handle_set_nopush(L, handle, 0);
   if (written >= 0) {
+    nbio_handle_set_nopush(L, handle, 0);
     lua_pushinteger(L, written);
     return 1;
   } else if (errno == EAGAIN || errno == EINTR) {
+    nbio_handle_set_nopush(L, handle, 0);
     lua_pushinteger(L, 0);
     return 1;
   } else if (errno == EPIPE) {
+    nbio_handle_set_nopush(L, handle, 0);
     lua_pushboolean(L, 0);
     lua_pushliteral(L, "peer closed stream");
     return 2;
   } else {
     nbio_prepare_errmsg(errno);
+    nbio_handle_set_nopush(L, handle, 0);
     lua_pushnil(L);
     lua_pushstring(L, errmsg);
     return 2;
@@ -766,29 +769,29 @@ static int nbio_handle_write(lua_State *L) {
 static int nbio_handle_flush(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   if (handle->writebuf_written > 0) {
-    size_t written = write(
+    ssize_t written = write(
       handle->fd,
       handle->writebuf + handle->writebuf_read,
       handle->writebuf_written - handle->writebuf_read
     );
-    nbio_handle_set_nopush(L, handle, 0);
     if (written >= 0) {
       handle->writebuf_read += written;
     } else if (errno == EAGAIN || errno == EINTR) {
       // nothing
     } else if (errno == EPIPE) {
+      nbio_handle_set_nopush(L, handle, 0);
       lua_pushboolean(L, 0);
       lua_pushliteral(L, "peer closed stream");
       return 2;
     } else {
       nbio_prepare_errmsg(errno);
+      nbio_handle_set_nopush(L, handle, 0);
       lua_pushnil(L);
       lua_pushstring(L, errmsg);
       return 2;
     }
-  } else {
-    nbio_handle_set_nopush(L, handle, 0);
   }
+  nbio_handle_set_nopush(L, handle, 0);
   size_t remaining = handle->writebuf_written - handle->writebuf_read;
   if (remaining == 0) {
     handle->writebuf_written = 0;
