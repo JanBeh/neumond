@@ -32,7 +32,12 @@
 #define NBIO_HANDLE_METHODS_UPIDX 1
 #define NBIO_LISTENER_METHODS_UPIDX 1
 
+#define NBIO_STATE_OPEN 0
+#define NBIO_STATE_SHUTDOWN 1
+#define NBIO_STATE_CLOSED 2
+
 typedef struct {
+  int state;
   int fd;
   sa_family_t addrfam;
   int shared;
@@ -104,6 +109,7 @@ static int nbio_push_handle(
     }
   }
   nbio_handle_t *handle = lua_touserdata(L, -1);
+  handle->state = NBIO_STATE_OPEN;
   handle->fd = fd;
   handle->addrfam = addrfam;
   handle->shared = shared;
@@ -122,6 +128,7 @@ static int nbio_push_handle(
 
 static int nbio_handle_close(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
+  handle->state = NBIO_STATE_CLOSED;
   if (handle->fd != -1 && !handle->shared) close(handle->fd);
   handle->fd = -1;
   free(handle->readbuf);
@@ -129,6 +136,36 @@ static int nbio_handle_close(lua_State *L) {
   free(handle->writebuf);
   handle->writebuf = NULL;
   return 0;
+}
+
+static int nbio_handle_shutdown(lua_State *L) {
+  nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
+  if (handle->state == NBIO_STATE_OPEN) {
+    handle->state = NBIO_STATE_SHUTDOWN;
+    if (handle->addrfam == AF_INET6 || handle->addrfam == AF_INET) {
+      if (shutdown(handle->fd, SHUT_WR)) {
+        nbio_prepare_errmsg(errno);
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, errmsg);
+        return 2;
+      }
+    } else {
+      if (close(handle->fd)) {
+        handle->fd = -1;
+        nbio_prepare_errmsg(errno);
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, errmsg);
+        return 2;
+      }
+      handle->fd = -1;
+    }
+    free(handle->writebuf);
+    handle->writebuf = NULL;
+    handle->writebuf_written = 0;
+    handle->writebuf_read = 0;
+  }
+  lua_pushboolean(L, 1);
+  return 1;
 }
 
 static int nbio_listener_close(lua_State *L) {
@@ -414,7 +451,8 @@ static int nbio_handle_index(lua_State *L) {
   const char *key = lua_tostring(L, 2);
   if (key) {
     if (!strcmp(key, "fd")) {
-      lua_pushinteger(L, handle->fd);
+      if (handle->fd == -1) lua_pushnil(L);
+      else lua_pushinteger(L, handle->fd);
       return 1;
     }
   }
@@ -428,7 +466,8 @@ static int nbio_listener_index(lua_State *L) {
   const char *key = lua_tostring(L, 2);
   if (key) {
     if (!strcmp(key, "fd")) {
-      lua_pushinteger(L, listener->fd);
+      if (listener->fd == -1) lua_pushnil(L);
+      else lua_pushinteger(L, listener->fd);
       return 1;
     }
   }
@@ -440,11 +479,11 @@ static int nbio_listener_index(lua_State *L) {
 static int nbio_handle_read_unbuffered(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   lua_Integer maxlen = luaL_optinteger(L, 2, NBIO_CHUNKSIZE);
-  if (handle->fd == -1) {
-    return luaL_error(L, "read from closed handle");
-  }
   if (maxlen <= 0) {
     return luaL_argerror(L, 2, "maximum byte count must be positive");
+  }
+  if (handle->state == NBIO_STATE_CLOSED) {
+    return luaL_error(L, "read from closed handle");
   }
   if (handle->readbuf_written > 0) {
     void *start = handle->readbuf + handle->readbuf_read;
@@ -458,6 +497,12 @@ static int nbio_handle_read_unbuffered(lua_State *L) {
       handle->readbuf_read = 0;
     }
     return 1;
+  }
+  if (handle->fd == -1) {
+    // simulate EOF
+    lua_pushboolean(L, 0);
+    lua_pushliteral(L, "end of data");
+    return 2;
   }
   if (maxlen > handle->readbuf_capacity) {
     void *newbuf = realloc(handle->readbuf, maxlen);
@@ -489,11 +534,11 @@ static int nbio_handle_read(lua_State *L) {
   lua_Integer maxlen = luaL_optinteger(L, 2, NBIO_CHUNKSIZE);
   size_t terminator_len;
   const char *terminator = lua_tolstring(L, 3, &terminator_len);
-  if (handle->fd == -1) {
-    return luaL_error(L, "read from closed handle");
-  }
   if (maxlen <= 0) {
     return luaL_argerror(L, 2, "maximum byte count must be positive");
+  }
+  if (handle->state == NBIO_STATE_CLOSED) {
+    return luaL_error(L, "read from closed handle");
   }
   if (terminator != NULL && terminator_len != 1) {
     return luaL_argerror(L, 3, "optional terminator must be a single char");
@@ -532,6 +577,12 @@ static int nbio_handle_read(lua_State *L) {
     }
   }
   // handle->readbuf_read is zero at this point
+  if (handle->fd == -1) {
+    // simulate EOF
+    lua_pushboolean(L, 0);
+    lua_pushliteral(L, "end of data");
+    return 2;
+  }
   while (1) {
     if (handle->readbuf_written > SIZE_MAX - NBIO_CHUNKSIZE) {
       return luaL_error(L, "buffer allocation failed");
@@ -608,6 +659,12 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
     return luaL_error(L, "chunk length longer than LUA_MAXINTEGER");
   }
   lua_Integer end = luaL_optinteger(L, 4, (lua_Integer)bufsize);
+  if (handle->state == NBIO_STATE_CLOSED) {
+    return luaL_error(L, "write to closed handle");
+  }
+  if (handle->state == NBIO_STATE_SHUTDOWN) {
+    return luaL_error(L, "write to shut down handle");
+  }
   ssize_t written;
   if (handle->writebuf_written > 0) {
     written = write(
@@ -683,6 +740,12 @@ static int nbio_handle_write(lua_State *L) {
     return luaL_error(L, "chunk length longer than LUA_MAXINTEGER");
   }
   lua_Integer end = luaL_optinteger(L, 4, (lua_Integer)bufsize);
+  if (handle->state == NBIO_STATE_CLOSED) {
+    return luaL_error(L, "write to closed handle");
+  }
+  if (handle->state == NBIO_STATE_SHUTDOWN) {
+    return luaL_error(L, "write to shut down handle");
+  }
   nbio_handle_set_nopush(L, handle, 1);
   if (start <= -(lua_Integer)bufsize) start = 1;
   else if (start < 0) start = bufsize + start + 1;
@@ -767,6 +830,12 @@ static int nbio_handle_write(lua_State *L) {
 
 static int nbio_handle_flush(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
+  if (handle->state == NBIO_STATE_CLOSED) {
+    return luaL_error(L, "flushing closed handle");
+  }
+  if (handle->state == NBIO_STATE_SHUTDOWN) {
+    return luaL_error(L, "flushing shut down handle");
+  }
   if (handle->writebuf_written > 0) {
     ssize_t written = write(
       handle->fd,
@@ -857,6 +926,7 @@ static const struct luaL_Reg nbio_module_funcs[] = {
 
 static const struct luaL_Reg nbio_handle_methods[] = {
   {"close", nbio_handle_close},
+  {"shutdown", nbio_handle_shutdown},
   {"read_unbuffered", nbio_handle_read_unbuffered},
   {"read", nbio_handle_read},
   {"write_unbuffered", nbio_handle_write_unbuffered},

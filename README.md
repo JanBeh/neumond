@@ -167,6 +167,14 @@ An I/O handle `h` provides the following attributes and methods:
   * **`h:flush(data)`** repeatedly puts the currently fiber to sleep until all
     buffered data and the optionally passed `data` could be written out.
 
+  * **`h:shutdown()`** closes the sending part but not the receiving part of a
+    connection. Any non-flushed data may be discarded. Returns `true` on
+    success, or `false` and an error message otherwise.
+
+  * **`h:close()`** closes the handle (sending and receiving part). Any
+    non-flushed data may be discarded. This function returns immediately and
+    does not report any errors.
+
 The methods for reading and writing return `nil` and an error message in case
 of I/O errors, but `false` and an error message in case of EOF (when reading
 and there wasn't at least one byte read) or broken pipe (when writing). The

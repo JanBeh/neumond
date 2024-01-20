@@ -27,6 +27,9 @@ fiber.main(
           local conn = listener:accept()
           fiber.spawn(function()
             conn:flush("Hello World!\n")
+            conn:shutdown()
+            local line = conn:read(1024, "\n")
+            print("Got: " .. tostring(line))
             conn:close()
           end)
         end

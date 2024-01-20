@@ -14,6 +14,10 @@ function handle_methods:close()
   self.nbio_handle:close()
 end
 
+function handle_methods:shutdown()
+  return self.nbio_handle:shutdown()
+end
+
 _M.handle_metatbl = {
   __close = handle_methods.close,
   __gc = handle_methods.close,
