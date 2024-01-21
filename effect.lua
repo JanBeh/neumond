@@ -177,7 +177,8 @@ function _M.handle(handlers, ...)
   local return_values, error_message
   local early_return_marker = setmetatable({}, early_return_metatbl)
   local function close(success, ...)
-    -- Check if coroutine finished execution or if there was an early return:
+    -- Check if coroutine finished execution or if there was an early return or
+    -- an exception in the handler:
     if coroutine_status(action_thread) == "dead" then
       -- Coroutine finished execution.
       -- Check if there was an exception (typically re-thrown by
@@ -205,7 +206,7 @@ function _M.handle(handlers, ...)
         error(..., 0)
       end
     else
-      -- There was an early return (or an exception in the handler).
+      -- There was an early return or an exception in the handler.
       -- Check if there was an exception in the handler:
       if success then
         -- The handler returned normally.
@@ -213,6 +214,29 @@ function _M.handle(handlers, ...)
         return_values, error_message = table_pack(...), nil
       else
         -- There was an exception in the handler.
+        -- Check if the exception is an "early return marker"
+        -- (from another closure):
+        if getmetatable((...)) == early_return_metatbl then
+          -- Exception raised in handler is an early return marker.
+          -- Throw own "early return marker" in coroutine to unwind stack:
+          local success, result = xpcall(
+            resume, debug_traceback, early_return_marker
+          )
+          -- Check if own "early return marker" was caught:
+          if success then
+            -- No exception was caught, which is unexpected:
+            error("discontinued action returned with: " .. tostring(result))
+          -- Check if caught exception is the correct "early return marker":
+          elseif result ~= early_return_marker then
+            -- Another exception has been caught.
+            -- Re-throw exception:
+            error(result, 0)
+          end
+          -- Own "early return marker" has been caught successfully.
+          -- Re-throw foreign "early return marker":
+          error(..., 0)
+        end
+        -- Exception is not an "early return marker":
         -- Extend error message with stack traces of each involved coroutine's
         -- stack:
         local idx, error_parts = 0, {}
