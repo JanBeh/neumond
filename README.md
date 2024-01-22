@@ -81,8 +81,10 @@ The fiber module provides the following functions:
     for I/O (e.g. by using an OS call that blocks execution).
 
   * **`fiber.handle(handlers, action, ...)`** acts like `effect.handle` but
-    additionally applies the effect handling to all spawned fibers. Thus
-    `fiber.handle` will not return until all fibers have terminated.
+    additionally applies the effect handling to all spawned fibers within the
+    `action` function. It is implemented by wrapping the `action` with
+    `fiber.scope`. Thus `fiber.handle` will not return until all fibers have
+    terminated.
 
 A fiber handle `f` provides the following attributes and methods:
 
