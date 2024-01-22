@@ -214,46 +214,32 @@ function _M.handle(handlers, ...)
         return_values, error_message = table_pack(...), nil
       else
         -- There was an exception in the handler.
-        -- Check if the exception is an "early return marker"
-        -- (from another closure):
-        if getmetatable((...)) == early_return_metatbl then
-          -- Exception raised in handler is an early return marker.
-          -- Throw own "early return marker" in coroutine to unwind stack:
-          local success, result = xpcall(
-            resume, debug_traceback, early_return_marker
-          )
-          -- Check if own "early return marker" was caught:
-          if success then
-            -- No exception was caught, which is unexpected:
-            error("discontinued action returned with: " .. tostring(result))
-          -- Check if caught exception is the correct "early return marker":
-          elseif result ~= early_return_marker then
-            -- Another exception has been caught.
-            -- Re-throw exception:
-            error(result, 0)
+        -- Check if error message is a string:
+        if type((...)) == "string" then
+          -- Error message is a string.
+          -- Extend error message with stack traces of each involved
+          -- coroutine's stack:
+          local idx, error_parts = 0, {}
+          local this_thread = coroutine_running()
+          local thread = children[this_thread]
+          while thread and coroutine_status(thread) ~= "dead" do
+            idx = idx - 1
+            error_parts[idx] = debug_traceback(thread)
+            thread = children[thread]
           end
-          -- Own "early return marker" has been caught successfully.
-          -- Re-throw foreign "early return marker":
-          error(..., 0)
-        end
-        -- Exception is not an "early return marker":
-        -- Extend error message with stack traces of each involved coroutine's
-        -- stack:
-        local idx, error_parts = 0, {}
-        local this_thread = coroutine_running()
-        local thread = children[this_thread]
-        while thread and coroutine_status(thread) ~= "dead" do
           idx = idx - 1
-          error_parts[idx] = debug_traceback(thread)
-          thread = children[thread]
+          error_parts[idx] = debug_traceback(this_thread)
+          idx = idx - 1
+          error_parts[idx] = ...
+          -- Memorize extended error message:
+          return_values, error_message =
+            nil, table_concat(error_parts, "\n", idx, -1)
+        else
+          -- Error message is not a string (e.g. another closure's
+          -- "early return marker" or another table or userdata).
+          -- Memorize original error message:
+          return_values, error_message = nil, ...
         end
-        idx = idx - 1
-        error_parts[idx] = debug_traceback(this_thread)
-        idx = idx - 1
-        error_parts[idx] = tostring(...)
-        -- Memorize error message:
-        return_values, error_message =
-          nil, table_concat(error_parts, "\n", idx, -1)
       end
       -- Throw "early return marker" to unwind the stack of the coroutine:
       return close(xpcall(resume, debug_traceback, early_return_marker))
