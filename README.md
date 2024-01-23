@@ -71,7 +71,6 @@ The fiber module provides the following functions:
 
   * **`fiber.spawn(action, ...)`** runs the `action` function with given
     arguments in a separate fiber and returns a handle for the spawned fiber.
-    This function is actually an effect (i.e. of type "`table`", but callable).
 
   * **`fiber.other()`** returns `true` if there is any other fiber. This
     function can be used to check if a main event loop should terminate, for
@@ -81,19 +80,11 @@ The fiber module provides the following functions:
     function can be used to check if it's okay to make a main event loop wait
     for I/O (e.g. by using an OS call that blocks execution).
 
-  * **`fiber.handle_scoped(handlers, action, ...)`** acts like `effect.handle`
-    but runs the action with an own fiber scheduler (using `fiber.scope`), thus
-    applies effect handlers also to all spawned fibers within the `action`
-    function. `fiber.handle` will not return until all fibers have terminated
-    or if an effect handler returns (in which case all spawned fibers are
-    killed).
-
-  * **`fiber.handle_spawned(handlers, action, ...)`** acts like `effect.handle`
-    but installs the effect handlers both on the `action` as well as on all
-    spawned fibers within the action. If an effect handler returns, other
-    spawned fibers may continue running. If the effect occurred in a spawned
-    fiber, then the return values of an effect handler are used as that fiber's
-    return values.
+  * **`fiber.handle(handlers, action, ...)`** acts like `effect.handle` but
+    additionally applies the effect handling to all spawned fibers within the
+    `action` function. It is implemented by wrapping the `action` with
+    `fiber.scope`. Thus `fiber.handle` will not return until all fibers have
+    terminated.
 
 A fiber handle `f` provides the following attributes and methods:
 

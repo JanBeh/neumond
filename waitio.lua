@@ -39,7 +39,7 @@ end
 
 function _M.main(...)
   local eventqueue = lkq.new_queue()
-  fiber.handle_scoped(
+  fiber.handle(
     {
       [get_eventqueue] = function(resume)
         return resume(eventqueue)
