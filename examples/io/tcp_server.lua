@@ -7,7 +7,7 @@ local terminate = effect.new("terminate")
 fiber.main(
   eio.main,
   function()
-    fiber.handle(
+    fiber.handle_scoped(
       {
         [terminate] = function(resume)
           print("Terminating.")

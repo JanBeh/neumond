@@ -197,12 +197,9 @@ _M.fiber_metatbl = {
   end,
 }
 
--- spawn(action, ...) spawns a new fiber with the given action function and
--- arguments to the action function:
-function _M.spawn(...)
-  -- Use spawn function of current fiber:
-  return fiber_attrs[get_current()].spawn(...)
-end
+-- Effect taking an action function and its arguments, which spawns a fiber:
+local spawn = effect.new("fiber.spawn")
+_M.spawn = spawn
 
 -- Function checking if there is any fiber except the current one
 -- (sleeping or pending):
@@ -299,6 +296,41 @@ local function schedule(nested, ...)
   local current_fiber
   -- Function running main loop (with tail-recursion), defined later:
   local resume_scheduled
+  -- Implementation of spawning:
+  local function spawn_impl(func, ...)
+    -- Create new fiber handle:
+    local fiber = setmetatable({}, _M.fiber_metatbl)
+    -- Create storage table for fiber's attributes:
+    local attrs = {
+      -- Store certain upvalues as private attributes:
+      open_fibers = open_fibers,
+      woken_fibers = woken_fibers,
+      parent_fiber = parent_fiber,
+      -- Initialize "killed" attribute to false:
+      killed = false,
+    }
+    -- Store attribute table in ephemeron:
+    fiber_attrs[fiber] = attrs
+    -- Pack arguments to spawned fiber's function:
+    local args = table.pack(...)
+    -- Initialize resume function for first run:
+    attrs.resume = function()
+      -- Mark fiber as started, such that cleanup may take place later:
+      attrs.started = true
+      -- Run fiber's function and store its return values:
+      attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
+      -- Terminate fiber through effect:
+      return terminate()
+    end
+    -- Remember fiber as being open so it can be cleaned up later:
+    open_fibers[fiber] = true
+    -- Wakeup fiber for the first time (without waking parents because the
+    -- fiber's scheduler and all parent schedulers if existent are currently
+    -- running and will not sleep but only yield when there is a woken fiber):
+    woken_fibers:push(fiber)
+    -- Return new fiber handle:
+    return fiber
+  end
   -- Declare handlers table because entries need to refer to handlers table:
   local handlers
   -- Define handlers table:
@@ -324,6 +356,11 @@ local function schedule(nested, ...)
       -- Jump to main loop:
       return resume_scheduled()
     end,
+    -- Effect spawning a new fiber:
+    [spawn] = function(resume, ...)
+      -- Spawn and re-install handler on resuming with new fiber handle:
+      return effect.handle_once(handlers, resume, spawn_impl(...))
+    end,
     -- Effect invoked when fiber has terminated:
     [terminate] = function(resume)
       -- Note that this effect must not be invoked unless a result (return
@@ -347,44 +384,8 @@ local function schedule(nested, ...)
       return resume_scheduled()
     end
   }
-  -- Implementation of spawn function for current scheduler:
-  local function spawn(func, ...)
-    -- Create new fiber handle:
-    local fiber = setmetatable({}, _M.fiber_metatbl)
-    -- Create storage table for fiber's attributes:
-    local attrs = {
-      -- Store certain upvalues as private attributes:
-      open_fibers = open_fibers,
-      woken_fibers = woken_fibers,
-      spawn = spawn,
-      parent_fiber = parent_fiber,
-      -- Initialize "killed" attribute to false:
-      killed = false,
-    }
-    -- Store attribute table in ephemeron:
-    fiber_attrs[fiber] = attrs
-    -- Pack arguments to spawned fiber's function:
-    local args = table.pack(...)
-    -- Initialize resume function for first run:
-    attrs.resume = function()
-      -- Mark fiber as started, such that cleanup may take place later:
-      attrs.started = true
-      -- Run fiber's function and store its return values:
-      attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
-      -- Terminate fiber through effect:
-      return terminate()
-    end
-    -- Remember fiber as being open so it can be cleaned up later:
-    open_fibers[fiber] = true
-    -- Wakeup fiber for the first time (without waking parents because the
-    -- fiber's scheduler and all parent schedulers if existent are currently
-    -- running and will not sleep but only yield when there is a woken fiber):
-    woken_fibers:push(fiber)
-    -- Return fiber's handle:
-    return fiber
-  end
   -- Spawn main fiber:
-  local main = spawn(...)
+  local main = spawn_impl(...)
   -- Unless running as top-level scheduler, include special marker (false) in
   -- "woken_fiber" FIFO to indicate that control has to be yielded to the
   -- parent scheduler:
@@ -463,10 +464,26 @@ function _M.scope(...)
   return schedule(true, ...)
 end
 
--- handle(handlers, action, ...) acts like effect.handle(action, ...) but also
--- applies to spawned fibers within the action.
-function _M.handle(handlers, ...)
+-- handle_scoped(handlers, action, ...) acts like effect.handle(action, ...)
+-- but runs the action with an own fiber scheduler, thus applies effect
+-- handlers also to all spawned fibers within the action.
+function _M.handle_scoped(handlers, ...)
   return effect.handle(handlers, schedule, true, ...)
 end
+
+-- handle_spawned(handlers, action, ...) acts like effect.handle(action, ...)
+-- but installs the effect handlers both on the action as well as on all
+-- spawned fibers within the action.
+local function handle_spawned(handlers, ...)
+  return effect.handle(
+    {
+      [spawn] = function(resume, ...)
+        return resume(spawn(handle_spawned, handlers, ...))
+      end,
+    },
+    effect.handle, handlers, ...
+  )
+end
+_M.handle_spawned = handle_spawned
 
 return _M
