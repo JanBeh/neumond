@@ -166,8 +166,8 @@ function _M.handle(handlers, ...)
         error("unhandled effect or yield: " .. tostring((...)), 0)
       end
     else
-      -- This should not happen due to the action_wrapper, which catches all
-      -- exceptions in the action function.
+      -- Resuming the coroutine reported an error. This should normally not
+      -- happen unless a resume function was used twice.
       error("unhandled error in coroutine: " .. tostring((...)))
     end
   end
