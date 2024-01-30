@@ -142,24 +142,30 @@ end
 -- Method killing the fiber, i.e. stopping its further execution:
 function fiber_methods.kill(self)
   local attrs = fiber_attrs[self]
+  -- Check if fiber has already terminated (with return value or killed):
+  if attrs.results or attrs.killed then
+    -- Fiber is already killed.
+    -- Do nothing.
+    return
+  end
+  -- Mark fiber as killed:
+  attrs.killed = true
+  -- Check if killed fiber is current fiber:
+  if self == get_current() then
+    -- Killed fiber is currently running.
+    -- Simply terminate currently running fiber (already marked as killed):
+    return terminate()
+  end
+  -- Obtain resume function (which must exist at this point):
   local resume = attrs.resume
-  -- Check if resume function exists:
-  if resume then
-    -- Check if resume function is a continuation:
-    if attrs.started then
-      -- "resume" is a continuation.
-      -- Discontinue the continuation:
-      effect.discontinue(resume)
-    end
-    -- Ensure that fiber is not continued when woken:
-    attrs.resume = nil
+  -- Check if resume function is a continuation:
+  if attrs.started then
+    -- "resume" is a continuation.
+    -- Discontinue the continuation:
+    effect.discontinue(resume)
   end
-  -- Check if results are missing:
-  if not attrs.results then
-    -- Fiber did not generate a return value.
-    -- Mark fiber as killed:
-    attrs.killed = true
-  end
+  -- Ensure that fiber is not continued when woken or cleaned up:
+  attrs.resume = nil
   -- Wakeup all fibers that are waiting for this fiber's return values:
   local waiting_fibers = attrs.waiting_fibers
   if waiting_fibers then
@@ -170,12 +176,6 @@ function fiber_methods.kill(self)
       end
       waiting_fiber:wake()
     end
-  end
-  -- Check if killed fiber is current fiber:
-  if self == get_current() then
-    -- Killed fiber is currently running.
-    -- Terminate currently running fiber:
-    return terminate()
   end
 end
 
@@ -259,7 +259,10 @@ local open_fibers_metatbl = {
         effect.discontinue(resume)
         -- Note that it's not necessary to set attrs.resume to nil here,
         -- because when open_fibers is closed, there will be no scheduler
-        -- anymore that would call the resume function.
+        -- anymore that would call the resume function. Moreover, the kill
+        -- method will short-circuit when the killed attribute is true and thus
+        -- also not call the resume function.
+        --attrs.resume = nil
       end
       -- Check if results are missing:
       if not attrs.results then
