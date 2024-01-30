@@ -179,7 +179,7 @@ function _M.tcplisten(...)
   return wrap_listener(listener)
 end
 
-_M.wait_signal = waitio.wait_signal
+_M.catch_signal = waitio.catch_signal
 
 _M.stdin = wrap_handle(nbio.stdin)
 _M.stdout = wrap_handle(nbio.stdout)
