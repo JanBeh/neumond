@@ -472,4 +472,22 @@ function _M.handle(handlers, ...)
   return effect.handle(handlers, schedule, true, ...)
 end
 
+-- Internal effect and handlers for autokill function below:
+local autokill_effect = effect.new("fiber.autokill")
+local autokill_handlers = {
+  [autokill_effect] = function(resume, ...) return ... end,
+}
+
+-- autokill(action, ...) executes the action function and automatically kills
+-- all spawned fibers within the action as soon as the action function returns.
+function _M.autokill(action, ...)
+  return _M.handle(
+    autokill_handlers,
+    function(...)
+      return autokill_effect(action(...))
+    end,
+    ...
+  )
+end
+
 return _M

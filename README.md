@@ -86,6 +86,10 @@ The fiber module provides the following functions:
     `fiber.scope`. Thus `fiber.handle` will not return until all fibers have
     terminated.
 
+  * **`fiber.autokill(action, ...)`** executes the `action` function with
+    optional arguments and automatically kills all spawned fibers within the
+    action as soon as the action function returns.
+
 A fiber handle `f` provides the following attributes and methods:
 
   * **`f:wake()`** wakes up fiber `f` if it has not terminated yet.
