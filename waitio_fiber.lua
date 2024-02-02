@@ -26,7 +26,7 @@ end
 local weak_mt = { __mode = "k" }
 
 function _M.main(...)
-  local eventqueue = lkq.new_queue()
+  local eventqueue <close> = lkq.new_queue()
   local signal_catchers = {}
   local signal_fibers <close> = setmetatable({}, {
     __close = function(self)
