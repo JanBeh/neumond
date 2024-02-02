@@ -1,9 +1,10 @@
 local effect = require "effect"
 local fiber = require "fiber"
 local waitio = require "waitio"
+local waitio_fiber = require "waitio_fiber"
 
 fiber.main(
-  waitio.main,
+  waitio_fiber.main,
   function()
     print("reader started")
     fiber.yield()

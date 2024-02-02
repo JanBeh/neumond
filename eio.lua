@@ -4,8 +4,9 @@ local _M = {}
 local effect = require "effect"
 local nbio = require "nbio"
 local waitio = require "waitio"
+local waitio_fiber = require "waitio_fiber"
 
-_M.main = waitio.main
+_M.main = waitio_fiber.main
 
 local handle_methods = {}
 
