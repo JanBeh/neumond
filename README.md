@@ -53,16 +53,16 @@ The fiber module provides the following functions (of which some are
 implemented as effects):
 
   * **`fiber.main(action, ...)`** runs the `action` function with given
-    arguments as main fiber which may spawn additional fibers. It returns the
-    return values of the main fiber when execution of all fibers has stopped
-    (i.e. when all fibers have terminated or are sleeping).
+    arguments as main fiber which may spawn additional fibers. `fiber.main`
+    returns as soon as `action` returns (i.e. won't wait for spawned fibers to
+    terminate).
 
   * **`fiber.scope(action, ...)`** runs the `action` function with given
     arguments and handles spawning (but still requires `fiber.main` to be
-    already running). It does not return until all spawned fibers within the
-    action have terminated, and, in turn, allows any effects caused by spawned
-    fibers to be handled by effect handlers that have been installed before
-    calling `fiber.scope`.
+    already running). When `action` terminates all spawned fibers within the
+    action which are still running are automatically killed. In turn, this
+    allows any effects caused by spawned fibers to be handled by effect
+    handlers that have been installed before calling `fiber.scope`.
 
   * **`fiber.current()`** obtains a handle for the currently running fiber.
 
@@ -73,23 +73,15 @@ implemented as effects):
   * **`fiber.spawn(action, ...)`** runs the `action` function with given
     arguments in a separate fiber and returns a handle for the spawned fiber.
 
-  * **`fiber.other()`** returns `true` if there is any other fiber. This
-    function can be used to check if a main event loop should terminate, for
-    example.
-
   * **`fiber.pending()`** returns `true` if there is any woken fiber. This
     function can be used to check if it's okay to make a main event loop wait
     for I/O (e.g. by using an OS call that blocks execution).
 
-  * **`fiber.handle(handlers, action, ...)`** acts like `effect.handle` but
-    additionally applies the effect handling to all spawned fibers within the
-    `action` function. It is implemented by wrapping the `action` with
-    `fiber.scope`. Thus `fiber.handle` will not return until all fibers have
-    terminated.
-
-  * **`fiber.autokill(action, ...)`** executes the `action` function with
-    optional arguments and automatically kills all spawned fibers within the
-    action as soon as the action function returns.
+  * **`fiber.handle(handlers, action, ...)`** is equivalent to
+    `effect.handle(handlers, fiber.scope, action, ...)` and acts like
+    `effect.handle` but additionally applies the effect handling to all spawned
+    fibers within the `action` function. Any spawned fibers within `action` get
+    killed once `action` returns.
 
 A fiber handle `f` provides the following attributes and methods:
 

@@ -215,25 +215,6 @@ _M.fiber_metatbl = {
   end,
 }
 
--- Function checking if there is any fiber except the current one
--- (sleeping or pending):
-function _M.other()
-  local fiber = get_current()
-  while fiber do
-    local attrs = fiber_attrs[fiber]
-    local open_fibers = attrs.open_fibers
-    -- Check if there are at least two fibers in current context:
-    if next(open_fibers, next(open_fibers)) then
-      -- There are at least two fibers in current context,
-      -- i.e. there is at least one other fiber.
-      return true
-    end
-    -- Repeat procedure for all parent fibers:
-    fiber = attrs.parent_fiber
-  end
-  return false
-end
-
 -- Function checking if there is any woken fiber:
 function _M.pending()
   local fiber = get_current()
@@ -411,6 +392,13 @@ local function schedule(nested, ...)
   end
   -- Main scheduling loop (using tail-recursion):
   resume_scheduled = function()
+    -- Check if main fiber has terminated:
+    local main_results = fiber_attrs[main].results
+    if main_results then
+      -- Main fiber has terminated.
+      -- Return results of main fiber:
+      return table.unpack(main_results, 1, main_results.n)
+    end
     -- Obtain next fiber to resume (or special marker):
     local fiber = woken_fibers:pop()
     -- Check if entry in "woken_fibers" was special marker (false) and if there
@@ -436,16 +424,10 @@ local function schedule(nested, ...)
     -- Check if there is no fiber to be woken and no parent:
     if not fiber then
       -- There is no woken fiber and no parent.
-      -- Check if main fiber has returned:
-      local results = main.results
-      if results then
-        -- Main fiber has returned.
-        -- Return return values of main fiber:
-        return table.unpack(results, 1, results.n)
-      end
-      -- Main fiber has not returned, thus there is a deadlock.
       -- Throw an exception:
-      error("fiber did not return", 0)
+      -- (Note: Use level 3 because of to-be-closed variable avoiding
+      -- tail-call.)
+      error("fibers are deadlocked", 3)
     end
     -- Obtain resume function (if exists):
     local attrs = fiber_attrs[fiber]
@@ -465,6 +447,7 @@ local function schedule(nested, ...)
     return resume_scheduled()
   end
   -- Start main loop:
+  -- (Note: This is not a tail-call due to to-be-closed variable.)
   return resume_scheduled()
 end
 
@@ -485,24 +468,6 @@ end
 -- applies to spawned fibers within the action.
 function _M.handle(handlers, ...)
   return effect.handle(handlers, schedule, true, ...)
-end
-
--- Internal effect and handlers for autokill function below:
-local autokill_effect = effect.new("fiber.autokill")
-local autokill_handlers = {
-  [autokill_effect] = function(resume, ...) return ... end,
-}
-
--- autokill(action, ...) executes the action function and automatically kills
--- all spawned fibers within the action as soon as the action function returns.
-function _M.autokill(action, ...)
-  return _M.handle(
-    autokill_handlers,
-    function(...)
-      return autokill_effect(action(...))
-    end,
-    ...
-  )
 end
 
 return _M

@@ -21,4 +21,6 @@ fiber.main(function()
       fiber.yield()
     end
   end)
+  a:try_await()
+  b:try_await()
 end)

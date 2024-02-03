@@ -49,30 +49,30 @@ local function double_hello()
   end)
 end
 
-local function foo()
-  fiber.spawn(function()
-    for i = 1, 5 do
-      -- This should run concurrently with fibers spawned outside "foo":
-      log("tick " .. i)
-      fiber.yield()
-    end
-  end)
-  -- We only want this to be logged specially:
+local function task1()
+  for i = 1, 5 do
+    log("tick " .. i)
+    fiber.yield()
+  end
+end
+
+local function task2()
+  -- Only this shall be logged as important:
   logging_important(double_hello)
+  -- This shall be logged normally:
+  for i = 1, 5 do
+    log("tock " .. i)
+    fiber.yield()
+  end
 end
 
 fiber.main(function()
   logging(function()
-    -- Do not leave this context until all spawned fibers are done, so it is
-    -- possible to use the log effect:
     fiber.scope(function()
-      foo()
-      fiber.spawn(function()
-        for i = 1, 5 do
-          log("tock " .. i)
-          fiber.yield()
-        end
-      end)
+      local f1 = fiber.spawn(task1)
+      local f2 = fiber.spawn(task2)
+      f1:try_await()
+      f2:try_await()
     end)
   end)
 end)

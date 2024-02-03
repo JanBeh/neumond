@@ -48,6 +48,8 @@ local retval = fiber.main(function()
         end
         return "Consumer finished"
       end)
+      producer:try_await()
+      consumer:try_await()
       return "Inner block done"
     end)
   end)

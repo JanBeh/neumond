@@ -96,7 +96,7 @@ function _M.main(...)
     },
     function(body, ...)
       fiber.spawn(function()
-        while fiber.other() do
+        while true do
           if fiber.pending() then
             eventqueue:poll(wake)
           else

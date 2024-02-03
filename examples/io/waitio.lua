@@ -16,4 +16,3 @@ fiber.main(
     end
   end
 )
-
