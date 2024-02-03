@@ -49,26 +49,21 @@ local function fifoset()
   }
 end
 
--- Internally used effects (which are not exported) for
--- "current", "sleep", and "yield" functions:
+-- Effect returning handle of currently running fiber:
 local get_current = effect.new("fiber.current")
+_M.current = get_current
+
+-- Effect putting the currently running fiber to sleep:
 local sleep = effect.new("fiber.sleep")
+_M.sleep = sleep
+
+-- Effect yielding execution to another (unspecified) fiber:
 local yield = effect.new("fiber.yield")
+_M.yield = yield
 
--- Function returning a handle of the currently running fiber:
-_M.current = function()
-  return get_current()
-end
-
--- Function putting the currently running fiber to sleep:
-_M.sleep = function()
-  return sleep()
-end
-
--- Function yielding execution to another (unspecified) fiber:
-_M.yield = function()
-  return yield()
-end
+-- Effect spawning a new fiber (takes action function and optional arguments):
+local spawn = effect.new("fiber.spawn")
+_M.spawn = spawn
 
 -- Internally used effect when fiber terminates due to returning or being
 -- killed:
@@ -220,13 +215,6 @@ _M.fiber_metatbl = {
   end,
 }
 
--- spawn(action, ...) spawns a new fiber with the given action function and
--- arguments to the action function:
-function _M.spawn(...)
-  -- Use spawn function of current fiber:
-  return fiber_attrs[get_current()].spawn(...)
-end
-
 -- Function checking if there is any fiber except the current one
 -- (sleeping or pending):
 function _M.other()
@@ -325,56 +313,8 @@ local function schedule(nested, ...)
   local current_fiber
   -- Function running main loop (with tail-recursion), defined later:
   local resume_scheduled
-  -- Declare handlers table because entries need to refer to handlers table:
-  local handlers
-  -- Define handlers table:
-  handlers = {
-    -- Effect resuming with a handle of the currently running fiber:
-    [get_current] = function(resume)
-      -- Re-install handler on resuming with current fiber:
-      return effect.handle_once(handlers, resume, current_fiber)
-    end,
-    -- Effect putting the currently running fiber to sleep:
-    [sleep] = function(resume)
-      -- Store continuation:
-      fiber_attrs[current_fiber].resume = resume
-      -- Jump to main loop:
-      return resume_scheduled()
-    end,
-    -- Effect yielding execution to another (unspecified) fiber:
-    [yield] = function(resume)
-      -- Ensure that currently running fiber is woken again:
-      woken_fibers:push(current_fiber)
-      -- Store continuation:
-      fiber_attrs[current_fiber].resume = resume
-      -- Jump to main loop:
-      return resume_scheduled()
-    end,
-    -- Effect invoked when fiber has terminated:
-    [terminate] = function(resume)
-      -- Note that this effect must not be invoked unless a result (return
-      -- values) has been stored or the fiber has been marked as being killed.
-      -- Discontinue continuation:
-      effect.discontinue(resume)
-      -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
-      open_fibers[current_fiber] = nil
-      -- Wakeup all fibers that are waiting for this fiber's return values:
-      local waiting_fibers = fiber_attrs[current_fiber].waiting_fibers
-      if waiting_fibers then
-        while true do
-          local waiting_fiber = waiting_fibers:pop()
-          if not waiting_fiber then
-            break
-          end
-          waiting_fiber:wake()
-        end
-      end
-      -- Jump to main loop:
-      return resume_scheduled()
-    end
-  }
   -- Implementation of spawn function for current scheduler:
-  local function spawn(func, ...)
+  local function spawn_impl(func, ...)
     -- Create new fiber handle:
     local fiber = setmetatable({}, _M.fiber_metatbl)
     -- Create storage table for fiber's attributes:
@@ -409,8 +349,60 @@ local function schedule(nested, ...)
     -- Return fiber's handle:
     return fiber
   end
+  -- Declare handlers table because entries need to refer to handlers table:
+  local handlers
+  -- Define handlers table:
+  handlers = {
+    -- Effect resuming with a handle of the currently running fiber:
+    [get_current] = function(resume)
+      -- Re-install handler on resuming with current fiber:
+      return effect.handle_once(handlers, resume, current_fiber)
+    end,
+    -- Effect putting the currently running fiber to sleep:
+    [sleep] = function(resume)
+      -- Store continuation:
+      fiber_attrs[current_fiber].resume = resume
+      -- Jump to main loop:
+      return resume_scheduled()
+    end,
+    -- Effect yielding execution to another (unspecified) fiber:
+    [yield] = function(resume)
+      -- Ensure that currently running fiber is woken again:
+      woken_fibers:push(current_fiber)
+      -- Store continuation:
+      fiber_attrs[current_fiber].resume = resume
+      -- Jump to main loop:
+      return resume_scheduled()
+    end,
+    -- Effect spawning new fiber:
+    [spawn] = function(resume, ...)
+      return effect.handle_once(handlers, resume, spawn_impl(...))
+    end,
+    -- Effect invoked when fiber has terminated:
+    [terminate] = function(resume)
+      -- Note that this effect must not be invoked unless a result (return
+      -- values) has been stored or the fiber has been marked as being killed.
+      -- Discontinue continuation:
+      effect.discontinue(resume)
+      -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
+      open_fibers[current_fiber] = nil
+      -- Wakeup all fibers that are waiting for this fiber's return values:
+      local waiting_fibers = fiber_attrs[current_fiber].waiting_fibers
+      if waiting_fibers then
+        while true do
+          local waiting_fiber = waiting_fibers:pop()
+          if not waiting_fiber then
+            break
+          end
+          waiting_fiber:wake()
+        end
+      end
+      -- Jump to main loop:
+      return resume_scheduled()
+    end
+  }
   -- Spawn main fiber:
-  local main = spawn(...)
+  local main = spawn_impl(...)
   -- Unless running as top-level scheduler, include special marker (false) in
   -- "woken_fiber" FIFO to indicate that control has to be yielded to the
   -- parent scheduler:

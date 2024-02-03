@@ -49,7 +49,8 @@ Note that it is required to run `fiber.main(action, ...)` before any other
 functions of this module can be used. All other functions *must* be called from
 within the `action` function.
 
-The fiber module provides the following functions:
+The fiber module provides the following functions (of which some are
+implemented as effects):
 
   * **`fiber.main(action, ...)`** runs the `action` function with given
     arguments as main fiber which may spawn additional fibers. It returns the
