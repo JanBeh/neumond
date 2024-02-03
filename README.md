@@ -108,6 +108,10 @@ A fiber handle `f` provides the following attributes and methods:
     has terminated. The method then returns its return values. If the awaited
     fiber got killed, the current fiber will be killed as well.
 
+  * **`f:try_await()`** puts the currently running fiber to sleep until fiber
+    `f` has terminated. If `f` was killed, this method returns `false`,
+    otherwise returns `true` followed by `f`'s return values.
+
 ## Module `eio`
 
 Module for asynchronous I/O, working with the `effect` and `fiber` modules.

@@ -98,23 +98,24 @@ function fiber_methods.wake(fiber)
 end
 
 -- Method putting the currently executed fiber to sleep until being able to
--- return the given fiber's ("self"'s) result:
-function fiber_methods.await(self)
+-- return the given fiber's ("self"'s) results (prefixed by true as first
+-- return value) or until the fiber has been killed (in which case false is
+-- returned):
+local function try_await(self)
   local attrs = fiber_attrs[self]
   -- Try first if result is already available:
   local results = attrs.results
   if results then
     -- Result is already available.
-    -- Return available results:
-    return table.unpack(results, 1, results.n)
+    -- Return true with available results:
+    return true, table.unpack(results, 1, results.n)
   end
   -- Result is not yet available.
   -- Check if awaited fiber has been killed:
   if attrs.killed then
     -- Awaited fiber has already been killed.
-    -- Kill and terminate this fiber too:
-    fiber_attrs[get_current()].killed = true
-    return terminate()
+    -- Return false to indicate fiber has been killed and there are no results:
+    return false
   end
   -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
@@ -130,13 +131,35 @@ function fiber_methods.await(self)
     sleep()
     local results = attrs.results
     if results then
-      return table.unpack(results, 1, results.n)
+      return true, table.unpack(results, 1, results.n)
     end
     if attrs.killed then
-      fiber_attrs[get_current()].killed = true
-      return terminate()
+      return false
     end
   end
+end
+fiber_methods.try_await = try_await
+
+-- Helper function for await method below:
+local function require_try_await_success(success, ...)
+  -- Check if try_await reported success:
+  if success then
+    -- try_await was successful.
+    -- Return reported return values:
+    return ...
+  end
+  -- try_await reported killed fiber.
+  -- Kill current fiber as well:
+  fiber_attrs[get_current()].killed = true
+  return terminate()
+end
+
+-- Same method as try_await but killing the current fiber if the awaited fiber
+-- was killed:
+function fiber_methods.await(self)
+  -- Call try_await function/method and process variable number of return
+  -- values with helper function:
+  return require_try_await_success(try_await(self))
 end
 
 -- Method killing the fiber, i.e. stopping its further execution:
