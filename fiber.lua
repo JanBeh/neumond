@@ -50,8 +50,8 @@ local function fifoset()
 end
 
 -- Effect returning handle of currently running fiber:
-local get_current = effect.new("fiber.current")
-_M.current = get_current
+local current = effect.new("fiber.current")
+_M.current = current
 
 -- Effect putting the currently running fiber to sleep:
 local sleep = effect.new("fiber.sleep")
@@ -119,7 +119,7 @@ local function try_await(self)
     waiting_fibers = fifoset()
     attrs.waiting_fibers = waiting_fibers
   end
-  waiting_fibers:push(get_current())
+  waiting_fibers:push(current())
   -- Sleep until result is available or awaited fiber has been killed and
   -- proceed same as above:
   while true do
@@ -145,7 +145,7 @@ local function require_try_await_success(success, ...)
   end
   -- try_await reported killed fiber.
   -- Kill current fiber as well:
-  fiber_attrs[get_current()].killed = true
+  fiber_attrs[current()].killed = true
   return terminate()
 end
 
@@ -169,7 +169,7 @@ function fiber_methods.kill(self)
   -- Mark fiber as killed:
   attrs.killed = true
   -- Check if killed fiber is current fiber:
-  if self == get_current() then
+  if self == current() then
     -- Killed fiber is currently running.
     -- Simply terminate currently running fiber (already marked as killed):
     return terminate()
@@ -217,7 +217,7 @@ _M.fiber_metatbl = {
 
 -- Function checking if there is any woken fiber:
 function _M.pending()
-  local fiber = get_current()
+  local fiber = current()
   while fiber do
     local attrs = fiber_attrs[fiber]
     local woken_fibers = attrs.woken_fibers
@@ -284,7 +284,7 @@ local function schedule(nested, ...)
   -- Obtain parent fiber unless running as top-level scheduler:
   local parent_fiber
   if nested then
-    parent_fiber = get_current()
+    parent_fiber = current()
   end
   -- Remember all open fibers in a set with a cleanup handler:
   local open_fibers <close> = setmetatable({}, open_fibers_metatbl)
@@ -335,7 +335,7 @@ local function schedule(nested, ...)
   -- Define handlers table:
   handlers = {
     -- Effect resuming with a handle of the currently running fiber:
-    [get_current] = function(resume)
+    [current] = function(resume)
       -- Re-install handler on resuming with current fiber:
       return effect.handle_once(handlers, resume, current_fiber)
     end,
