@@ -120,11 +120,11 @@ local function try_await(self)
   -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
   local waiting_fibers = attrs.waiting_fibers
-  if not waiting_fibers then
-    waiting_fibers = fifoset()
-    attrs.waiting_fibers = waiting_fibers
+  if waiting_fibers then
+    waiting_fibers[#waiting_fibers+1] = current()
+  else
+    attrs.waiting_fibers = { current() }
   end
-  waiting_fibers:push(current())
   -- Sleep until result is available or awaited fiber has been killed and
   -- proceed same as above:
   while true do
@@ -162,11 +162,11 @@ function fiber_methods.await(self)
   -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
   local waiting_fibers = attrs.waiting_fibers
-  if not waiting_fibers then
-    waiting_fibers = fifoset()
-    attrs.waiting_fibers = waiting_fibers
+  if waiting_fibers then
+    waiting_fibers[#waiting_fibers+1] = current()
+  else
+    attrs.waiting_fibers = { current() }
   end
-  waiting_fibers:push(current())
   -- Sleep until result is available or awaited fiber has been killed and
   -- proceed same as above:
   while true do
@@ -212,11 +212,7 @@ function fiber_methods.kill(self)
   -- Wakeup all fibers that are waiting for this fiber's return values:
   local waiting_fibers = attrs.waiting_fibers
   if waiting_fibers then
-    while true do
-      local waiting_fiber = waiting_fibers:pop()
-      if not waiting_fiber then
-        break
-      end
+    for i, waiting_fiber in ipairs(waiting_fibers) do
       waiting_fiber:wake()
     end
   end
@@ -296,11 +292,7 @@ local open_fibers_metatbl = {
       -- Wakeup all fibers that are waiting for this fiber's return values:
       local waiting_fibers = attrs.waiting_fibers
       if waiting_fibers then
-        while true do
-          local waiting_fiber = waiting_fibers:pop()
-          if not waiting_fiber then
-            break
-          end
+        for i, waiting_fiber in ipairs(waiting_fibers) do
           waiting_fiber:wake()
         end
       end
@@ -361,11 +353,7 @@ local function schedule(nested, ...)
       -- Wakeup all fibers that are waiting for this fiber's return values:
       local waiting_fibers = fiber_attrs[current_fiber].waiting_fibers
       if waiting_fibers then
-        while true do
-          local waiting_fiber = waiting_fibers:pop()
-          if not waiting_fiber then
-            break
-          end
+        for i, waiting_fiber in ipairs(waiting_fibers) do
           waiting_fiber:wake()
         end
       end
