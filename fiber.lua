@@ -232,11 +232,10 @@ _M.fiber_metatbl = {
       -- Key is an attribute.
       -- Obtain value from "fiber_attrs" ephemeron and return it:
       return fiber_attrs[self][key]
-    else
-      -- Key is not an attribute.
-      -- Return method, if exists:
-      return value
     end
+    -- Key is not an attribute.
+    -- Return method, if exists:
+    return value
   end,
 }
 
