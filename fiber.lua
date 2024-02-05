@@ -103,7 +103,7 @@ end
 -- returned):
 local function try_await(self)
   local attrs = fiber_attrs[self]
-  -- Try first if result is already available:
+  -- Check if result is already available:
   local results = attrs.results
   if results then
     -- Result is already available.
@@ -113,7 +113,7 @@ local function try_await(self)
   -- Result is not yet available.
   -- Check if awaited fiber has been killed:
   if attrs.killed then
-    -- Awaited fiber has already been killed.
+    -- Awaited fiber has been killed.
     -- Return false to indicate fiber has been killed and there are no results:
     return false
   end
@@ -140,26 +140,46 @@ local function try_await(self)
 end
 fiber_methods.try_await = try_await
 
--- Helper function for await method below:
-local function require_try_await_success(success, ...)
-  -- Check if try_await reported success:
-  if success then
-    -- try_await was successful.
-    -- Return reported return values:
-    return ...
-  end
-  -- try_await reported killed fiber.
-  -- Kill current fiber as well:
-  fiber_attrs[current()].killed = true
-  return terminate()
-end
-
 -- Same method as try_await but killing the current fiber if the awaited fiber
--- was killed:
+-- was killed (implemented redundantly for performance reasons):
 function fiber_methods.await(self)
-  -- Call try_await function/method and process variable number of return
-  -- values with helper function:
-  return require_try_await_success(try_await(self))
+  local attrs = fiber_attrs[self]
+  -- Check if result is already available:
+  local results = attrs.results
+  if results then
+    -- Result is already available.
+    -- Return available results:
+    return table.unpack(results, 1, results.n)
+  end
+  -- Result is not yet available.
+  -- Check if awaited fiber has been killed:
+  if attrs.killed then
+    -- Awaited fiber has been killed.
+    -- Kill current fiber as well:
+    fiber_attrs[current()].killed = true
+    return terminate()
+  end
+  -- No result is available and awaited fiber has not been killed.
+  -- Add currently executed fiber to other fiber's waiting list:
+  local waiting_fibers = attrs.waiting_fibers
+  if not waiting_fibers then
+    waiting_fibers = fifoset()
+    attrs.waiting_fibers = waiting_fibers
+  end
+  waiting_fibers:push(current())
+  -- Sleep until result is available or awaited fiber has been killed and
+  -- proceed same as above:
+  while true do
+    sleep()
+    local results = attrs.results
+    if results then
+      return table.unpack(results, 1, results.n)
+    end
+    if attrs.killed then
+      fiber_attrs[current()].killed = true
+      return terminate()
+    end
+  end
 end
 
 -- Method killing the fiber, i.e. stopping its further execution:
