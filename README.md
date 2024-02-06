@@ -1,10 +1,56 @@
 # One-shot algebraic effect handling and asynchronous I/O in Lua
 
-This library is work in progress.
+This library is work in progress. It contains several modules for effect
+handling as well as lightweight threads (fibers) and asynchronous I/O based on
+the effect handling system.
 
 ## Module `effect`
 
-Module for algebraic effect handling implemented in pure Lua.
+Module for algebraic effect handling implemented in pure Lua with no
+dependencies other than Lua's standard library.
+
+The `effect` module allows to perform an effect (similar to an exception),
+which will then bubble up the stack until it hits a handler that "catches" the
+effect. Distinct from exception handlers, an effect handler may decide to
+*resume* the program flow at the position where the effect has been performed
+and also optionally modify the final return value of that continuation.
+
+The following example demonstrates control flow using effects. It prints out
+the two lines "`Hello`" and "`World`":
+
+```
+local effect = require "effect"
+
+local increment_result = effect.new("increment_result")
+
+local function foo()
+  increment_result("Hello")
+end
+
+local retval = effect.handle(
+  {
+    [increment_result] = function(resume, message)
+      print(message)
+      return resume() + 1
+    end,
+  },
+  function()
+    foo()
+    print("World")
+    return 5
+  end
+)
+
+assert(retval == 6)
+```
+
+In many cases, tail-call elimination can be performed. If an effect handler
+installed with `effect.handle` exits with `return resume(...)`, or if an effect
+handler installed with `effect.handle_once` exits with
+`return effect.handle_once(..., resume, ...)`, then the corresponding effect
+may be performed and over again, without causing a stack overflow.
+
+The module provides the following functions:
 
   * **`effect.new(name)`** returns an object that is suitable to be used as an
     effect. Note that any other object can be used as an effect as well, but an
