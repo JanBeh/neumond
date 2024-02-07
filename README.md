@@ -150,6 +150,61 @@ A fiber handle `f` provides the following attributes and methods:
     `f` has terminated. If `f` was killed, this method returns `false`,
     otherwise returns `true` followed by `f`'s return values.
 
+## Module `waitio`
+
+Module using effects to wait for I/O.
+
+Effects in this module do not operate directly but return a function that has
+to be called to actually perform the desired effect. This allows execution in
+the context of the caller rather than the effect handler.
+
+The following effects are defined by the module, of which none takes any
+argument:
+
+  * **`waitio.get_deregister_fd_func()`**
+
+  * **`waitio.get_wait_fd_read_func()`**
+
+  * **`waitio.get_wait_fd_write_func()`**
+
+  * **`waitio.get_catch_signal_func()`**
+
+The following helper functions perform the above effects and call the function
+returned by the respective effect:
+
+  * **`waitio.deregister_fd(fd)`** deregisters file descriptor `fd`, which
+    should be done before closing a file descriptor that is currently being
+    waited on.
+
+  * **`waitio.wait_fd_read(fd)`** waits until file descriptor `fd` is ready for
+    reading.
+
+  * **`waitio.wait_fd_write(fd)`** waits until file descriptor `fd` is ready
+    for writing.
+
+  * **`waitio.catch_signal(sig)`** starts listening for signal `sig` and
+    returns a callable handle, which, upon calling, waits until a signal has
+    been delivered since the handle has been created.
+
+## Module `waitio_fiber`
+
+Module providing handling of the effects defined in the `waitio` module using
+fibers to avoid blocking.
+
+Example use:
+
+```
+local fiber = require "fiber"
+local waitio_fiber = require "waitio_fiber"
+
+fiber.main(
+  waitio_fiber.main,
+  function()
+    -- code here may use waitio's functions
+  end
+)
+```
+
 ## Module `eio`
 
 Module for asynchronous I/O, working with the `effect` and `fiber` modules.

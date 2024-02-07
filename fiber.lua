@@ -1,4 +1,4 @@
--- Lightweight threads (fibers)
+-- Module for lightweight threads (fibers)
 
 -- Import "effect" module:
 local effect = require "effect"
