@@ -17,7 +17,7 @@ the effect handling system.
       * `waitio_blocking`
       * `waitio_fiber`
   * ***`nbio`*** (basic non-blocking I/O interface written in C)
-      * **`eio`** (basic I/O using fibers)
+      * **`eio`** (basic I/O)
 
 Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
