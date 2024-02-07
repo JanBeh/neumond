@@ -8,18 +8,19 @@ the effect handling system.
 
   * **`effect`** (effect handling)
       * **`fiber`** (lightweight threads)
-          * **`waitio_fiber`**
+          * `waitio_fiber`
       * **`waitio`** (waiting for I/O)
           * **`waitio_blocking`** (waiting for I/O through blocking)
           * **`waitio_fiber`** (waiting for I/O utilizing fibers)
-          * **`eio`**
+          * `eio`
   * ***`lkq`*** (`kqueue` interface)
-      * **`waitio_blocking`**
-      * **`waitio_fiber`**
+      * `waitio_blocking`
+      * `waitio_fiber`
   * ***`nbio`*** (basic non-blocking I/O interface written in C)
       * **`eio`** (basic I/O using fibers)
 
 Names of modules written in C are marked as *italic* in the above tree.
+Duplicates due to multiple dependencies are non-bold.
 
 ## Module `effect`
 
