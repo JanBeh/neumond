@@ -13,11 +13,13 @@ the effect handling system.
           * **`waitio_blocking`** (waiting for I/O through blocking)
           * **`waitio_fiber`** (waiting for I/O utilizing fibers)
           * `eio`
-  * ***`lkq`*** (`kqueue` interface)
+  * ***`lkq`*** ([`kqueue`] interface)
       * `waitio_blocking`
       * `waitio_fiber`
   * ***`nbio`*** (basic non-blocking I/O interface written in C)
       * **`eio`** (basic I/O)
+
+[`kqueue`]: https://man.freebsd.org/cgi/man.cgi?kqueue
 
 Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
