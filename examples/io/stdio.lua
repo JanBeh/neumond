@@ -1,9 +1,7 @@
-local effect = require "effect"
-local fiber = require "fiber"
+local waitio_fiber = require "waitio_fiber"
 local eio = require "eio"
 
-fiber.main(
-  eio.main,
+waitio_fiber.main(
   function()
     while true do
       local line, errmsg = eio.stdin:read(40, "\n")

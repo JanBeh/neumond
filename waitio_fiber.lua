@@ -25,7 +25,7 @@ end
 
 local weak_mt = { __mode = "k" }
 
-function _M.main(...)
+function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
   local signal_catchers = {}
   local signal_fibers <close> = setmetatable({}, {
@@ -107,6 +107,13 @@ function _M.main(...)
       end)
       return body(...)
     end,
+    ...
+  )
+end
+
+function _M.main(...)
+  return fiber.main(
+    _M.run,
     ...
   )
 end

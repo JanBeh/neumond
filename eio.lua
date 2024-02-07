@@ -3,9 +3,6 @@ local _M = {}
 
 local nbio = require "nbio"
 local waitio = require "waitio"
-local waitio_fiber = require "waitio_fiber"
-
-_M.main = waitio_fiber.main
 
 local handle_methods = {}
 

@@ -4,6 +4,23 @@ This library is work in progress. It contains several modules for effect
 handling as well as lightweight threads (fibers) and asynchronous I/O based on
 the effect handling system.
 
+## Module overview (dependency tree)
+
+  * **`effect`** (effect handling)
+      * **`fiber`** (lightweight threads)
+          * **`waitio_fiber`**
+      * **`waitio`** (waiting for I/O)
+          * **`waitio_blocking`** (waiting for I/O through blocking)
+          * **`waitio_fiber`** (waiting for I/O utilizing fibers)
+          * **`eio`**
+  * ***`lkq`*** (`kqueue` interface)
+      * **`waitio_blocking`**
+      * **`waitio_fiber`**
+  * ***`nbio`*** (basic non-blocking I/O interface written in C)
+      * **`eio`** (basic I/O using fibers)
+
+Names of modules written in C are marked as *italic* in the above tree.
+
 ## Module `effect`
 
 Module for algebraic effect handling implemented in pure Lua with no
@@ -95,7 +112,7 @@ Note that it is required to run `fiber.main(action, ...)` before any other
 functions of this module can be used. All other functions *must* be called from
 within the `action` function.
 
-The fiber module provides the following functions:
+The module provides the following functions:
 
   * **`fiber.main(action, ...)`** runs the `action` function with given
     arguments as main fiber which may spawn additional fibers. `fiber.main`
@@ -189,7 +206,18 @@ returned by the respective effect:
 ## Module `waitio_fiber`
 
 Module providing handling of the effects defined in the `waitio` module using
+`kqueue` system/library calls (through the `lkq` Lua module written in C) and
 fibers to avoid blocking.
+
+The module provides the following functions:
+
+  * **`waitio_fiber.run(action, ...)`** runs the `action` function while the
+    effects of the `waitio` module are handled with the help of fibers provided
+    by the `fiber` module. This function does not install a fiber scheduler and
+    thus must be called within the context of `fiber.main`.
+
+  * **`waitio_fiber.main(action, ...)`** is equivalent to
+    `fiber.main(waitio_fiber.run, action, ...)`.
 
 Example use:
 
@@ -198,7 +226,19 @@ local fiber = require "fiber"
 local waitio_fiber = require "waitio_fiber"
 
 fiber.main(
-  waitio_fiber.main,
+  waitio_fiber.run,
+  function()
+    -- code here may use waitio's functions
+  end
+)
+```
+
+Or:
+
+```
+local waitio_fiber = require "waitio_fiber"
+
+waitio_fiber.main(
   function()
     -- code here may use waitio's functions
   end
@@ -207,17 +247,19 @@ fiber.main(
 
 ## Module `eio`
 
-Module for asynchronous I/O, working with the `effect` and `fiber` modules.
-The usual way to use this module is:
+Module for asynchronous I/O, using non-blocking I/O (through the `nbio` Lua
+module written in C) and the `waitio` module to wait for I/O.
+
+The usual way to use this module is to use its function in the `action` of a
+single `waitio_fiber.main(action, ...)` call. Example:
 
 ```
-local fiber = require "fiber"
+local waitio_fiber = require "waitio_fiber"
 local eio = require "eio"
 
-fiber.main(
-  eio.main,
+waitio_fiber.main(
   function()
-    -- code goes here
+    eio.stdout:flush("Hello World!\n")
   end
 )
 ```

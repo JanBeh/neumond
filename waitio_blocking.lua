@@ -13,7 +13,7 @@ end
 
 local weak_mt = { __mode = "k" }
 
-function _M.main(...)
+function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
   local signal_waiters = {}
   local waiters = {}
@@ -73,5 +73,7 @@ function _M.main(...)
     ...
   )
 end
+
+_M.main = _M.run
 
 return _M
