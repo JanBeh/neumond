@@ -75,7 +75,7 @@ The module provides the following functions:
     debugging.
 
   * **`effect.perform(eff, ...)`** performs the effect `eff` with optional
-    arguments.
+    arguments. May or may not return.
 
   * **`effect.handle(handlers, action, ...)`** calls the `action` function with
     given arguments and, during execution of the action function, handles those
@@ -85,6 +85,8 @@ The module provides the following functions:
     argument followed by optional arguments that have been passed to the
     `effect.perform` function. Handlers in the `handlers` table passed to the
     `effect.handle` function may resume the action only *before* returning.
+    Optional arguments passed to the continuation function are returned by
+    `effect.perform`.
 
   * **`effect.handle_once(handlers, action, ...)`** does the same as `handle`,
     but:
@@ -105,6 +107,14 @@ installed with `effect.handle` exits with `return resume(...)`, or if an effect
 handler installed with `effect.handle_once` exits with
 `return effect.handle_once(handlers, resume, ...)`, then the corresponding
 effect may be performed and over again, without causing a stack overflow.
+
+Sometimes an effect hander may wish to execute code in the context of the
+performer of the effect (e.g. to perform other effects in *that* context). To
+achieve this, it is possible to pass to the continuation function (`resume`)
+the special value **`effect.autocall`** followed by a function (or callable
+object) `f` and optional arguments. In that case, `effect.perform` will not
+return those values but call the function `f` (with given arguments) and return
+`f`'s return values.
 
 ## Module `fiber`
 
@@ -174,23 +184,7 @@ A fiber handle `f` provides the following attributes and methods:
 
 Module using effects to wait for I/O.
 
-Effects in this module do not operate directly but return a function that has
-to be called to actually perform the desired effect. This allows execution in
-the context of the caller rather than the effect handler.
-
-The following effects are defined by the module, of which none takes any
-argument:
-
-  * **`waitio.get_deregister_fd_func()`**
-
-  * **`waitio.get_wait_fd_read_func()`**
-
-  * **`waitio.get_wait_fd_write_func()`**
-
-  * **`waitio.get_catch_signal_func()`**
-
-The following helper functions perform the above effects and call the function
-returned by the respective effect:
+The module provides several effects only (no handlers):
 
   * **`waitio.deregister_fd(fd)`** deregisters file descriptor `fd`, which
     should be done before closing a file descriptor that is currently being
@@ -204,7 +198,7 @@ returned by the respective effect:
 
   * **`waitio.catch_signal(sig)`** starts listening for signal `sig` and
     returns a callable handle, which, upon calling, waits until a signal has
-    been delivered since the handle has been created.
+    been delivered.
 
 ## Module `waitio_fiber`
 

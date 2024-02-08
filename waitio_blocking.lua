@@ -57,17 +57,17 @@ function _M.run(...)
   end
   effect.handle(
     {
-      [waitio.get_deregister_fd_func] = function(resume)
-        return resume(deregister_fd)
+      [waitio.deregister_fd] = function(resume, fd)
+        return resume(effect.autocall, deregister_fd, fd)
       end,
-      [waitio.get_wait_fd_read_func] = function(resume)
-        return resume(wait_fd_read)
+      [waitio.wait_fd_read] = function(resume, fd)
+        return resume(effect.autocall, wait_fd_read, fd)
       end,
-      [waitio.get_wait_fd_write_func] = function(resume)
-        return resume(wait_fd_write)
+      [waitio.wait_fd_write] = function(resume, fd)
+        return resume(effect.autocall, wait_fd_write, fd)
       end,
-      [waitio.get_catch_signal_func] = function(resume)
-        return resume(catch_signal)
+      [waitio.catch_signal] = function(resume, sig)
+        return resume(effect.autocall, catch_signal, sig)
       end,
     },
     ...
