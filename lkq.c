@@ -10,7 +10,7 @@
 
 #define LKQ_EVENT_COUNT 64
 
-#define LKQ_MAXSTRERRORLEN 160
+#define LKQ_MAXSTRERRORLEN 1024
 #define LKQ_STRERROR_R_MSG "error detail unavailable due to noncompliant strerror_r() implementation"
 #define lkq_prepare_errmsg(errcode) \
   char errmsg[LKQ_MAXSTRERRORLEN] = LKQ_STRERROR_R_MSG; \

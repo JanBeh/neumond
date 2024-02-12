@@ -18,11 +18,10 @@
 
 #define NBIO_OPEN_DEFAULT_FLAGS "r"
 
-#define NBIO_MAXSTRERRORLEN 160
-#define NBIO_STRERROR_R_MSG "error detail unavailable due to noncompliant strerror_r() implementation"
-
 #define NBIO_SUN_PATH_MAXLEN (sizeof(struct sockaddr_un) - offsetof(struct sockaddr_un, sun_path) - 1)
 
+#define NBIO_MAXSTRERRORLEN 1024
+#define NBIO_STRERROR_R_MSG "error detail unavailable due to noncompliant strerror_r() implementation"
 #define nbio_prepare_errmsg(errcode) \
   char errmsg[NBIO_MAXSTRERRORLEN] = NBIO_STRERROR_R_MSG; \
   strerror_r((errcode), errmsg, NBIO_MAXSTRERRORLEN)
