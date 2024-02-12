@@ -302,7 +302,7 @@ end
 -- effect handler returns.
 --
 -- Tail-call optimization is done when invoking
--- handle_once(handlers, resume, ...) with a resume funcion that has been
+-- handle_once(handlers, resume, ...) with a resume function that has been
 -- previously returned by handle_once.
 --
 -- No cleanup work is done if an effect handler in the handlers table passed to
