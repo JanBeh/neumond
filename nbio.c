@@ -1,3 +1,20 @@
+#ifdef __linux__
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#else
+#ifdef _GNU_SOURCE
+#error Defining _GNU_SOURCE may result in non-compliant strerror_r definition and is supported for GNU/Linux only.
+#endif
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
+#endif
+
+#ifndef SO_NOSIGPIPE
+#define NBIO_IGNORE_SIGPIPE_COMPLETELY
+#endif
+
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
@@ -9,6 +26,10 @@
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <fcntl.h>
+
+#ifdef NBIO_IGNORE_SIGPIPE_COMPLETELY
+#include <signal.h>
+#endif
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -22,9 +43,15 @@
 
 #define NBIO_MAXSTRERRORLEN 1024
 #define NBIO_STRERROR_R_MSG "error detail unavailable due to noncompliant strerror_r() implementation"
+#ifdef _GNU_SOURCE
+#define nbio_prepare_errmsg(errcode) \
+  char errmsg_buf[NBIO_MAXSTRERRORLEN] = NBIO_STRERROR_R_MSG; \
+  char *errmsg = strerror_r((errcode), errmsg_buf, NBIO_MAXSTRERRORLEN)
+#else
 #define nbio_prepare_errmsg(errcode) \
   char errmsg[NBIO_MAXSTRERRORLEN] = NBIO_STRERROR_R_MSG; \
   strerror_r((errcode), errmsg, NBIO_MAXSTRERRORLEN)
+#endif
 
 #define NBIO_HANDLE_MT_REGKEY "nbio_handle"
 #define NBIO_LISTENER_MT_REGKEY "nbio_listener"
@@ -97,6 +124,7 @@ static int nbio_push_handle(
     if (!shared) close(fd);
     return lua_error(L);
   }
+#ifdef SO_NOSIGPIPE
   if (!shared) {
     static const int val = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
@@ -107,6 +135,7 @@ static int nbio_push_handle(
       );
     }
   }
+#endif
   nbio_handle_t *handle = lua_touserdata(L, -1);
   handle->state = NBIO_STATE_OPEN;
   handle->fd = fd;
@@ -873,18 +902,7 @@ static int nbio_listener_accept(lua_State *L) {
   if (listener->fd == -1) luaL_error(L, "attempt to use closed listener");
   int fd;
   while (1) {
-#if defined(__linux__) && !defined(_GNU_SOURCE)
-    fd = accept(listener->fd, NULL, NULL);
-    if (fd != -1) {
-      if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1) {
-        nbio_prepare_errmsg(errno);
-        close(fd);
-        luaL_error(L, "error in fcntl call: %s", errmsg);
-      }
-    }
-#else
     fd = accept4(listener->fd, NULL, NULL, SOCK_CLOEXEC);
-#endif
     if (fd == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         lua_pushboolean(L, 0);
@@ -972,5 +990,8 @@ int luaopen_nbio(lua_State *L) {
   lua_setfield(L, -2, "stdout");
   nbio_push_handle(L, 2, AF_UNSPEC, 1);
   lua_setfield(L, -2, "stderr");
+#ifdef NBIO_IGNORE_SIGPIPE_COMPLETELY
+  signal(SIGPIPE, SIG_IGN);
+#endif
   return 1;
 }

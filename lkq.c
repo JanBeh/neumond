@@ -1,3 +1,8 @@
+#define _POSIX_C_SOURCE 200809L
+#ifdef _GNU_SOURCE
+#error Defining _GNU_SOURCE may result in non-compliant strerror_r definition.
+#endif
+
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
@@ -96,7 +101,7 @@ static int lkq_deregister_fd(lua_State *L) {
   return 0;
 }
 
-static int lkq_add_fd_read_impl(lua_State *L, u_short flags) {
+static int lkq_add_fd_read_impl(lua_State *L, unsigned short flags) {
   lkq_queue_t *queue = lkq_check_queue(L, 1);
   int fd = luaL_checkinteger(L, 2);
   struct kevent event;
@@ -145,7 +150,7 @@ static int lkq_remove_fd_read(lua_State *L) {
   return 0;
 }
 
-static int lkq_add_fd_write_impl(lua_State *L, u_short flags) {
+static int lkq_add_fd_write_impl(lua_State *L, unsigned short flags) {
   lkq_queue_t *queue = lkq_check_queue(L, 1);
   int fd = luaL_checkinteger(L, 2);
   struct kevent event;
