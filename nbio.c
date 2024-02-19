@@ -11,10 +11,6 @@
 #endif
 #endif
 
-#ifndef SO_NOSIGPIPE
-#define NBIO_IGNORE_SIGPIPE_COMPLETELY
-#endif
-
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
@@ -27,7 +23,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#ifdef NBIO_IGNORE_SIGPIPE_COMPLETELY
+#ifndef SO_NOSIGPIPE
+#define NBIO_IGNORE_SIGPIPE_COMPLETELY
 #include <signal.h>
 #endif
 
