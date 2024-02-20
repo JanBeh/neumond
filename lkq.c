@@ -77,26 +77,39 @@ static int lkq_deregister_fd(lua_State *L) {
   lua_pushnil(L);
   lua_rawset(L, -3);
   struct kevent event[2];
-  EV_SET(event+0, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-  EV_SET(event+1, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+  EV_SET(event+0, fd, EVFILT_READ, EV_DELETE | EV_RECEIPT, 0, 0, NULL);
+  EV_SET(event+1, fd, EVFILT_WRITE, EV_DELETE | EV_RECEIPT, 0, 0, NULL);
   struct kevent tevent[2];
   int nevent = kevent(queue->fd, event, 2, tevent, 2, NULL);
-  for (int i=0; i<nevent; i++) {
-    if (tevent[i].flags & EV_ERROR) {
-      int err = tevent[i].data;
-      if (err != ENOENT) {
-        lkq_prepare_errmsg(err);
-        return luaL_error(
-          L, "deregistering file descriptor %d failed: %s", fd, errmsg
+  if (nevent == -1) {
+    if (errno != EINTR) {
+      lkq_prepare_errmsg(errno);
+      return luaL_error(L,
+        "deregistering file descriptor %d failed: %s", fd, errmsg
+      );
+    }
+  } else if (nevent != 2) {
+    return luaL_error(L,
+      "deregistering file descriptor %d failed: got wrong number of receipts",
+      fd
+    );
+  } else {
+    for (int i=0; i<2; i++) {
+      if (tevent[i].flags & EV_ERROR) {
+        int err = tevent[i].data;
+        if (err && err != ENOENT) {
+          lkq_prepare_errmsg(err);
+          return luaL_error(L,
+            "deregistering file descriptor %d failed: %s", fd, errmsg
+          );
+        }
+      } else {
+        return luaL_error(L,
+          "deregistering file descriptor %d failed: returned event is not a receipt",
+          fd
         );
       }
     }
-  }
-  if (nevent == -1 && errno != EINTR && errno != ENOENT) {
-    lkq_prepare_errmsg(errno);
-    return luaL_error(
-      L, "deregistering file descriptor %d failed: %s", fd, errmsg
-    );
   }
   return 0;
 }
