@@ -16,6 +16,9 @@ _M.wait_fd_read = effect.new("waitio.wait_fd_read")
 -- writing:
 _M.wait_fd_write = effect.new("waitio.wait_fd_write")
 
+-- Effect wait_pid(pid) waits until the process with the given pid has exited:
+_M.wait_pid = effect.new("waitio.wait_pid")
+
 -- Effect catch_signal(sig) starts listening for signal sig and returns a
 -- callable handle which, upon calling, waits until a signal has been
 -- delivered:

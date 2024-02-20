@@ -40,6 +40,14 @@ function _M.run(...)
       eventqueue:wait(wake)
     end
   end
+  local function wait_pid(pid)
+    local waiter = {}
+    waiters[waiter] = true
+    eventqueue:add_pid(pid, waiter)
+    while waiters[waiter] do
+      eventqueue:wait(wake)
+    end
+  end
   local function catch_signal(sig)
     local waiter = signal_waiters[sig]
     if not waiter then
@@ -65,6 +73,9 @@ function _M.run(...)
       end,
       [waitio.wait_fd_write] = function(resume, fd)
         return resume(effect.autocall, wait_fd_write, fd)
+      end,
+      [waitio.wait_pid] = function(resume, pid)
+        return resume(effect.autocall, wait_pid, pid)
       end,
       [waitio.catch_signal] = function(resume, sig)
         return resume(effect.autocall, catch_signal, sig)

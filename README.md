@@ -279,6 +279,10 @@ Available functions:
     (`host`) and `port` and returns a listener handle on success (`nil` and
     error message otherwise).
 
+  * **`eio.execute(file, ...)`** executes `file` with optional arguments in a
+    subprocess and returns a child handle on success (`nil` and error message
+    otherwise). Note that no shell is involved unless `file` is a shell.
+
 Note that name resolution is blocking, even though any other I/O is handled
 async.
 
@@ -291,6 +295,17 @@ A listener handle `l` provides the following methods:
   * **`h:close()`** closes the listener. This function returns immediately and
     does not report any errors.
 
+A child handle `c` provides the following attributes and methods:
+
+  * **`c:kill(sig)`** kills the process with signal number `sig` (defaults to
+    `9` for SIGKILL).
+
+  * **`c:wait()`** waits until the process has terminated and returns a
+    positive exit code or a negated signal number, depending on how the process
+    terminated.
+
+  * **`c.stdin`**, **`c.stdout`**, **`c.stderr`** are I/O handles connected
+    with the process' stdin, stderr, and stdout, respectively.
 
 An I/O handle `h` provides the following attributes and methods:
 

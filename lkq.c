@@ -230,7 +230,6 @@ static int lkq_add_signal(lua_State *L) {
       "adding handler for signal %d failed: %s", sig, errmsg
     );
   }
-
   lua_settop(L, 3);
   lua_getiuservalue(L, 1, LKQ_QUEUE_CALLBACK_ARGS_UVIDX);
   lkq_push_filterid(L, sig, EVFILT_SIGNAL);
@@ -253,6 +252,45 @@ static int lkq_remove_signal(lua_State *L) {
     lkq_prepare_errmsg(errno);
     return luaL_error(L,
       "removing handler for signal %d failed: %s", sig, errmsg
+    );
+  }
+  return 0;
+}
+
+static int lkq_add_pid(lua_State *L) {
+  lkq_queue_t *queue = lkq_check_queue(L, 1);
+  int pid = luaL_checkinteger(L, 2);
+  struct kevent event;
+  EV_SET(&event, pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, NULL);
+  int nevent = kevent(queue->fd, &event, 1, NULL, 0, NULL);
+  if (nevent == -1 && errno != EINTR) {
+    lkq_prepare_errmsg(errno);
+    return luaL_error(L,
+      "adding handler for pid %d failed: %s", pid, errmsg
+    );
+  }
+  lua_settop(L, 3);
+  lua_getiuservalue(L, 1, LKQ_QUEUE_CALLBACK_ARGS_UVIDX);
+  lkq_push_filterid(L, pid, EVFILT_PROC);
+  lua_pushvalue(L, 3);
+  lua_rawset(L, 4);
+  return 0;
+}
+
+static int lkq_remove_pid(lua_State *L) {
+  lkq_queue_t *queue = lkq_check_queue(L, 1);
+  int pid = luaL_checkinteger(L, 2);
+  lua_getiuservalue(L, 1, LKQ_QUEUE_CALLBACK_ARGS_UVIDX);
+  lkq_push_filterid(L, pid, EVFILT_SIGNAL);
+  lua_pushnil(L);
+  lua_rawset(L, -3);
+  struct kevent event;
+  EV_SET(&event, pid, EVFILT_PROC, EV_DELETE, 0, 0, NULL);
+  int nevent = kevent(queue->fd, &event, 1, NULL, 0, NULL);
+  if (nevent == -1 && errno != EINTR && errno != ENOENT) {
+    lkq_prepare_errmsg(errno);
+    return luaL_error(L,
+      "removing handler for pid %d failed: %s", pid, errmsg
     );
   }
   return 0;
@@ -394,6 +432,8 @@ static const struct luaL_Reg lkq_queue_methods[] = {
   {"remove_fd_write", lkq_remove_fd_write},
   {"add_signal", lkq_add_signal},
   {"remove_signal", lkq_remove_signal},
+  {"add_pid", lkq_add_pid},
+  {"remove_pid", lkq_remove_pid},
   {"add_timeout", lkq_add_timeout},
   {"remove_timeout", lkq_remove_timeout},
   {"wait", lkq_wait},

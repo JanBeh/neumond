@@ -6,6 +6,15 @@ local fiber = require "fiber"
 local waitio = require "waitio"
 local lkq = require "lkq"
 
+local waker_metatbl = {
+  __index = {
+    wake = function(self)
+      self.woken = true
+      self.fiber:wake()
+    end,
+  },
+}
+
 local catcher_metatbl = {
   __call = function(self)
     while not self.triggered do
@@ -49,6 +58,13 @@ function _M.run(...)
     fiber.sleep()
     eventqueue:remove_fd_write(fd)
   end
+  local function wait_pid(pid)
+    local waker = setmetatable({fiber = fiber.current()}, waker_metatbl)
+    eventqueue:add_pid(pid, waker)
+    while not waker.woken do
+      fiber.sleep()
+    end
+  end
   local function catch_signal(sig)
     local signal_fiber = signal_fibers[sig]
     if not signal_fiber then
@@ -90,6 +106,9 @@ function _M.run(...)
       end,
       [waitio.wait_fd_write] = function(resume, fd)
         return resume(effect.autocall, wait_fd_write, fd)
+      end,
+      [waitio.wait_pid] = function(resume, pid)
+        return resume(effect.autocall, wait_pid, pid)
       end,
       [waitio.catch_signal] = function(resume, sig)
         return resume(effect.autocall, catch_signal, sig)

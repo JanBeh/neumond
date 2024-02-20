@@ -42,6 +42,7 @@ function handle_methods:read(maxlen, terminator)
   end
   while true do
     local result, errmsg = self.nbio_handle:read(maxlen, terminator)
+    -- TODO: consider returning empty string on EOF?
     if not result then
       return result, errmsg
     end
@@ -174,6 +175,53 @@ function _M.tcplisten(...)
     return listener, err
   end
   return wrap_listener(listener)
+end
+
+local child_methods = {}
+
+function child_methods:close()
+  return self.nbio_child:close()
+end
+
+_M.child_metatbl = {
+  __close = child_methods.close,
+  __gc = child_methods.close,
+  __index = function(self, key)
+    if key == "stdin" or key == "stdout" or key == "stderr" then
+      return self.nbio_child[key]
+    end
+    return child_methods[key]
+  end,
+}
+
+function child_methods:kill(sig)
+  return self.nbio_child:kill(sig)
+end
+
+function child_methods:wait()
+  local pid = self.nbio_child.pid
+  while true do
+    local result, errmsg = self.nbio_child:wait()
+    if result then
+      return result
+    end
+    if result == nil then
+      error(errmsg)
+    end
+    waitio.wait_pid(pid)
+  end
+end
+
+local function wrap_child(child)
+  return setmetatable({ nbio_child = child }, _M.child_metatbl)
+end
+
+function _M.execute(...)
+  local child, err = nbio.execute(...)
+  if not child then
+    return child, err
+  end
+  return wrap_child(child)
 end
 
 _M.catch_signal = waitio.catch_signal

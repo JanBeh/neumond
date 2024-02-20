@@ -22,10 +22,11 @@
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 #ifndef SO_NOSIGPIPE
 #define NBIO_IGNORE_SIGPIPE_COMPLETELY
-#include <signal.h>
 #endif
 
 #include <lua.h>
@@ -52,8 +53,10 @@
 
 #define NBIO_HANDLE_MT_REGKEY "nbio_handle"
 #define NBIO_LISTENER_MT_REGKEY "nbio_listener"
+#define NBIO_CHILD_MT_REGKEY "nbio_child"
 #define NBIO_HANDLE_METHODS_UPIDX 1
 #define NBIO_LISTENER_METHODS_UPIDX 1
+#define NBIO_CHILD_METHODS_UPIDX 1
 
 #define NBIO_STATE_OPEN 0
 #define NBIO_STATE_SHUTDOWN 1
@@ -80,6 +83,11 @@ typedef struct {
   sa_family_t addrfam;
 } nbio_listener_t;
 
+typedef struct {
+  pid_t pid;
+  int status;
+} nbio_child_t;
+
 static void nbio_handle_set_nopush(
   lua_State *L, nbio_handle_t *handle, int nopush
 ) {
@@ -93,14 +101,18 @@ static void nbio_handle_set_nopush(
     setsockopt(handle->fd, IPPROTO_TCP, TCP_NOPUSH, &nopush, sizeof(nopush))
   ) {
     nbio_prepare_errmsg(errno);
-    luaL_error(L, "setsockopt TCP_NOPUSH=%d failed: %s", nopush, errmsg);
+    luaL_error(L,
+      "setsockopt TCP_NOPUSH=%d failed: %s", nopush, errmsg
+    );
   }
 #elif defined(TCP_CORK)
   if (
     setsockopt(handle->fd, IPPROTO_TCP, TCP_CORK, &nopush, sizeof(nopush))
   ) {
     nbio_prepare_errmsg(errno);
-    luaL_error(L, "setsockopt TCP_CORK=%d failed: %s", nopush, errmsg);
+    return luaL_error(L,
+      "setsockopt TCP_CORK=%d failed: %s", nopush, errmsg
+    );
   }
 #endif
 #else
@@ -114,25 +126,41 @@ static int nbio_create_handle_udata(lua_State *L) {
 }
 
 static int nbio_push_handle(
-  lua_State *L, int fd, sa_family_t addrfam, int shared
+  lua_State *L, int fd, sa_family_t addrfam, int shared, int throw
 ) {
-  lua_pushcfunction(L, nbio_create_handle_udata);
-  if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
-    if (!shared) close(fd);
-    return lua_error(L);
-  }
-#ifdef SO_NOSIGPIPE
+#ifdef NBIO_IGNORE_SIGPIPE_COMPLETELY
   if (!shared) {
     static const int val = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
       nbio_prepare_errmsg(errno);
       close(fd);
-      return luaL_error(L,
+      if (throw) return luaL_error(L,
         "cannot set SO_NOSIGPIPE socket option: %s", errmsg
-      );
+      ); else {
+        lua_pushnil(L);
+        lua_pushfstring(L,
+          "cannot set SO_NOSIGPIPE socket option: %s", errmsg
+        );
+        return 2;
+      }
     }
   }
 #endif
+  if (throw) {
+    lua_pushcfunction(L, nbio_create_handle_udata);
+    if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
+      if (!shared) close(fd);
+      return lua_error(L);
+    }
+  } else {
+    lua_pushcfunction(L, nbio_create_handle_udata);
+    if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
+      if (!shared) close(fd);
+      lua_pushnil(L);
+      lua_insert(L, -2);
+      return 2;
+    }
+  }
   nbio_handle_t *handle = lua_touserdata(L, -1);
   handle->state = NBIO_STATE_OPEN;
   handle->fd = fd;
@@ -246,7 +274,7 @@ static int nbio_open(lua_State *L) {
     lua_pushstring(L, errmsg);
     return 2;
   }
-  return nbio_push_handle(L, fd, AF_UNSPEC, 0);
+  return nbio_push_handle(L, fd, AF_UNSPEC, 0, 1);
 }
 
 static int nbio_localconnect(lua_State *L) {
@@ -277,7 +305,7 @@ static int nbio_localconnect(lua_State *L) {
     lua_pushstring(L, errmsg);
     return 2;
   }
-  return nbio_push_handle(L, fd, AF_LOCAL, 0);
+  return nbio_push_handle(L, fd, AF_LOCAL, 0, 1);
 }
 
 static int nbio_tcpconnect(lua_State *L) {
@@ -336,7 +364,7 @@ static int nbio_tcpconnect(lua_State *L) {
   } else {
     freeaddrinfo(res);
   }
-  return nbio_push_handle(L, fd, addrfam, 0);
+  return nbio_push_handle(L, fd, addrfam, 0, 1);
 }
 
 static int nbio_locallisten(lua_State *L) {
@@ -498,6 +526,33 @@ static int nbio_listener_index(lua_State *L) {
   }
   lua_settop(L, 2);
   lua_gettable(L, lua_upvalueindex(NBIO_LISTENER_METHODS_UPIDX));
+  return 1;
+}
+
+static int nbio_child_index(lua_State *L) {
+  nbio_child_t *child = luaL_checkudata(L, 1, NBIO_CHILD_MT_REGKEY);
+  const char *key = lua_tostring(L, 2);
+  if (key) {
+    if (!strcmp(key, "pid")) {
+      if (child->pid) lua_pushinteger(L, child->pid);
+      else lua_pushboolean(L, 0);
+      return 1;
+    }
+    if (!strcmp(key, "stdin")) {
+      lua_getiuservalue(L, 1, 1);
+      return 1;
+    }
+    if (!strcmp(key, "stdout")) {
+      lua_getiuservalue(L, 1, 2);
+      return 1;
+    }
+    if (!strcmp(key, "stderr")) {
+      lua_getiuservalue(L, 1, 3);
+      return 1;
+    }
+  }
+  lua_settop(L, 2);
+  lua_gettable(L, lua_upvalueindex(NBIO_CHILD_METHODS_UPIDX));
   return 1;
 }
 
@@ -896,7 +951,9 @@ static int nbio_handle_flush(lua_State *L) {
 
 static int nbio_listener_accept(lua_State *L) {
   nbio_listener_t *listener = luaL_checkudata(L, 1, NBIO_LISTENER_MT_REGKEY);
-  if (listener->fd == -1) luaL_error(L, "attempt to use closed listener");
+  if (listener->fd == -1) return luaL_error(L,
+    "attempt to use closed listener"
+  );
   int fd;
   while (1) {
     fd = accept4(listener->fd, NULL, NULL, SOCK_CLOEXEC);
@@ -916,17 +973,177 @@ static int nbio_listener_accept(lua_State *L) {
       if (flags == -1) {
         nbio_prepare_errmsg(errno);
         close(fd);
-        luaL_error(L, "error in fcntl call: %s", errmsg);
+        return luaL_error(L, "error in fcntl call: %s", errmsg);
       }
       flags |= O_NONBLOCK;
       if (fcntl(fd, F_SETFL, flags) == -1) {
         nbio_prepare_errmsg(errno);
         close(fd);
-        luaL_error(L, "error in fcntl call: %s", errmsg);
+        return luaL_error(L, "error in fcntl call: %s", errmsg);
       }
-      return nbio_push_handle(L, fd, listener->addrfam, 0);
+      return nbio_push_handle(L, fd, listener->addrfam, 0, 1);
     }
   }
+}
+
+static int nbio_child_close(lua_State *L) {
+  nbio_child_t *child = luaL_checkudata(L, 1, NBIO_CHILD_MT_REGKEY);
+  lua_getiuservalue(L, 1, 1);
+  lua_toclose(L, -1);
+  lua_getiuservalue(L, 1, 2);
+  lua_toclose(L, -1);
+  lua_getiuservalue(L, 1, 3);
+  lua_toclose(L, -1);
+  if (child->pid) {
+    int status;
+    if (kill(child->pid, SIGKILL)) {
+      nbio_prepare_errmsg(errno);
+      return luaL_error(L,
+        "error in kill call when closing child handle: %s", errmsg
+      );
+    }
+    while (waitpid(child->pid, &status, 0) == -1) {
+      if (errno != EINTR) {
+        nbio_prepare_errmsg(errno);
+        return luaL_error(L,
+          "error in waitpid call when closing child handle: %s", errmsg
+        );
+      }
+    }
+    child->pid = 0;
+    child->status = status;
+  }
+  return 0;
+}
+
+static int nbio_child_kill(lua_State *L) {
+  nbio_child_t *child = luaL_checkudata(L, 1, NBIO_CHILD_MT_REGKEY);
+  int sig = luaL_optinteger(L, 2, SIGKILL);
+  if (child->pid) {
+    if (kill(child->pid, sig)) {
+      nbio_prepare_errmsg(errno);
+      return luaL_error(L, "error in kill call: %s", errmsg);
+    }
+  }
+  lua_settop(L, 1);
+  return 1;
+}
+
+static int nbio_child_wait(lua_State *L) {
+  nbio_child_t *child = luaL_checkudata(L, 1, NBIO_CHILD_MT_REGKEY);
+  if (child->pid) {
+    pid_t waitedpid;
+    int status;
+    while ((waitedpid = waitpid(child->pid, &status, WNOHANG)) == -1) {
+      if (errno != EINTR) {
+        nbio_prepare_errmsg(errno);
+        return luaL_error(L, "error in waitpid call: %s", errmsg);
+      }
+    }
+    if (!waitedpid) {
+      lua_pushboolean(L, 0);
+      lua_pushliteral(L, "process is still running");
+      return 2;
+    }
+    child->pid = 0;
+    child->status = status;
+  }
+  if (WIFEXITED(child->status)) {
+    lua_pushinteger(L, WEXITSTATUS(child->status));
+  } else if (WIFSIGNALED(child->status)) {
+    lua_pushinteger(L, -WTERMSIG(child->status));
+  } else {
+    return luaL_error(L, "unexpected status value returned by waitpid call");
+  }
+  return 1;
+}
+
+static int nbio_execute(lua_State *L) {
+  int argc = lua_gettop(L);
+  const char **argv = lua_newuserdatauv(L, (argc + 1) * sizeof(char *), 0);
+  for (int i=0; i<argc; i++) argv[i] = luaL_checkstring(L, i+1);
+  argv[argc] = NULL;
+  nbio_child_t *child = lua_newuserdatauv(L, sizeof(nbio_child_t), 3);
+  child->pid = 0;
+  luaL_setmetatable(L, NBIO_CHILD_MT_REGKEY);
+  int sockin[2], sockout[2], sockerr[2];
+  if (socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, sockin)) {
+    nbio_prepare_errmsg(errno);
+    lua_toclose(L, -1);
+    lua_pushnil(L);
+    lua_pushfstring(L, "could not create socket pair: %s", errmsg);
+    return 2;
+  }
+  if (nbio_push_handle(L, sockin[0], AF_UNSPEC, 0, 0) == 2) {
+    lua_toclose(L, -3);
+    close(sockin[1]);
+    return 2;
+  }
+  lua_setiuservalue(L, -2, 1);
+  if (socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, sockout)) {
+    nbio_prepare_errmsg(errno);
+    lua_toclose(L, -1);
+    close(sockin[1]);
+    lua_pushnil(L);
+    lua_pushfstring(L, "could not create socket pair: %s", errmsg);
+    return 2;
+  }
+  if (nbio_push_handle(L, sockout[0], AF_UNSPEC, 0, 0) == 2) {
+    lua_toclose(L, -3);
+    close(sockin[1]);
+    close(sockout[1]);
+    return 2;
+  }
+  lua_setiuservalue(L, -2, 2);
+  if (socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, sockerr)) {
+    nbio_prepare_errmsg(errno);
+    lua_toclose(L, -1);
+    close(sockin[1]);
+    close(sockout[1]);
+    lua_pushnil(L);
+    lua_pushfstring(L, "could not create socket pair: %s", errmsg);
+    return 2;
+  }
+  if (nbio_push_handle(L, sockerr[0], AF_UNSPEC, 0, 0) == 2) {
+    lua_toclose(L, -3);
+    close(sockin[1]);
+    close(sockout[1]);
+    close(sockerr[1]);
+    return 2;
+  }
+  lua_setiuservalue(L, -2, 3);
+  child->pid = fork();
+  if (child->pid == -1) {
+    nbio_prepare_errmsg(errno);
+    lua_toclose(L, -1);
+    close(sockin[1]);
+    close(sockout[1]);
+    close(sockerr[1]);
+    lua_pushnil(L);
+    lua_pushfstring(L, "could not fork: %s", errmsg);
+    return 2;
+  }
+  if (!child->pid) {
+    if (dup2(sockin[1], 0) == -1) goto nbio_execute_stdio_error;
+    if (dup2(sockout[1], 1) == -1) goto nbio_execute_stdio_error;
+    if (dup2(sockerr[1], 2) == -1) goto nbio_execute_stdio_error;
+    closefrom(3);
+    if (fcntl(0, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
+    if (fcntl(1, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
+    if (fcntl(2, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
+    // TODO: report errors not via stderr but via SOCK_CLOEXEC socket
+    if (execvp(argv[0], (char *const *)argv)) {
+      perror("could not execute");
+      _exit(1);
+    }
+    nbio_execute_stdio_error:
+    perror("could not setup stdio");
+    _exit(1);
+  }
+  close(sockin[1]);
+  close(sockout[1]);
+  close(sockerr[1]);
+  return 1;
 }
 
 static const struct luaL_Reg nbio_module_funcs[] = {
@@ -935,6 +1152,7 @@ static const struct luaL_Reg nbio_module_funcs[] = {
   {"tcpconnect", nbio_tcpconnect},
   {"locallisten", nbio_locallisten},
   {"tcplisten", nbio_tcplisten},
+  {"execute", nbio_execute},
   {NULL, NULL}
 };
 
@@ -950,7 +1168,15 @@ static const struct luaL_Reg nbio_handle_methods[] = {
 };
 
 static const struct luaL_Reg nbio_listener_methods[] = {
+  {"close", nbio_listener_close},
   {"accept", nbio_listener_accept},
+  {NULL, NULL}
+};
+
+static const struct luaL_Reg nbio_child_methods[] = {
+  {"close", nbio_child_close},
+  {"kill", nbio_child_kill},
+  {"wait", nbio_child_wait},
   {NULL, NULL}
 };
 
@@ -968,24 +1194,39 @@ static const struct luaL_Reg nbio_listener_metamethods[] = {
   {NULL, NULL}
 };
 
+static const struct luaL_Reg nbio_child_metamethods[] = {
+  {"__close", nbio_child_close},
+  {"__gc", nbio_child_close},
+  {"__index", nbio_child_index},
+  {NULL, NULL}
+};
+
 int luaopen_nbio(lua_State *L) {
   luaL_newmetatable(L, NBIO_HANDLE_MT_REGKEY);
   lua_newtable(L);
   luaL_setfuncs(L, nbio_handle_methods, 0);
   luaL_setfuncs(L, nbio_handle_metamethods, 1);
   lua_pop(L, 1);
+
   luaL_newmetatable(L, NBIO_LISTENER_MT_REGKEY);
   lua_newtable(L);
   luaL_setfuncs(L, nbio_listener_methods, 0);
   luaL_setfuncs(L, nbio_listener_metamethods, 1);
   lua_pop(L, 1);
+
+  luaL_newmetatable(L, NBIO_CHILD_MT_REGKEY);
+  lua_newtable(L);
+  luaL_setfuncs(L, nbio_child_methods, 0);
+  luaL_setfuncs(L, nbio_child_metamethods, 1);
+  lua_pop(L, 1);
+
   lua_newtable(L);
   luaL_setfuncs(L, nbio_module_funcs, 0);
-  nbio_push_handle(L, 0, AF_UNSPEC, 1);
+  nbio_push_handle(L, 0, AF_UNSPEC, 1, 1);
   lua_setfield(L, -2, "stdin");
-  nbio_push_handle(L, 1, AF_UNSPEC, 1);
+  nbio_push_handle(L, 1, AF_UNSPEC, 1, 1);
   lua_setfield(L, -2, "stdout");
-  nbio_push_handle(L, 2, AF_UNSPEC, 1);
+  nbio_push_handle(L, 2, AF_UNSPEC, 1, 1);
   lua_setfield(L, -2, "stderr");
 #ifdef NBIO_IGNORE_SIGPIPE_COMPLETELY
   signal(SIGPIPE, SIG_IGN);
