@@ -271,6 +271,10 @@ Available functions:
     given `host` and `port` and returns an I/O handle on success (`nil` and
     error message otherwise).
 
+  * **`eio.locallisten(path)`** listens for connections to a local socket given
+    by `path` on the filesystem and returns a listener handle on success (`nil`
+    and error message otherwise).
+
   * **`eio.tcplisten(host, port)`** runs a TCP server at the given interface
     (`host`) and `port` and returns a listener handle on success (`nil` and
     error message otherwise).
@@ -278,17 +282,17 @@ Available functions:
 Note that name resolution is blocking, even though any other I/O is handled
 async.
 
-A listener handle `l` provides the following attributes and methods:
+A listener handle `l` provides the following methods:
 
-  * **`l.fd`** is the underlying file descriptor.
-
-  * **`l.accept()`** puts the currently running fiber to sleep until an
+  * **`l:accept()`** puts the currently running fiber to sleep until an
     incoming connection or I/O error. Returns an I/O handle on success (`nil`
     and error message otherwise).
 
-An I/O handle `h` provides the following attributes and methods:
+  * **`h:close()`** closes the listener. This function returns immediately and
+    does not report any errors.
 
-  * **`h.fd`** is the underlying file descriptor.
+
+An I/O handle `h` provides the following attributes and methods:
 
   * **`h:read(maxlen, terminator)`** repeatedly puts the currently running
     fiber to sleep until `maxlen` bytes could be read, a `terminator` byte was
