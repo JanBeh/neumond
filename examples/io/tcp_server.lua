@@ -14,16 +14,8 @@ waitio_fiber.main(
         end,
       },
       function()
-        fiber.spawn(function()
-          local catcher = eio.catch_signal(2)
-          catcher()
-          terminate()
-        end)
-        fiber.spawn(function()
-          local catcher = eio.catch_signal(15)
-          catcher()
-          terminate()
-        end)
+        fiber.spawn(function() eio.catch_signal(2)(); terminate() end)
+        fiber.spawn(function() eio.catch_signal(15)(); terminate() end)
         local listener = assert(eio.tcplisten(nil, 1234))
         while true do
           local conn = listener:accept()
