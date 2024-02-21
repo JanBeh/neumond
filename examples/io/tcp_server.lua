@@ -22,8 +22,12 @@ waitio_fiber.main(
           fiber.spawn(function()
             conn:flush("Hello World!\n")
             conn:shutdown()
-            local line = assert(conn:read(1024, "\n"))
-            print("Got: " .. tostring(line))
+            local line = assert(conn:read(1024, "\n")):match("[^\r\n]*")
+            if line == "" then
+              print("Got empty request.")
+            else
+              print("Got request: " .. line)
+            end
             conn:close()
           end)
         end
