@@ -21,19 +21,33 @@ _M.handle_metatbl = {
   __index = handle_methods,
 }
 
+function handle_methods:read_nonblocking(maxlen)
+  if maxlen == 0 then
+    return ""
+  end
+  -- EOF is reported as false, no data is reported as ""
+  return self.nbio_handle:read_unbuffered(maxlen)
+end
+
 function handle_methods:read_unbuffered(maxlen)
   if maxlen == 0 then
     return ""
   end
-  local result, errmsg = self.nbio_handle:read_unbuffered(maxlen)
-  if not result then
-    return result, errmsg
+  for i = 1, 2 do
+    local result, errmsg = self.nbio_handle:read_unbuffered(maxlen)
+    if result == nil then
+      return nil, errmsg
+    elseif not result then
+      return "" -- indicates EOF
+    elseif result ~= "" then
+      return result
+    end
+    if i == 2 then
+      break
+    end
+    waitio.wait_fd_read(self.nbio_handle.fd)
   end
-  if result ~= "" then
-    return result
-  end
-  waitio.wait_fd_read(self.nbio_handle.fd)
-  return self.nbio_handle:read_unbuffered(maxlen)
+  error("no data available for reading after waiting")
 end
 
 function handle_methods:read(maxlen, terminator)
@@ -42,11 +56,11 @@ function handle_methods:read(maxlen, terminator)
   end
   while true do
     local result, errmsg = self.nbio_handle:read(maxlen, terminator)
-    -- TODO: consider returning empty string on EOF?
-    if not result then
-      return result, errmsg
-    end
-    if result ~= "" then
+    if result == nil then
+      return nil, errmsg
+    elseif not result then
+      return "" -- indicates EOF
+    elseif result ~= "" then
       return result
     end
     waitio.wait_fd_read(self.nbio_handle.fd)

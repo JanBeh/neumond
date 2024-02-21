@@ -12,7 +12,7 @@ fiber.main(
       print("reader waiting")
       waitio.wait_fd_read(0)
       print("reader woken")
-      print("read: " .. tostring(io.stdin:read()))
+      print("read: " .. assert(io.stdin:read()))
     end
   end
 )

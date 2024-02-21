@@ -314,21 +314,33 @@ An I/O handle `h` provides the following attributes and methods:
   * **`h:read(maxlen, terminator)`** waits repeatedly until `maxlen` bytes
     could be read, a `terminator` byte was read, EOF occurred, or an I/O error
     occurred (whichever happens first). If all bytes or some bytes followed by
-    EOF could be read, it returns a string containing the read data. This
-    method may read more bytes than requested and/or read beyond the terminator
-    byte and will then buffer that data for the next invocation of the `read`
-    method.
+    EOF could be read, it returns a string containing the read data. If EOF
+    occurred before any bytes could be read, returns the empty string (`""`).
+    Returns `nil` and an error message in case of an I/O error. This method may
+    read more bytes than requested and/or read beyond the terminator byte and
+    will then buffer that data for the next invocation of the `read` method.
 
   * **`h:read_unbuffered(maxlen)`** waits until some data is available for
     reading or an I/O error occurred. It then reads a maximum number of
     `maxlen` bytes. The return value may be shorter than `maxlen` even if there
-    was no EOF.
+    was no EOF. However, the empty string (`""`) is only returned on EOF and if
+    no bytes could be read before the EOF occured. Returns `nil` and an error
+    message in case of an I/O error.
+
+  * **`h:read_nonblocking(maxlen)`** acts like `h:read_unbuffered(maxlen)` but
+    returns immediately with an empty string if no data is available. To avoid
+    ambiguities, EOF is indicated by returning `false` (and an error message).
+    I/O errors are indicated by `nil` and an error message.
 
   * **`h:write(data)`** waits repeatedly until all `data` could be stored in a
-    buffer and/or written out.
+    buffer and/or written out. Returns `true` on success, `false` and an error
+    message in case of a disconnected receiver (broken pipe), and `nil` and an
+    error message in case of other I/O errors.
 
   * **`h:flush(data)`** waits repeatedly until all buffered data and the
-    optionally passed `data` could be written out.
+    optionally passed `data` could be written out. Returns `true` on success,
+    `false` and an error message in case of a disconnected receiver (broken
+    pipe), and `nil` and an error message in case of other I/O errors.
 
   * **`h:shutdown()`** closes the sending part but not the receiving part of a
     connection. This function returns immediately and may discard any
@@ -338,11 +350,6 @@ An I/O handle `h` provides the following attributes and methods:
   * **`h:close()`** closes the handle (sending and receiving part). Any
     non-flushed data may be discarded. This function returns immediately and
     does not report any errors.
-
-The methods for reading and writing return `nil` and an error message in case
-of I/O errors, but `false` and an error message in case of EOF (when reading
-and there wasn't at least one byte read) or broken pipe (when writing). The
-methods for writing and flushing return `true` on success.
 
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.

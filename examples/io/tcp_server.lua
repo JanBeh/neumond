@@ -30,7 +30,7 @@ waitio_fiber.main(
           fiber.spawn(function()
             conn:flush("Hello World!\n")
             conn:shutdown()
-            local line = conn:read(1024, "\n")
+            local line = assert(conn:read(1024, "\n"))
             print("Got: " .. tostring(line))
             conn:close()
           end)

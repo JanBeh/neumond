@@ -7,23 +7,24 @@ local function shell_add(a, b)
   local b = assert(tonumber(b))
   local proc = assert(eio.execute("sh", "-c", "echo $(("..a.."+"..b.."))"))
   local stdout_fiber = fiber.spawn(function()
-    local data, errmsg = proc.stdout:read()
-    if data == false then
-      return ""
-    end
-    return assert(data, errmsg)
+    return assert(proc.stdout:read())
   end)
   local stderr_fiber = fiber.spawn(function()
-    local data, errmsg = proc.stdout:read()
-    if data == false then
-      return ""
-    end
-    return assert(data, errmsg)
+    return assert(proc.stderr:read())
   end)
   local stdout = stdout_fiber:await()
   local stderr = stderr_fiber:await()
   local retval = proc:wait()
-  assert(retval == 0)
+  if retval ~= 0 then
+    print("Standard error output of subprocess:")
+    io.stdout:write(stderr)
+    print("---")
+    if retval < 0 then
+      error("Process terminated due to signal " .. -retval .. ".")
+    else
+      error("Process exited with exit code " .. retval .. ".")
+    end
+  end
   return assert(tonumber(stdout))
 end
 
