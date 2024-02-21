@@ -1066,12 +1066,12 @@ static int nbio_execute(lua_State *L) {
   nbio_child_t *child = lua_newuserdatauv(L, sizeof(nbio_child_t), 3);
   child->pid = 0;
   luaL_setmetatable(L, NBIO_CHILD_MT_REGKEY);
-  int sockin[2], sockout[2], sockerr[2];
+  int sockin[2], sockout[2], sockerr[2], sockipc[2];
   if (socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, sockin)) {
     nbio_prepare_errmsg(errno);
     lua_toclose(L, -1);
     lua_pushnil(L);
-    lua_pushfstring(L, "could not create socket pair: %s", errmsg);
+    lua_pushfstring(L, "could not create socket pair for stdio: %s", errmsg);
     return 2;
   }
   if (nbio_push_handle(L, sockin[0], AF_UNSPEC, 0, 0) == 2) {
@@ -1085,7 +1085,7 @@ static int nbio_execute(lua_State *L) {
     lua_toclose(L, -1);
     close(sockin[1]);
     lua_pushnil(L);
-    lua_pushfstring(L, "could not create socket pair: %s", errmsg);
+    lua_pushfstring(L, "could not create socket pair for stdio: %s", errmsg);
     return 2;
   }
   if (nbio_push_handle(L, sockout[0], AF_UNSPEC, 0, 0) == 2) {
@@ -1101,7 +1101,7 @@ static int nbio_execute(lua_State *L) {
     close(sockin[1]);
     close(sockout[1]);
     lua_pushnil(L);
-    lua_pushfstring(L, "could not create socket pair: %s", errmsg);
+    lua_pushfstring(L, "could not create socket pair for stdio: %s", errmsg);
     return 2;
   }
   if (nbio_push_handle(L, sockerr[0], AF_UNSPEC, 0, 0) == 2) {
@@ -1112,6 +1112,15 @@ static int nbio_execute(lua_State *L) {
     return 2;
   }
   lua_setiuservalue(L, -2, 3);
+  if (socketpair(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, sockipc)) {
+    nbio_prepare_errmsg(errno);
+    lua_toclose(L, -1);
+    close(sockin[1]);
+    close(sockout[1]);
+    close(sockerr[1]);
+    lua_pushnil(L);
+    lua_pushfstring(L, "could not create socket pair for IPC: %s", errmsg);
+  }
   child->pid = fork();
   if (child->pid == -1) {
     nbio_prepare_errmsg(errno);
@@ -1119,6 +1128,8 @@ static int nbio_execute(lua_State *L) {
     close(sockin[1]);
     close(sockout[1]);
     close(sockerr[1]);
+    close(sockipc[0]);
+    close(sockipc[1]);
     lua_pushnil(L);
     lua_pushfstring(L, "could not fork: %s", errmsg);
     return 2;
@@ -1127,22 +1138,71 @@ static int nbio_execute(lua_State *L) {
     if (dup2(sockin[1], 0) == -1) goto nbio_execute_stdio_error;
     if (dup2(sockout[1], 1) == -1) goto nbio_execute_stdio_error;
     if (dup2(sockerr[1], 2) == -1) goto nbio_execute_stdio_error;
-    closefrom(3);
+    if (dup2(sockipc[1], 3) == -1) goto nbio_execute_stdio_error;
+    closefrom(4);
     if (fcntl(0, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
     if (fcntl(1, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
     if (fcntl(2, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
-    // TODO: report errors not via stderr but via SOCK_CLOEXEC socket
-    if (execvp(argv[0], (char *const *)argv)) {
-      perror("could not execute");
-      _exit(1);
-    }
+    execvp(argv[0], (char *const *)argv);
+    char ipcmsg[1 + sizeof(int)];
+    int err = errno;
+    ipcmsg[0] = 'A';
+    memcpy(ipcmsg + 1, &err, sizeof(err));
+    send(3, ipcmsg, 1 + sizeof(int), 0);
+    _exit(1);
     nbio_execute_stdio_error:
-    perror("could not setup stdio");
+    err = errno;
+    ipcmsg[0] = 'B';
+    memcpy(ipcmsg + 1, &err, sizeof(err));
+    send(3, ipcmsg, 1 + sizeof(int), 0);
     _exit(1);
   }
   close(sockin[1]);
   close(sockout[1]);
   close(sockerr[1]);
+  close(sockipc[1]);
+  while (1) {
+    char ipcmsg[1 + sizeof(int)];
+    ssize_t bytes = recv(sockipc[0], ipcmsg, 1 + sizeof(int), 0);
+    if (bytes == -1) {
+      if (errno != EINTR) {
+        nbio_prepare_errmsg(errno);
+        lua_toclose(L, -1);
+        lua_pushnil(L);
+        lua_pushfstring(L, "error during IPC with fork: %s", errmsg);
+        return 2;
+      }
+    } else if (bytes == 0) {
+      return 1;
+    } else if (bytes == 1 + sizeof(int)) {
+      char msgtype = ipcmsg[0];
+      int err;
+      memcpy(&err, ipcmsg + 1, sizeof(err));
+      if (msgtype == 'A') {
+        nbio_prepare_errmsg(err);
+        lua_toclose(L, -1);
+        lua_pushnil(L);
+        lua_pushfstring(L, "could not execute: %s", errmsg);
+        return 2;
+      } else if (msgtype == 'B') {
+        nbio_prepare_errmsg(err);
+        lua_toclose(L, -1);
+        lua_pushnil(L);
+        lua_pushfstring(L, "could not prepare stdio in fork: %s", errmsg);
+        return 2;
+      } else {
+        lua_toclose(L, -1);
+        lua_pushnil(L);
+        lua_pushfstring(L, "error during IPC with fork: unknown message type");
+        return 2;
+      }
+    } else {
+      lua_toclose(L, -1);
+      lua_pushnil(L);
+      lua_pushfstring(L, "error during IPC with fork: wrong message length");
+      return 2;
+    }
+  }
   return 1;
 }
 
