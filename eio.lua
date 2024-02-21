@@ -186,12 +186,7 @@ end
 _M.child_metatbl = {
   __close = child_methods.close,
   __gc = child_methods.close,
-  __index = function(self, key)
-    if key == "stdin" or key == "stdout" or key == "stderr" then
-      return self.nbio_child[key]
-    end
-    return child_methods[key]
-  end,
+  __index = child_methods,
 }
 
 function child_methods:kill(sig)
@@ -213,7 +208,15 @@ function child_methods:wait()
 end
 
 local function wrap_child(child)
-  return setmetatable({ nbio_child = child }, _M.child_metatbl)
+  return setmetatable(
+    {
+      nbio_child = child,
+      stdio = wrap_handle(child.stdio),
+      stdout = wrap_handle(child.stdout),
+      stderr = wrap_handle(child.stderr),
+    },
+    _M.child_metatbl
+  )
 end
 
 function _M.execute(...)
