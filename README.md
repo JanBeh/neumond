@@ -244,11 +244,14 @@ waitio_fiber.main(
 
 ## Module `eio`
 
-Module for asynchronous I/O, using non-blocking I/O (through the `nbio` Lua
-module written in C) and the `waitio` module to wait for I/O.
+Module for basic I/O, using non-blocking I/O (through the `nbio` Lua module
+written in C) and the `waitio` module to wait for I/O.
 
-The usual way to use this module is to use its function in the `action` of a
-single `waitio_fiber.main(action, ...)` call. Example:
+This module generic in regard to how "waiting" is implemented. In particular,
+`eio` does not depend on the `fiber` module, and whenever there is a need to
+wait for I/O, the effects of the `waitio` module are performed. In order to use
+`eio`, appropriate handlers have to be installed. One way to achieve this is to
+use `waitio_fiber.main(action, ...)` as in the following example:
 
 ```
 local waitio_fiber = require "waitio_fiber"
@@ -288,9 +291,8 @@ async.
 
 A listener handle `l` provides the following methods:
 
-  * **`l:accept()`** puts the currently running fiber to sleep until an
-    incoming connection or I/O error. Returns an I/O handle on success (`nil`
-    and error message otherwise).
+  * **`l:accept()`** waits until an incoming connection or I/O error. Returns
+    an I/O handle on success (`nil` and error message otherwise).
 
   * **`l:close()`** closes the listener. This function returns immediately and
     does not report any errors.
@@ -309,28 +311,29 @@ A child handle `c` provides the following attributes and methods:
 
 An I/O handle `h` provides the following attributes and methods:
 
-  * **`h:read(maxlen, terminator)`** repeatedly puts the currently running
-    fiber to sleep until `maxlen` bytes could be read, a `terminator` byte was
-    read, EOF occurred, or an I/O error occurred (whichever happens first). If
-    all bytes or some bytes followed by EOF could be read, it returns a string
-    containing the read data. This method may read more bytes than requested
-    and/or read beyond the terminator byte and will then buffer that data for
-    the next invocation of the `read` method.
+  * **`h:read(maxlen, terminator)`** waits repeatedly until `maxlen` bytes
+    could be read, a `terminator` byte was read, EOF occurred, or an I/O error
+    occurred (whichever happens first). If all bytes or some bytes followed by
+    EOF could be read, it returns a string containing the read data. This
+    method may read more bytes than requested and/or read beyond the terminator
+    byte and will then buffer that data for the next invocation of the `read`
+    method.
 
-  * **`h:read_unbuffered(maxlen)`** puts the currently running fiber to sleep
-    until some data is available for reading or an I/O error occurred. It then
-    reads a maximum number of `maxlen` bytes. The return value may be shorter
-    than `maxlen` even if there was no EOF.
+  * **`h:read_unbuffered(maxlen)`** waits until some data is available for
+    reading or an I/O error occurred. It then reads a maximum number of
+    `maxlen` bytes. The return value may be shorter than `maxlen` even if there
+    was no EOF.
 
-  * **`h:write(data)`** repeatedly puts the currently running fiber to sleep
-    until all `data` could be stored in a buffer and/or written out.
+  * **`h:write(data)`** waits repeatedly until all `data` could be stored in a
+    buffer and/or written out.
 
-  * **`h:flush(data)`** repeatedly puts the currently fiber to sleep until all
-    buffered data and the optionally passed `data` could be written out.
+  * **`h:flush(data)`** waits repeatedly until all buffered data and the
+    optionally passed `data` could be written out.
 
   * **`h:shutdown()`** closes the sending part but not the receiving part of a
-    connection. Any non-flushed data may be discarded. Returns `true` on
-    success, or `false` and an error message otherwise.
+    connection. This function returns immediately and may discard any
+    non-flushed data. Returns `true` on success, or `false` and an error
+    message otherwise.
 
   * **`h:close()`** closes the handle (sending and receiving part). Any
     non-flushed data may be discarded. This function returns immediately and
