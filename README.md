@@ -292,7 +292,7 @@ A listener handle `l` provides the following methods:
     incoming connection or I/O error. Returns an I/O handle on success (`nil`
     and error message otherwise).
 
-  * **`h:close()`** closes the listener. This function returns immediately and
+  * **`l:close()`** closes the listener. This function returns immediately and
     does not report any errors.
 
 A child handle `c` provides the following attributes and methods:
