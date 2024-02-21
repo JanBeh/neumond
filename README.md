@@ -12,12 +12,12 @@ the effect handling system.
       * **`waitio`** (waiting for I/O)
           * **`waitio_blocking`** (waiting for I/O through blocking)
           * **`waitio_fiber`** (waiting for I/O utilizing fibers)
-          * `eio`
+          * **`eio`** (basic I/O)
   * ***`lkq`*** ([`kqueue`] interface)
       * `waitio_blocking`
       * `waitio_fiber`
   * ***`nbio`*** (basic non-blocking I/O interface written in C)
-      * **`eio`** (basic I/O)
+      * `eio`
 
 [`kqueue`]: https://man.freebsd.org/cgi/man.cgi?kqueue
 
