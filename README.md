@@ -332,8 +332,8 @@ An I/O handle `h` provides the following attributes and methods:
 
   * **`h:shutdown()`** closes the sending part but not the receiving part of a
     connection. This function returns immediately and may discard any
-    non-flushed data. Returns `true` on success, or `false` and an error
-    message otherwise.
+    non-flushed data. Returns `true` on success, or `nil` and an error message
+    otherwise.
 
   * **`h:close()`** closes the handle (sending and receiving part). Any
     non-flushed data may be discarded. This function returns immediately and

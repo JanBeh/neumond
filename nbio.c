@@ -198,7 +198,7 @@ static int nbio_handle_shutdown(lua_State *L) {
     if (handle->addrfam == AF_INET6 || handle->addrfam == AF_INET) {
       if (shutdown(handle->fd, SHUT_WR)) {
         nbio_prepare_errmsg(errno);
-        lua_pushboolean(L, 0);
+        lua_pushnil(L);
         lua_pushstring(L, errmsg);
         return 2;
       }
@@ -206,7 +206,7 @@ static int nbio_handle_shutdown(lua_State *L) {
       if (close(handle->fd)) {
         handle->fd = -1;
         nbio_prepare_errmsg(errno);
-        lua_pushboolean(L, 0);
+        lua_pushnil(L);
         lua_pushstring(L, errmsg);
         return 2;
       }
