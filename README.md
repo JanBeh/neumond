@@ -281,6 +281,9 @@ Available functions:
       * `create`: create file if not existing
       * `truncate`: if existing, truncate file to a size of zero
       * `exclusive`: report error if file already exists
+    Note that `r`, `w`, and `rw` are mutually exclusive and exactly only one of
+    them must be specified unless `flags` is `nil` (which then defaults to
+    `"r"`).
 
   * **`eio.localconnect(path)`** initiates opening a local socket connection
     with the socket on the filesystem given by `path` and returns an I/O handle
