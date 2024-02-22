@@ -120,25 +120,27 @@ return values.
 Module for lightweight threads implemented in pure Lua by using the `effect`
 module.
 
-Note that it is required to run `fiber.main(action, ...)` before any other
-functions of this module can be used. All other functions *must* be called from
-within the `action` function.
+Any usage of this module must be wrapped within the `action` function passed to
+`fiber.main(action, ...)`.
 
 The module provides the following functions:
 
   * **`fiber.main(action, ...)`** runs the `action` function with given
     arguments as main fiber which may spawn additional fibers. `fiber.main`
     returns as soon as `action` returns. All spawned fibers that have not
-    terminated when `action` returns are automatically killed.
+    terminated are automatically killed. Note that effect handlers installed
+    from within the `action` function do not affect spawned fibers unless
+    spawning the fibers is further wrapped within another action passed to
+    `fiber.scope` (see below).
 
-  * **`fiber.scope(action, ...)`** runs the `action` function with given
+  * **`fiber.scope(action, ...)`** runs an `action` function with given
     arguments and ensures that:
       * All fibers that were spawned within the action (and have not terminated
         yet) are killed when `action` returns.
       * The execution context of spawned fibers within the `action` function is
-        altered such that any effect handlers that have been installed before
-        calling `fiber.scope` will be respected. (Otherwise, spawned fibers can
-        only perform effects that are handled outside of `fiber.main`, which is
+        altered such that any effect handlers that have been installed outside
+        `fiber.scope` will be respected. (Otherwise, spawned fibers can only
+        perform effects that are handled outside of `fiber.main`, which is
         often undesired.)
 
   * **`fiber.current()`** obtains a handle for the currently running fiber.
