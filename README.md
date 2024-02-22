@@ -381,10 +381,11 @@ is subject to this bug.
 
 Also note, that the provided `Makefile` is a BSD Makefile. Use `bmake` instead of `make` on Linux platforms.
 
-The I/O modules of this library support POSIX operating systems (Linux, BSD,
-etc.) only. In particular, there is no support for Microsoft Windows. However,
-it is possible to use the `effect` and `fiber` modules on Windows, since those
-are implemented in pure Lua and do not have any operating system dependencies.
+The I/O related modules of this library support POSIX operating systems (Linux,
+BSD, etc.) only. In particular, there is no support for Microsoft Windows.
+However, it is possible to use the `effect` and `fiber` modules on Windows,
+since those are implemented in pure Lua and do not have any operating system
+dependencies.
 
 ## Related work
 
