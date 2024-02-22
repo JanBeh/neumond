@@ -71,8 +71,7 @@ The module provides the following functions:
     object `x` returned by this function is automatically callable such that
     `x(...)` is a short form for `effect.perform(x, ...)`. Moreover, the
     generated object has a string representation (using the `__tostring`
-    metamethod) based on the `name` and a suffix, which may be useful for
-    debugging.
+    metamethod) including the `name`, which may be useful for debugging.
 
   * **`effect.perform(eff, ...)`** performs the effect `eff` with optional
     arguments. May or may not return.
