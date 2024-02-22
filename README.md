@@ -231,7 +231,7 @@ local waitio_fiber = require "waitio_fiber"
 fiber.main(
   waitio_fiber.run,
   function()
-    -- code here may use waitio's functions
+    -- code here may perform "waitio" effects (e.g. through "eio" module)
   end
 )
 ```
@@ -243,7 +243,7 @@ local waitio_fiber = require "waitio_fiber"
 
 waitio_fiber.main(
   function()
-    -- code here may use waitio's functions
+    -- code here may perform "waitio" effects (e.g. through "eio" module)
   end
 )
 ```
