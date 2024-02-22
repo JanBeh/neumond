@@ -151,7 +151,7 @@ static int nbio_create_handle_udata(lua_State *L) {
 static int nbio_push_handle(
   lua_State *L, int fd, sa_family_t addrfam, int shared, int throw
 ) {
-#ifdef NBIO_IGNORE_SIGPIPE_COMPLETELY
+#ifndef NBIO_IGNORE_SIGPIPE_COMPLETELY
   if (!shared) {
     static const int val = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
