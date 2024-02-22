@@ -266,6 +266,18 @@ waitio_fiber.main(
 
 Available functions:
 
+  * **`eio.open(path, flags)`** opens a file at the given `path` and returns an
+    I/O handle on success (`nil` and error message otherwise). The optional
+    `flags` argument is a string containing a comma separated list of one or
+    more of the following flags:
+      * `r`: read-only
+      * `w`: write-only
+      * `rw`: read and write
+      * `append`: each write appends to file
+      * `create`: create file if not existing
+      * `truncate`: if existing, truncate file to a size of zero
+      * `exclusive`: report error if file already exists
+
   * **`eio.localconnect(path)`** initiates opening a local socket connection
     with the socket on the filesystem given by `path` and returns an I/O handle
     on success (`nil` and error message otherwise).
