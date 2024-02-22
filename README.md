@@ -135,8 +135,10 @@ The module provides the following functions:
 
   * **`fiber.scope(action, ...)`** runs an `action` function with given
     arguments and ensures that:
+
       * All fibers that were spawned within the action (and have not terminated
         yet) are killed when `action` returns.
+
       * The execution context of spawned fibers within the `action` function is
         altered such that any effect handlers that have been installed outside
         `fiber.scope` will be respected. (Otherwise, spawned fibers can only
@@ -274,6 +276,7 @@ Available functions:
     I/O handle on success (`nil` and error message otherwise). The optional
     `flags` argument is a string containing a comma separated list of one or
     more of the following flags:
+
       * `r`: read-only
       * `w`: write-only
       * `rw`: read and write
@@ -281,6 +284,7 @@ Available functions:
       * `create`: create file if not existing
       * `truncate`: if existing, truncate file to a size of zero
       * `exclusive`: report error if file already exists
+
     Note that `r`, `w`, and `rw` are mutually exclusive and exactly only one of
     them must be specified unless `flags` is `nil` (which then defaults to
     `"r"`).
