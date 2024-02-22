@@ -190,15 +190,15 @@ Module using effects to wait for I/O.
 
 The module provides several effects only (no handlers):
 
-  * **`waitio.deregister_fd(fd)`** deregisters file descriptor `fd`, which
-    should be done before closing a file descriptor that is currently being
-    waited on.
-
   * **`waitio.wait_fd_read(fd)`** waits until file descriptor `fd` is ready for
     reading.
 
   * **`waitio.wait_fd_write(fd)`** waits until file descriptor `fd` is ready
     for writing.
+
+  * **`waitio.deregister_fd(fd)`** deregisters file descriptor `fd`, which
+    should be done before closing a file descriptor that is currently being
+    waited on.
 
   * **`waitio.catch_signal(sig)`** starts listening for signal `sig` and
     returns a callable handle, which, upon calling, waits until a signal has
