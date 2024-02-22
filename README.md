@@ -111,10 +111,10 @@ effect may be performed and over again, without causing a stack overflow.
 Sometimes an effect hander may wish to execute code in the context of the
 performer of the effect (e.g. to perform other effects in *that* context). To
 achieve this, it is possible to pass to the continuation function (`resume`)
-the special value **`effect.autocall`** followed by a function (or callable
-object) `f` and optional arguments. In that case, `effect.perform` will not
-return those values but call the function `f` (with given arguments) and return
-`f`'s return values.
+the special value **`effect.call`** followed by a function (or callable object)
+`f` and optional arguments. In that case, `effect.perform` will not return
+those values but call the function `f` (with given arguments) and return `f`'s
+return values.
 
 ## Module `fiber`
 

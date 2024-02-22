@@ -66,19 +66,19 @@ function _M.run(...)
   effect.handle(
     {
       [waitio.deregister_fd] = function(resume, fd)
-        return resume(effect.autocall, deregister_fd, fd)
+        return resume(effect.call, deregister_fd, fd)
       end,
       [waitio.wait_fd_read] = function(resume, fd)
-        return resume(effect.autocall, wait_fd_read, fd)
+        return resume(effect.call, wait_fd_read, fd)
       end,
       [waitio.wait_fd_write] = function(resume, fd)
-        return resume(effect.autocall, wait_fd_write, fd)
+        return resume(effect.call, wait_fd_write, fd)
       end,
       [waitio.wait_pid] = function(resume, pid)
-        return resume(effect.autocall, wait_pid, pid)
+        return resume(effect.call, wait_pid, pid)
       end,
       [waitio.catch_signal] = function(resume, sig)
-        return resume(effect.autocall, catch_signal, sig)
+        return resume(effect.call, catch_signal, sig)
       end,
     },
     ...

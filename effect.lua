@@ -32,30 +32,30 @@ local _M = {}
 -- Special marker indicating that a value passed from the effect handler to the
 -- continuation should be called within the inner context, i.e. within the
 -- context of the performer:
-local autocall = setmetatable({}, {
-  __tostring = function() return "autocall marker" end,
+local call = setmetatable({}, {
+  __tostring = function() return "call marker" end,
 })
-_M.autocall = autocall
+_M.call = call
 
 -- Metatable for special "early return markers" passed to the resume function
--- (along with an autocall marker and the error function), which indicate that
--- the effect handler does not wish to resume the action:
+-- (along with a call marker and the error function), which indicate that the
+-- effect handler does not wish to resume the action:
 local early_return_metatbl = {
   __tostring = function() return "effect handler did not resume" end,
 }
 _M.early_return_metatbl = early_return_metatbl
 
--- Helper function for check_autocall function:
-local function do_autocall(dummy, func, ...)
+-- Helper function for check_call function:
+local function do_call(dummy, func, ...)
   return func(...)
 end
 
 -- Function checking coroutine.yield's return values and, if first return value
--- is the autocall marker, then automatically calling the second return value
--- with the arguments starting at third position:
-local function check_autocall(...)
-  if ... == autocall then
-    return do_autocall(...)
+-- is the call marker, then automatically calling the second return value with
+-- the arguments starting at third position:
+local function check_call(...)
+  if ... == call then
+    return do_call(...)
   else
     return ...
   end
@@ -64,7 +64,7 @@ end
 -- Performs an effect:
 function _M.perform(...)
   if coroutine_isyieldable() then
-    return check_autocall(coroutine_yield(...))
+    return check_call(coroutine_yield(...))
   end
   error(
     "no effect handler installed while performing effect: " .. tostring((...)),
@@ -259,7 +259,7 @@ function _M.handle(handlers, ...)
       -- Throw "early return marker" within the coroutine to unwind the stack
       -- of the coroutine:
       return close(xpcall(
-        resume, debug_traceback, autocall, error, early_return_marker
+        resume, debug_traceback, call, error, early_return_marker
       ))
     end
   end
@@ -394,12 +394,12 @@ function _M.discontinue(resume)
   end
   -- Argument is a resume function previously returned by handle_once.
   -- Create an "early return marker" and resume coroutine by passing that
-  -- marker (along with an autocall marker and the error function) to the
-  -- coroutine, which then unwinds the stack by throwing the marker, and
-  -- re-catch that marker using xpcall:
+  -- marker (along with a call marker and the error function) to the coroutine,
+  -- which then unwinds the stack by throwing the marker, and re-catch that
+  -- marker using xpcall:
   local early_return_marker = setmetatable({}, early_return_metatbl)
   local success, result = xpcall(
-    resume, debug_traceback, autocall, error, early_return_marker
+    resume, debug_traceback, call, error, early_return_marker
   )
   -- Check if any exception was caught:
   if success then
