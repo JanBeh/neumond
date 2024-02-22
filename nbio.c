@@ -25,6 +25,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 
+// On platforms without SO_NOSIGPIPE, SIGPIPE needs to be ignored process-wide:
 #ifndef SO_NOSIGPIPE
 #define NBIO_IGNORE_SIGPIPE_COMPLETELY
 #endif
@@ -32,12 +33,18 @@
 #include <lua.h>
 #include <lauxlib.h>
 
+// Preferred chunk size:
 #define NBIO_CHUNKSIZE 8192
+
+// Backlog for incoming connections:
 #define NBIO_LISTEN_BACKLOG 256
 
+// Default flags when opening files:
 #define NBIO_OPEN_DEFAULT_FLAGS "r"
 
-#define NBIO_SUN_PATH_MAXLEN (sizeof(struct sockaddr_un) - offsetof(struct sockaddr_un, sun_path) - 1)
+// Maximum length of path for local sockets:
+#define NBIO_SUN_PATH_MAXLEN \
+  (sizeof(struct sockaddr_un) - offsetof(struct sockaddr_un, sun_path) - 1)
 
 #define NBIO_MAXSTRERRORLEN 1024
 #define NBIO_STRERROR_R_MSG "error detail unavailable due to noncompliant strerror_r() implementation"
@@ -51,46 +58,55 @@
   strerror_r((errcode), errmsg, NBIO_MAXSTRERRORLEN)
 #endif
 
+// Lua registry keys for I/O handles, listener handles, and child handles:
 #define NBIO_HANDLE_MT_REGKEY "nbio_handle"
 #define NBIO_LISTENER_MT_REGKEY "nbio_listener"
 #define NBIO_CHILD_MT_REGKEY "nbio_child"
+
+// Upvalue indices used by metamethods to access method tables:
 #define NBIO_HANDLE_METHODS_UPIDX 1
 #define NBIO_LISTENER_METHODS_UPIDX 1
 #define NBIO_CHILD_METHODS_UPIDX 1
 
+// States of an I/O handle (SHUTDOWN means only sending part is closed):
 #define NBIO_STATE_OPEN 0
 #define NBIO_STATE_SHUTDOWN 1
 #define NBIO_STATE_CLOSED 2
 
+// I/O handle:
 typedef struct {
-  int state;
-  int fd;
-  sa_family_t addrfam;
-  int shared;
-  void *readbuf;
-  size_t readbuf_capacity;
-  size_t readbuf_written;
-  size_t readbuf_read;
-  int readbuf_checked_terminator;
-  void *writebuf;
-  size_t writebuf_written;
-  size_t writebuf_read;
-  int nopush;
+  int state; // see NBIO_STATE_ constants
+  int fd; // file descriptor, set to -1 when (internally) closed
+  sa_family_t addrfam; // address family or AF_UNSPEC (for files)
+  int shared; // non-zero for stdio descriptors that should not be messed with
+  void *readbuf; // allocated read buffer (or NULL if not allocated)
+  size_t readbuf_capacity; // number of bytes allocated for read buffer
+  size_t readbuf_written; // number of bytes written to read buffer
+  size_t readbuf_read; // number of bytes read from read buffer
+  int readbuf_checked_terminator; // -1 or uchar of terminator not in readbuf
+  void *writebuf; // allocated write buffer (or NULL if not allocated)
+  size_t writebuf_written; // number of bytes written to write buffer
+  size_t writebuf_read; // number of bytes read from write buffer
+  int nopush; // state of TCP_NOPUSH or TCP_CORK: 0=off, 1=on, -1=unknown
 } nbio_handle_t;
 
+// Listener handle:
 typedef struct {
-  int fd;
-  sa_family_t addrfam;
+  int fd; // file descriptor, set to -1 when closed
+  sa_family_t addrfam; // address family (AF_LOCAL, AF_INET, AF_INET6)
 } nbio_listener_t;
 
+// Child process handle:
 typedef struct {
-  pid_t pid;
-  int status;
+  pid_t pid; // process ID or -1 when child status has been fetched
+  int status; // waitpid status, valid when pid is set to -1
 } nbio_child_t;
 
+// Control flushing for TCP connections via TCP_NOPUSH or TCP_CORK:
 static void nbio_handle_set_nopush(
   lua_State *L, nbio_handle_t *handle, int nopush
 ) {
+  // TODO: avoid error prefix when used during writing/flushing
 #if defined(TCP_NOPUSH) || defined(TCP_CORK)
   if (
     handle->nopush == nopush || handle->shared ||
@@ -120,11 +136,18 @@ static void nbio_handle_set_nopush(
 #endif
 }
 
+// Lua function allocating memory for an I/O handle
+// (as separate function to allow catching out-of-memory errors):
 static int nbio_create_handle_udata(lua_State *L) {
   lua_newuserdatauv(L, sizeof(nbio_handle_t), 0);
   return 1;
 }
 
+// Convert file descriptor to I/O handle:
+// When `shared` is non-zero, file descriptor will neither be closed on cleanup
+// nor have socket options changed.
+// When `throw` is non-zero, errors will be thrown as Lua error; otherwise
+// errors are returned by pushing nil and an error message and returning 2.
 static int nbio_push_handle(
   lua_State *L, int fd, sa_family_t addrfam, int shared, int throw
 ) {
@@ -179,6 +202,7 @@ static int nbio_push_handle(
   return 1;
 }
 
+// Close I/O handle (may be invoked multiple times):
 static int nbio_handle_close(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   handle->state = NBIO_STATE_CLOSED;
@@ -191,6 +215,8 @@ static int nbio_handle_close(lua_State *L) {
   return 0;
 }
 
+// Shutdown sending part of handle, possibly discarding unflushed data
+// (may be invoked multiple times or after close):
 static int nbio_handle_shutdown(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   if (handle->state == NBIO_STATE_OPEN) {
@@ -221,6 +247,7 @@ static int nbio_handle_shutdown(lua_State *L) {
   return 1;
 }
 
+// Close listener handle (may be invoked multiple times):
 static int nbio_listener_close(lua_State *L) {
   nbio_listener_t *listener = luaL_checkudata(L, 1, NBIO_LISTENER_MT_REGKEY);
   if (listener->fd != -1) close(listener->fd);
@@ -228,6 +255,7 @@ static int nbio_listener_close(lua_State *L) {
   return 0;
 }
 
+// Helper function for parsing flags to "open" function:
 static int nbio_cmp_flag(const char *s, size_t len, const char *f) {
   for (size_t i=0; i<len; i++) {
     if (s[i] != f[i] || !f[i]) return -1;
@@ -236,6 +264,7 @@ static int nbio_cmp_flag(const char *s, size_t len, const char *f) {
   return 0;
 }
 
+// Open file and return I/O handle:
 static int nbio_open(lua_State *L) {
   const char *path = luaL_checkstring(L, 1);
   const char *flagsstr = luaL_optstring(L, 2, NBIO_OPEN_DEFAULT_FLAGS);
@@ -278,6 +307,7 @@ static int nbio_open(lua_State *L) {
   return nbio_push_handle(L, fd, AF_UNSPEC, 0, 1);
 }
 
+// Connect to local socket and return I/O handle:
 static int nbio_localconnect(lua_State *L) {
   const char *path;
   path = luaL_checkstring(L, 1);
@@ -309,6 +339,7 @@ static int nbio_localconnect(lua_State *L) {
   return nbio_push_handle(L, fd, AF_LOCAL, 0, 1);
 }
 
+// Initiate TCP connection and return I/O handle (may block on DNS resolving):
 static int nbio_tcpconnect(lua_State *L) {
   const char *host, *port;
   host = luaL_checkstring(L, 1);
@@ -368,6 +399,7 @@ static int nbio_tcpconnect(lua_State *L) {
   return nbio_push_handle(L, fd, addrfam, 0, 1);
 }
 
+// Listen on local socket and return listener handle:
 static int nbio_locallisten(lua_State *L) {
   const char *path;
   path = luaL_checkstring(L, 1);
@@ -411,6 +443,7 @@ static int nbio_locallisten(lua_State *L) {
   return 1;
 }
 
+// Listen on TCP port and return listener handle:
 static int nbio_tcplisten(lua_State *L) {
   const char *host, *port;
   host = luaL_optstring(L, 1, NULL);
@@ -500,6 +533,7 @@ static int nbio_tcplisten(lua_State *L) {
   return 1;
 }
 
+// __index metamethod for I/O handle:
 static int nbio_handle_index(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   const char *key = lua_tostring(L, 2);
@@ -515,6 +549,7 @@ static int nbio_handle_index(lua_State *L) {
   return 1;
 }
 
+// __index metamethod for listener handle:
 static int nbio_listener_index(lua_State *L) {
   nbio_listener_t *listener = luaL_checkudata(L, 1, NBIO_LISTENER_MT_REGKEY);
   const char *key = lua_tostring(L, 2);
@@ -530,6 +565,7 @@ static int nbio_listener_index(lua_State *L) {
   return 1;
 }
 
+// __index metamethod for child process handle:
 static int nbio_child_index(lua_State *L) {
   nbio_child_t *child = luaL_checkudata(L, 1, NBIO_CHILD_MT_REGKEY);
   const char *key = lua_tostring(L, 2);
@@ -557,6 +593,7 @@ static int nbio_child_index(lua_State *L) {
   return 1;
 }
 
+// Unbuffered reads from I/O handle:
 static int nbio_handle_read_unbuffered(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   lua_Integer maxlen = luaL_optinteger(L, 2, NBIO_CHUNKSIZE);
@@ -610,6 +647,7 @@ static int nbio_handle_read_unbuffered(lua_State *L) {
   }
 }
 
+// Buffered reads from I/O handle:
 static int nbio_handle_read(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   lua_Integer maxlen = luaL_optinteger(L, 2, NBIO_CHUNKSIZE);
@@ -731,6 +769,7 @@ static int nbio_handle_read(lua_State *L) {
   }
 }
 
+// Unbuffered writes to I/O handle (implicitly flushes buffered data):
 static int nbio_handle_write_unbuffered(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   size_t bufsize;
@@ -812,6 +851,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
   }
 }
 
+// Buffered writes to I/O handle:
 static int nbio_handle_write(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   size_t bufsize;
@@ -909,6 +949,7 @@ static int nbio_handle_write(lua_State *L) {
   }
 }
 
+// Flush write buffer of I/O handle:
 static int nbio_handle_flush(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   if (handle->state == NBIO_STATE_CLOSED) {
@@ -950,6 +991,7 @@ static int nbio_handle_flush(lua_State *L) {
   return 1;
 }
 
+// Accept connection from listener handle:
 static int nbio_listener_accept(lua_State *L) {
   nbio_listener_t *listener = luaL_checkudata(L, 1, NBIO_LISTENER_MT_REGKEY);
   if (listener->fd == -1) return luaL_error(L,
@@ -987,6 +1029,8 @@ static int nbio_listener_accept(lua_State *L) {
   }
 }
 
+// Close child process handle and kill and reap child process if still running
+// (may be invoked multiple times):
 static int nbio_child_close(lua_State *L) {
   nbio_child_t *child = luaL_checkudata(L, 1, NBIO_CHILD_MT_REGKEY);
   lua_getiuservalue(L, 1, 1);
@@ -1017,6 +1061,7 @@ static int nbio_child_close(lua_State *L) {
   return 0;
 }
 
+// Send signal to child process (no-op if child has terminated):
 static int nbio_child_kill(lua_State *L) {
   nbio_child_t *child = luaL_checkudata(L, 1, NBIO_CHILD_MT_REGKEY);
   int sig = luaL_optinteger(L, 2, SIGKILL);
@@ -1030,6 +1075,8 @@ static int nbio_child_kill(lua_State *L) {
   return 1;
 }
 
+// Check if child is still running and obtain status if terminated
+// (may be invoked multiple times):
 static int nbio_child_wait(lua_State *L) {
   nbio_child_t *child = luaL_checkudata(L, 1, NBIO_CHILD_MT_REGKEY);
   if (child->pid) {
@@ -1059,6 +1106,7 @@ static int nbio_child_wait(lua_State *L) {
   return 1;
 }
 
+// Execute child process and return child handle:
 static int nbio_execute(lua_State *L) {
   int argc = lua_gettop(L);
   const char **argv = lua_newuserdatauv(L, (argc + 1) * sizeof(char *), 0);
@@ -1207,6 +1255,7 @@ static int nbio_execute(lua_State *L) {
   return 1;
 }
 
+// Module functions:
 static const struct luaL_Reg nbio_module_funcs[] = {
   {"open", nbio_open},
   {"localconnect", nbio_localconnect},
@@ -1217,6 +1266,7 @@ static const struct luaL_Reg nbio_module_funcs[] = {
   {NULL, NULL}
 };
 
+// I/O handle methods:
 static const struct luaL_Reg nbio_handle_methods[] = {
   {"close", nbio_handle_close},
   {"shutdown", nbio_handle_shutdown},
@@ -1228,12 +1278,14 @@ static const struct luaL_Reg nbio_handle_methods[] = {
   {NULL, NULL}
 };
 
+// Listener handle methods:
 static const struct luaL_Reg nbio_listener_methods[] = {
   {"close", nbio_listener_close},
   {"accept", nbio_listener_accept},
   {NULL, NULL}
 };
 
+// Child process handle methods:
 static const struct luaL_Reg nbio_child_methods[] = {
   {"close", nbio_child_close},
   {"kill", nbio_child_kill},
@@ -1241,6 +1293,7 @@ static const struct luaL_Reg nbio_child_methods[] = {
   {NULL, NULL}
 };
 
+// I/O handle metamethods:
 static const struct luaL_Reg nbio_handle_metamethods[] = {
   {"__close", nbio_handle_close},
   {"__gc", nbio_handle_close},
@@ -1248,6 +1301,7 @@ static const struct luaL_Reg nbio_handle_metamethods[] = {
   {NULL, NULL}
 };
 
+// Listener handle metamethods:
 static const struct luaL_Reg nbio_listener_metamethods[] = {
   {"__close", nbio_listener_close},
   {"__gc", nbio_listener_close},
@@ -1255,6 +1309,7 @@ static const struct luaL_Reg nbio_listener_metamethods[] = {
   {NULL, NULL}
 };
 
+// Child process handle metamethods:
 static const struct luaL_Reg nbio_child_metamethods[] = {
   {"__close", nbio_child_close},
   {"__gc", nbio_child_close},
@@ -1262,6 +1317,7 @@ static const struct luaL_Reg nbio_child_metamethods[] = {
   {NULL, NULL}
 };
 
+// Library initialization:
 int luaopen_nbio(lua_State *L) {
   luaL_newmetatable(L, NBIO_HANDLE_MT_REGKEY);
   lua_newtable(L);
