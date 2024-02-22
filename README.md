@@ -296,7 +296,8 @@ Available functions:
 
   * **`eio.execute(file, ...)`** executes `file` with optional arguments in a
     subprocess and returns a child handle on success (`nil` and error message
-    otherwise). Note that no shell is involved unless `file` is a shell.
+    otherwise). Note that no shell is involved unless `file` is a shell. The
+    search path for executables (`PATH` environment variable) applies.
 
 Note that name resolution is blocking, even though any other I/O is handled
 async.
