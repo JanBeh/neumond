@@ -505,7 +505,7 @@ static int nbio_handle_index(lua_State *L) {
   const char *key = lua_tostring(L, 2);
   if (key) {
     if (!strcmp(key, "fd")) {
-      if (handle->fd == -1) lua_pushnil(L);
+      if (handle->fd == -1) lua_pushboolean(L, 0);
       else lua_pushinteger(L, handle->fd);
       return 1;
     }
@@ -520,7 +520,7 @@ static int nbio_listener_index(lua_State *L) {
   const char *key = lua_tostring(L, 2);
   if (key) {
     if (!strcmp(key, "fd")) {
-      if (listener->fd == -1) lua_pushnil(L);
+      if (listener->fd == -1) lua_pushboolean(L, 0);
       else lua_pushinteger(L, listener->fd);
       return 1;
     }
