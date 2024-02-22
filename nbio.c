@@ -253,6 +253,7 @@ static int nbio_open(lua_State *L) {
         else if (!nbio_cmp_flag(s, k, "rw")) flags |= O_RDWR;
         else if (!nbio_cmp_flag(s, k, "append")) flags |= O_APPEND;
         else if (!nbio_cmp_flag(s, k, "create")) flags |= O_CREAT;
+        else if (!nbio_cmp_flag(s, k, "truncate")) flags |= O_TRUNC;
         else if (!nbio_cmp_flag(s, k, "exclusive")) flags |= O_EXCL;
 #if defined(O_SHLOCK)
         else if (!nbio_cmp_flag(s, k, "sharedlock")) flags |= O_SHLOCK;
