@@ -381,6 +381,11 @@ is subject to this bug.
 
 Also note, that the provided `Makefile` is a BSD Makefile. Use `bmake` instead of `make` on Linux platforms.
 
+The I/O modules of this library support POSIX operating systems (Linux, BSD,
+etc.) only. In particular, there is no support for Microsoft Windows. However,
+it is possible to use the `effect` and `fiber` modules on Windows, since those
+are implemented in pure Lua and do not have any operating system dependencies.
+
 ## Related work
 
 See also ["One-shot Algebraic Effects as Coroutines"](http://logic.cs.tsukuba.ac.jp/~sat/pdf/tfp2020-postsymposium.pdf), 21st International Symposium on Trends in Functional Programming (TFP), 2020, (post symposium) by Satoru Kawahara and Yukiyoshi Kameyama, Department of Computer Science, University of Tsukuba, Japan, who provide theoretic background and also presented a similar [implementation](https://github.com/Nymphium/eff.lua) of (one-shot) algebraic effects in Lua based on coroutines.
