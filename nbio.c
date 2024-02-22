@@ -126,7 +126,7 @@ static void nbio_handle_set_nopush(
     setsockopt(handle->fd, IPPROTO_TCP, TCP_CORK, &nopush, sizeof(nopush))
   ) {
     nbio_prepare_errmsg(errno);
-    return luaL_error(L,
+    luaL_error(L,
       "setsockopt TCP_CORK=%d failed: %s", nopush, errmsg
     );
   }
