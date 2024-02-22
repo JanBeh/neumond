@@ -128,15 +128,18 @@ The module provides the following functions:
 
   * **`fiber.main(action, ...)`** runs the `action` function with given
     arguments as main fiber which may spawn additional fibers. `fiber.main`
-    returns as soon as `action` returns (i.e. won't wait for spawned fibers to
-    terminate).
+    returns as soon as `action` returns. All spawned fibers that have not
+    terminated when `action` returns are automatically killed.
 
   * **`fiber.scope(action, ...)`** runs the `action` function with given
-    arguments and handles spawning (but still requires `fiber.main` to be
-    already running). When `action` terminates all spawned fibers within the
-    action which are still running are automatically killed. In turn, this
-    allows any effects caused by spawned fibers to be handled by effect
-    handlers that have been installed before calling `fiber.scope`.
+    arguments and ensures that:
+      * All fibers that were spawned within the action (and have not terminated
+        yet) are killed when `action` returns.
+      * The execution context of spawned fibers within the `action` function is
+        altered such that any effect handlers that have been installed before
+        calling `fiber.scope` will be respected. (Otherwise, spawned fibers can
+        only perform effects that are handled outside of `fiber.main`, which is
+        often undesired.)
 
   * **`fiber.current()`** obtains a handle for the currently running fiber.
 
