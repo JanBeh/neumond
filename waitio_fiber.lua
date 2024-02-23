@@ -96,6 +96,74 @@ function _M.run(...)
     end
     return catcher
   end
+  -- TODO: support waiting for timers/intervals in multiple fibers?
+  local timer_waiting = setmetatable({}, weak_mt)
+  local timer_handles = setmetatable({}, weak_mt)
+  local timer_fiber = setmetatable({}, weak_mt)
+  local timeout_metatbl = {
+    __call = function(self)
+      local current_fiber = fiber.current()
+      while timer_waiting[self] do
+        timer_fiber[self] = current_fiber
+        fiber.sleep()
+      end
+    end,
+    __close = function(self)
+      if timer_waiting[self] then
+        local f = timer_fiber[self]
+        if f then
+          f:wake()
+        end
+        timer_waiting[self] = nil
+        eventqueue:remove_timeout(timer_handles[self])
+      end
+    end,
+    __index = {
+      wake = function(self)
+        timer_fiber[self]:wake()
+        timer_waiting[self] = nil
+      end,
+    }
+  }
+  local function clear_interval(outer_handle)
+    local inner_handle = timer_handles[outer_handle]
+    if inner_handle then
+      eventqueue:remove_timeout(inner_handle)
+      timer_handles[outer_handle] = nil
+    end
+  end
+  local interval_metatbl = {
+    __call = function(self)
+      local current_fiber = fiber.current()
+      while timer_waiting[self] do
+        timer_fiber[self] = current_fiber
+        fiber.sleep()
+      end
+      timer_waiting[self] = true
+    end,
+    __close = clear_interval,
+    __gc = clear_interval,
+    __index = {
+      wake = function(self)
+        timer_fiber[self]:wake()
+        timer_waiting[self] = nil
+      end,
+    }
+  }
+  local function timeout(seconds)
+    local outer_handle = setmetatable({}, timeout_metatbl)
+    local inner_handle = eventqueue:add_timeout(seconds, outer_handle)
+    timer_handles[outer_handle] = inner_handle
+    timer_waiting[outer_handle] = true
+    return outer_handle
+  end
+  local function interval(seconds)
+    local outer_handle = setmetatable({}, interval_metatbl)
+    local inner_handle = eventqueue:add_interval(seconds, outer_handle)
+    timer_handles[outer_handle] = inner_handle
+    timer_waiting[outer_handle] = true
+    return outer_handle
+  end
   fiber.handle(
     {
       [waitio.deregister_fd] = function(resume, fd)
@@ -112,6 +180,12 @@ function _M.run(...)
       end,
       [waitio.catch_signal] = function(resume, sig)
         return resume(effect.call, catch_signal, sig)
+      end,
+      [waitio.timeout] = function(resume, seconds)
+        return resume(effect.call, timeout, seconds)
+      end,
+      [waitio.interval] = function(resume, seconds)
+        return resume(effect.call, interval, seconds)
       end,
     },
     function(body, ...)

@@ -242,6 +242,8 @@ function _M.execute(...)
 end
 
 _M.catch_signal = waitio.catch_signal
+_M.timeout = waitio.timeout
+_M.interval = waitio.interval
 
 _M.stdin = wrap_handle(nbio.stdin)
 _M.stdout = wrap_handle(nbio.stdout)
