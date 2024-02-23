@@ -210,13 +210,15 @@ The module provides several effects only (no handlers):
 
   * **`waitio.timeout(seconds)`** starts a timer that elapses after given
     `seconds` and returns a callable handle that, when called, waits until the
-    time has elapsed. The handle may be closed (when stored in a `<close>`
-    variable) to ensure cleanup before the time has elapsed.
+    time has elapsed. The handle may be closed by storing it in a `<close>`
+    variable that eventually goes out of scope to ensure cleanup before the
+    time has elapsed.
 
   * **`waitio.interval(seconds)`** creates an interval with given `seconds` and
     returns a callable handle that, when called, waits until the next interval
-    has elapsed. The handle must be closed by storing it in a `<close>`
-    variable to ensure cleanup when the interval is no longer needed.
+    has elapsed. The handle may be closed by storing it in a `<close>` variable
+    that eventually goes out of scope to ensure cleanup before garbage
+    collection is performed.
 
 ## Module `waitio_fiber`
 
