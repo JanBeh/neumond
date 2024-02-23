@@ -24,4 +24,7 @@ _M.wait_pid = effect.new("waitio.wait_pid")
 -- delivered:
 _M.catch_signal = effect.new("waitio.catch_signal")
 
+_M.timeout = effect.new("waitio.timeout")
+_M.interval = effect.new("waitio.interval")
+
 return _M
