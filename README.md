@@ -200,7 +200,9 @@ The module provides several effects only (no handlers):
 
   * **`waitio.deregister_fd(fd)`** deregisters file descriptor `fd`, which
     should be done before closing a file descriptor that is currently being
-    waited on.
+    waited on. As long as `fd` is an open file descriptor, this function will
+    never report an error; i.e. it can be called also when the file descriptor
+    is not currently being waited on.
 
   * **`waitio.catch_signal(sig)`** starts listening for signal `sig` and
     returns a callable handle, which, upon calling, waits until a signal has
