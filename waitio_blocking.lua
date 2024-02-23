@@ -20,65 +20,53 @@ function _M.run(...)
   local function wake(waiter)
     waiters[waiter] = nil
   end
-  local signal_catchers = {}
-  local function deregister_fd(fd)
-    eventqueue:deregister_fd(fd)
-  end
-  local function wait_fd_read(fd)
-    local waiter = {}
-    waiters[waiter] = true
-    eventqueue:add_fd_read_once(fd, waiter)
-    while waiters[waiter] do
-      eventqueue:wait(wake)
-    end
-  end
-  local function wait_fd_write(fd)
-    local waiter = {}
-    waiters[waiter] = true
-    eventqueue:add_fd_write_once(fd, waiter)
-    while waiters[waiter] do
-      eventqueue:wait(wake)
-    end
-  end
-  local function wait_pid(pid)
-    local waiter = {}
-    waiters[waiter] = true
-    eventqueue:add_pid(pid, waiter)
-    while waiters[waiter] do
-      eventqueue:wait(wake)
-    end
-  end
-  local function catch_signal(sig)
-    local waiter = signal_waiters[sig]
-    if not waiter then
-      waiter = {}
-      signal_waiters[sig] = waiter
-      waiters[waiter] = true
-    end
-    eventqueue:add_signal(sig, waiter)
-    return function()
-      while waiters[waiter] do
-        eventqueue:wait(wake)
-      end
-      waiters[waiter] = true
-    end
-  end
   effect.handle(
     {
       [waitio.deregister_fd] = function(resume, fd)
-        return resume(effect.call, deregister_fd, fd)
+        eventqueue:deregister_fd(fd)
+        return resume()
       end,
       [waitio.wait_fd_read] = function(resume, fd)
-        return resume(effect.call, wait_fd_read, fd)
+        local waiter = {}
+        waiters[waiter] = true
+        eventqueue:add_fd_read_once(fd, waiter)
+        while waiters[waiter] do
+          eventqueue:wait(wake)
+        end
+        return resume()
       end,
       [waitio.wait_fd_write] = function(resume, fd)
-        return resume(effect.call, wait_fd_write, fd)
+        local waiter = {}
+        waiters[waiter] = true
+        eventqueue:add_fd_write_once(fd, waiter)
+        while waiters[waiter] do
+          eventqueue:wait(wake)
+        end
+        return resume()
       end,
       [waitio.wait_pid] = function(resume, pid)
-        return resume(effect.call, wait_pid, pid)
+        local waiter = {}
+        waiters[waiter] = true
+        eventqueue:add_pid(pid, waiter)
+        while waiters[waiter] do
+          eventqueue:wait(wake)
+        end
+        return resume()
       end,
       [waitio.catch_signal] = function(resume, sig)
-        return resume(effect.call, catch_signal, sig)
+        local waiter = signal_waiters[sig]
+        if not waiter then
+          waiter = {}
+          signal_waiters[sig] = waiter
+          waiters[waiter] = true
+        end
+        eventqueue:add_signal(sig, waiter)
+        return resume(function()
+          while waiters[waiter] do
+            eventqueue:wait(wake)
+          end
+          waiters[waiter] = true
+        end)
       end,
     },
     ...
