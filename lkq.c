@@ -296,7 +296,7 @@ static int lkq_remove_pid(lua_State *L) {
   return 0;
 }
 
-static int lkq_add_timeout(lua_State *L) {
+static int lkq_add_timer(lua_State *L, unsigned short flags) {
   lkq_queue_t *queue = lkq_check_queue(L, 1);
   lua_Number seconds = luaL_checknumber(L, 2);
   lua_settop(L, 3);
@@ -306,7 +306,7 @@ static int lkq_add_timeout(lua_State *L) {
     &event,
     (uintptr_t)timerid,
     EVFILT_TIMER,
-    EV_ADD | EV_ONESHOT,
+    flags,
     NOTE_NSECONDS,
     seconds * 1e9,
     NULL
@@ -325,7 +325,15 @@ static int lkq_add_timeout(lua_State *L) {
   return 1;
 }
 
-static int lkq_remove_timeout(lua_State *L) {
+static int lkq_add_timeout(lua_State *L) {
+  return lkq_add_timer(L, EV_ADD | EV_ONESHOT);
+}
+
+static int lkq_add_interval(lua_State *L) {
+  return lkq_add_timer(L, EV_ADD);
+}
+
+static int lkq_remove_timer(lua_State *L) {
   lkq_queue_t *queue = lkq_check_queue(L, 1);
   void *timerid = luaL_checkudata(L, 2, LKQ_TIMER_MT_REGKEY);
   lua_getiuservalue(L, 1, LKQ_QUEUE_CALLBACK_ARGS_UVIDX);
@@ -435,7 +443,9 @@ static const struct luaL_Reg lkq_queue_methods[] = {
   {"add_pid", lkq_add_pid},
   {"remove_pid", lkq_remove_pid},
   {"add_timeout", lkq_add_timeout},
-  {"remove_timeout", lkq_remove_timeout},
+  {"remove_timeout", lkq_remove_timer},
+  {"add_interval", lkq_add_interval},
+  {"remove_interval", lkq_remove_timer},
   {"wait", lkq_wait},
   {"poll", lkq_poll},
   {NULL, NULL}
