@@ -28,8 +28,8 @@ function _M.run(...)
       end,
       [waitio.wait_fd_read] = function(resume, fd)
         local waiter = {}
-        waiters[waiter] = true
         eventqueue:add_fd_read_once(fd, waiter)
+        waiters[waiter] = true
         while waiters[waiter] do
           eventqueue:wait(wake)
         end
@@ -37,8 +37,8 @@ function _M.run(...)
       end,
       [waitio.wait_fd_write] = function(resume, fd)
         local waiter = {}
-        waiters[waiter] = true
         eventqueue:add_fd_write_once(fd, waiter)
+        waiters[waiter] = true
         while waiters[waiter] do
           eventqueue:wait(wake)
         end
@@ -46,8 +46,8 @@ function _M.run(...)
       end,
       [waitio.wait_pid] = function(resume, pid)
         local waiter = {}
-        waiters[waiter] = true
         eventqueue:add_pid(pid, waiter)
+        waiters[waiter] = true
         while waiters[waiter] do
           eventqueue:wait(wake)
         end
@@ -58,8 +58,8 @@ function _M.run(...)
         if not waiter then
           waiter = {}
           signal_waiters[sig] = waiter
-          waiters[waiter] = true
           eventqueue:add_signal(sig, waiter)
+          waiters[waiter] = true
         end
         return resume(function()
           while waiters[waiter] do
