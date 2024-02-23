@@ -59,8 +59,8 @@ function _M.run(...)
           waiter = {}
           signal_waiters[sig] = waiter
           waiters[waiter] = true
+          eventqueue:add_signal(sig, waiter)
         end
-        eventqueue:add_signal(sig, waiter)
         return resume(function()
           while waiters[waiter] do
             eventqueue:wait(wake)
