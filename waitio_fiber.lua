@@ -110,7 +110,7 @@ function _M.run(...)
       guard = setmetatable({fd = fd}, reading_guard_metatbl)
       reading_guards[fd] = guard
     end
-    eventqueue:add_fd_read(fd, fiber.current())
+    eventqueue:add_fd_read_once(fd, fiber.current())
     local guard <close> = guard
     guard.active = true
     fiber.sleep()
@@ -128,7 +128,7 @@ function _M.run(...)
       guard = setmetatable({fd = fd}, writing_guard_metatbl)
       writing_guards[fd] = guard
     end
-    eventqueue:add_fd_write(fd, fiber.current())
+    eventqueue:add_fd_write_once(fd, fiber.current())
     local guard <close> = guard
     guard.active = true
     fiber.sleep()
