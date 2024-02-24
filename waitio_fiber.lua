@@ -100,33 +100,25 @@ function _M.run(...)
     fiber.sleep()
   end
   local signal_catchers = {}
-  local signal_fibers <close> = setmetatable({}, {
-    __close = function(self)
-      for sig, signal_fiber in pairs(self) do
-        signal_fiber:kill()
-      end
-    end,
-  })
+  local signal_wakers = {}
   local function catch_signal(sig)
-    local signal_fiber = signal_fibers[sig]
-    if not signal_fiber then
-      local parent = fiber.current()
-      signal_fiber = fiber.spawn(function()
-        parent:wake()
-        while true do
-          fiber.sleep()
-          for catcher in pairs(signal_catchers[sig]) do
-            catcher.triggered = true
-            local catcher_fiber = catcher.fiber
-            if catcher_fiber then
-              catcher_fiber:wake()
+    local waker = signal_wakers[sig]
+    if not signal_waker then
+      signal_waker = setmetatable({}, {
+        __index = {
+          wake = function()
+            for catcher in pairs(signal_catchers[sig]) do
+              catcher.triggered = true
+              local catcher_fiber = catcher.fiber
+              if catcher_fiber then
+                catcher_fiber:wake()
+              end
             end
-          end
-        end
-      end)
-      signal_fibers[sig] = signal_fiber
-      fiber.sleep()
-      eventqueue:add_signal(sig, signal_fiber)
+          end,
+        },
+      })
+      signal_wakers[sig] = signal_waker
+      eventqueue:add_signal(sig, signal_waker)
     end
     local catcher = setmetatable({triggered = false}, catcher_metatbl)
     local catchers = signal_catchers[sig]
