@@ -85,18 +85,35 @@ function _M.run(...)
         return resume()
       end,
       [waitio.catch_signal] = function(resume, sig)
+        local instance = { waiting = true }
         local waiter = signal_waiters[sig]
-        if not waiter then
-          waiter = {}
+        local instances
+        if waiter then
+          instances = waiter.instances
+          if not waiters[waiter] then
+            for instance in pairs(instances) do
+              instance.waiting = false
+            end
+            waiters[waiter] = true
+          end
+          instances[instance] = true
+        else
+          instances = setmetatable({[instance] = true}, weak_mt)
+          waiter = { instances = instances }
           signal_waiters[sig] = waiter
           eventqueue:add_signal(sig, waiter)
           waiters[waiter] = true
         end
         return resume(function()
-          while waiters[waiter] do
+          while instance.waiting do
             eventqueue:wait(wake)
+            if not waiters[waiter] then
+              for instance in pairs(instances) do
+                instance.waiting = false
+              end
+              waiters[waiter] = true
+            end
           end
-          waiters[waiter] = true
         end)
       end,
       [waitio.timeout] = function(resume, seconds)
