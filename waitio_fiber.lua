@@ -6,21 +6,12 @@ local fiber = require "fiber"
 local waitio = require "waitio"
 local lkq = require "lkq"
 
-local waker_metatbl = {
-  __index = {
-    wake = function(self)
-      self.woken = true
-      self.fiber:wake()
-    end,
-  },
-}
-
 local catcher_metatbl = {
   __call = function(self)
-    while not self.triggered do
-      if self.fiber then
-        error("catcher already in use", 2)
-      end
+    if self.fiber then
+      error("event catcher already in use", 2)
+    end
+    if not self.triggered then
       self.fiber = fiber.current()
       fiber.sleep()
       self.fiber = nil
@@ -103,13 +94,10 @@ function _M.run(...)
       error("multiple fibers waiting for PID " .. tostring(pid))
     end
     local guard = setmetatable({pid = pid}, pid_guard_metatbl)
-    local waker = setmetatable({fiber = fiber.current()}, waker_metatbl)
-    eventqueue:add_pid(pid, waker)
+    eventqueue:add_pid(pid, fiber.current())
     local guard <close> = guard
     pid_guards[pid] = guard
-    while not waker.woken do
-      fiber.sleep()
-    end
+    fiber.sleep()
   end
   local signal_catchers = {}
   local signal_fibers <close> = setmetatable({}, {
