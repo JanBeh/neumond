@@ -20,26 +20,21 @@ function _M.run(...)
   local function wake(waiter)
     waiters[waiter] = nil
   end
-  local timer_handles = setmetatable({}, weak_mt)
+  local function close_timeout(self)
+    waiters[self] = nil
+    eventqueue:remove_timeout(self.inner_handle)
+  end
   local timeout_metatbl = {
     __call = function(self)
       while waiters[self] do
         eventqueue:wait(wake)
       end
     end,
-    __close = function(self)
-      if waiters[self] then
-        waiters[self] = nil
-        eventqueue:remove_timeout(timer_handles[self])
-      end
-    end,
+    __close = close_timeout,
+    __gc = close_timeout,
   }
-  local function clear_interval(waiter)
-    local handle = timer_handles[waiter]
-    if handle then
-      eventqueue:remove_timeout(handle)
-      timer_handles[waiter] = nil
-    end
+  local function close_interval(self)
+    eventqueue:remove_timeout(self.inner_handle)
   end
   local interval_metatbl = {
     __call = function(self)
@@ -48,8 +43,8 @@ function _M.run(...)
       end
       waiters[self] = true
     end,
-    __close = clear_interval,
-    __gc = clear_interval,
+    __close = close_interval,
+    __gc = close_interval,
   }
   effect.handle(
     {
@@ -117,16 +112,16 @@ function _M.run(...)
         end)
       end,
       [waitio.timeout] = function(resume, seconds)
-        local waiter = setmetatable({}, timeout_metatbl)
-        local handle = eventqueue:add_timeout(seconds, waiter)
-        timer_handles[waiter] = handle
+        local waiter = {}
+        waiter.inner_handle = eventqueue:add_timeout(seconds, waiter)
+        setmetatable(waiter, timeout_metatbl)
         waiters[waiter] = true
         return resume(waiter)
       end,
       [waitio.interval] = function(resume, seconds)
-        local waiter = setmetatable({}, interval_metatbl)
-        local handle = eventqueue:add_interval(seconds, waiter)
-        timer_handles[waiter] = handle
+        local waiter = {}
+        waiter.inner_handle = eventqueue:add_interval(seconds, waiter)
+        setmetatable(waiter, interval_metatbl)
         waiters[waiter] = true
         return resume(waiter)
       end,

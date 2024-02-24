@@ -343,7 +343,7 @@ static int lkq_remove_timer(lua_State *L) {
   struct kevent event;
   EV_SET(&event, (uintptr_t)timerid, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
   int nevent = kevent(queue->fd, &event, 1, NULL, 0, NULL);
-  if (nevent == -1 && errno != EINTR) {
+  if (nevent == -1 && errno != EINTR && errno != ENOENT) {
     lkq_prepare_errmsg(errno);
     return luaL_error(L, "deregistering timeout timer failed: %s", errmsg);
   }

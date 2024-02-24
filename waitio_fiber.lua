@@ -13,10 +13,8 @@ end
 local weak_mt = { __mode = "k" }
 
 local function close_timeout(self)
-  if not self.elapsed then
-    self:wake()
-    eventqueue:remove_timeout(self.inner_handle)
-  end
+  self:wake()
+  eventqueue:remove_timeout(self.inner_handle)
 end
 
 local timeout_metatbl = {
@@ -44,10 +42,7 @@ local timeout_metatbl = {
 }
 
 local function close_interval(self)
-  if not self.closed then
-    self.closed = true
-    eventqueue:remove_interval(self.inner_handle)
-  end
+  eventqueue:remove_interval(self.inner_handle)
 end
 
 local interval_metatbl = {
@@ -198,7 +193,7 @@ function _M.run(...)
     return setmetatable(outer_handle, timeout_metatbl)
   end
   local function interval(seconds)
-    local outer_handle = { elapsed = false, closed = false }
+    local outer_handle = { elapsed = false }
     outer_handle.inner_handle = eventqueue:add_interval(seconds, outer_handle)
     return setmetatable(outer_handle, interval_metatbl)
   end
