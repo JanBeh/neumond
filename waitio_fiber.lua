@@ -57,14 +57,6 @@ function _M.run(...)
       pid_guards[self.pid] = nil
     end,
   }
-  local signal_catchers = {}
-  local signal_fibers <close> = setmetatable({}, {
-    __close = function(self)
-      for sig, signal_fiber in pairs(self) do
-        signal_fiber:kill()
-      end
-    end,
-  })
   local function deregister_fd(fd)
     reading_guards[fd] = nil
     writing_guards[fd] = nil
@@ -119,6 +111,14 @@ function _M.run(...)
       fiber.sleep()
     end
   end
+  local signal_catchers = {}
+  local signal_fibers <close> = setmetatable({}, {
+    __close = function(self)
+      for sig, signal_fiber in pairs(self) do
+        signal_fiber:kill()
+      end
+    end,
+  })
   local function catch_signal(sig)
     local signal_fiber = signal_fibers[sig]
     if not signal_fiber then
