@@ -5,6 +5,7 @@ local waitio_fiber = require "waitio_fiber"
 waitio_fiber.main(function()
   local a = waitio.interval(1)
   local b = waitio.interval(1.1)
+  local c = waitio.timeout(10)
   local f1 = fiber.spawn(function()
     while true do
       a()
@@ -17,6 +18,6 @@ waitio_fiber.main(function()
       print("B")
     end
   end)
-  f1:await()
-  f2:await()
+  c()
+  print("Done")
 end)

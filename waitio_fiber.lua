@@ -12,6 +12,69 @@ end
 
 local weak_mt = { __mode = "k" }
 
+local function close_timeout(self)
+  if not self.elapsed then
+    self:wake()
+    eventqueue:remove_timeout(self.inner_handle)
+  end
+end
+
+local timeout_metatbl = {
+  __call = function(self)
+    if self.fiber then
+      error("timer is already waited for", 2)
+    end
+    if not self.elapsed then
+      self.fiber = fiber.current()
+      fiber.sleep()
+      self.fiber = nil
+    end
+  end,
+  __close = close_timeout,
+  __gc = close_timeout,
+  __index = {
+    wake = function(self)
+      self.elapsed = true
+      local f = self.fiber
+      if f then
+        f:wake()
+      end
+    end,
+  }
+}
+
+local function close_interval(self)
+  if not self.closed then
+    self.closed = true
+    eventqueue:remove_interval(self.inner_handle)
+  end
+end
+
+local interval_metatbl = {
+  __call = function(self)
+    if self.fiber then
+      error("interval is already waited for", 2)
+    end
+    if not self.elapsed then
+      self.fiber = fiber.current()
+      fiber.sleep()
+      self.fiber = nil
+      self.elapsed = false
+    end
+  end,
+  __close = close_interval,
+  __gc = close_interval,
+  __index = {
+    wake = function(self)
+      self.elapsed = true
+      local f = self.fiber
+      if f then
+        f:wake()
+      end
+    end,
+  }
+}
+
 function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
   local reading_guards = {}
@@ -90,12 +153,12 @@ function _M.run(...)
       if self.fiber then
         error("signal catcher already in use", 2)
       end
-      if not self.triggered then
+      if not self.delivered then
         self.fiber = fiber.current()
         fiber.sleep()
         self.fiber = nil
       end
-      self.triggered = false
+      self.delivered = false
     end,
   }
   local signal_catchers = {}
@@ -107,7 +170,7 @@ function _M.run(...)
         __index = {
           wake = function()
             for catcher in pairs(signal_catchers[sig]) do
-              catcher.triggered = true
+              catcher.delivered = true
               local catcher_fiber = catcher.fiber
               if catcher_fiber then
                 catcher_fiber:wake()
@@ -119,7 +182,7 @@ function _M.run(...)
       signal_wakers[sig] = signal_waker
       eventqueue:add_signal(sig, signal_waker)
     end
-    local catcher = setmetatable({triggered = false}, signal_catcher_metatbl)
+    local catcher = setmetatable({delivered = false}, signal_catcher_metatbl)
     local catchers = signal_catchers[sig]
     if catchers then
       catchers[catcher] = true
@@ -129,73 +192,15 @@ function _M.run(...)
     end
     return catcher
   end
-  -- TODO: support waiting for timers/intervals in multiple fibers?
-  local timer_waiting = setmetatable({}, weak_mt)
-  local timer_handles = setmetatable({}, weak_mt)
-  local timer_fiber = setmetatable({}, weak_mt)
-  local timeout_metatbl = {
-    __call = function(self)
-      local current_fiber = fiber.current()
-      while timer_waiting[self] do
-        timer_fiber[self] = current_fiber
-        fiber.sleep()
-      end
-    end,
-    __close = function(self)
-      if timer_waiting[self] then
-        local f = timer_fiber[self]
-        if f then
-          f:wake()
-        end
-        timer_waiting[self] = nil
-        eventqueue:remove_timeout(timer_handles[self])
-      end
-    end,
-    __index = {
-      wake = function(self)
-        timer_fiber[self]:wake()
-        timer_waiting[self] = nil
-      end,
-    }
-  }
-  local function clear_interval(outer_handle)
-    local inner_handle = timer_handles[outer_handle]
-    if inner_handle then
-      eventqueue:remove_timeout(inner_handle)
-      timer_handles[outer_handle] = nil
-    end
-  end
-  local interval_metatbl = {
-    __call = function(self)
-      local current_fiber = fiber.current()
-      while timer_waiting[self] do
-        timer_fiber[self] = current_fiber
-        fiber.sleep()
-      end
-      timer_waiting[self] = true
-    end,
-    __close = clear_interval,
-    __gc = clear_interval,
-    __index = {
-      wake = function(self)
-        timer_fiber[self]:wake()
-        timer_waiting[self] = nil
-      end,
-    }
-  }
   local function timeout(seconds)
-    local outer_handle = setmetatable({}, timeout_metatbl)
-    local inner_handle = eventqueue:add_timeout(seconds, outer_handle)
-    timer_handles[outer_handle] = inner_handle
-    timer_waiting[outer_handle] = true
-    return outer_handle
+    local outer_handle = { elapsed = false }
+    outer_handle.inner_handle = eventqueue:add_timeout(seconds, outer_handle)
+    return setmetatable(outer_handle, timeout_metatbl)
   end
   local function interval(seconds)
-    local outer_handle = setmetatable({}, interval_metatbl)
-    local inner_handle = eventqueue:add_interval(seconds, outer_handle)
-    timer_handles[outer_handle] = inner_handle
-    timer_waiting[outer_handle] = true
-    return outer_handle
+    local outer_handle = { elapsed = false, closed = false }
+    outer_handle.inner_handle = eventqueue:add_interval(seconds, outer_handle)
+    return setmetatable(outer_handle, interval_metatbl)
   end
   fiber.handle(
     {
