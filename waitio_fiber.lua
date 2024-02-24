@@ -39,6 +39,7 @@ function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
   local reading_guards = {}
   local writing_guards = {}
+  local pid_guards = {}
   local reading_guard_metatbl = {
     __close = function(self)
       eventqueue:remove_fd_read(self.fd)
@@ -49,6 +50,11 @@ function _M.run(...)
     __close = function(self)
       eventqueue:remove_fd_write(self.fd)
       self.active = false
+    end,
+  }
+  local pid_guard_metatbl = {
+    __close = function(self)
+      pid_guards[self.pid] = nil
     end,
   }
   local signal_catchers = {}
@@ -101,8 +107,14 @@ function _M.run(...)
     fiber.sleep()
   end
   local function wait_pid(pid)
+    if pid_guards[pid] then
+      error("multiple fibers waiting for PID " .. tostring(pid))
+    end
+    local guard = setmetatable({pid = pid}, pid_guard_metatbl)
     local waker = setmetatable({fiber = fiber.current()}, waker_metatbl)
     eventqueue:add_pid(pid, waker)
+    local guard <close> = guard
+    pid_guards[pid] = guard
     while not waker.woken do
       fiber.sleep()
     end
