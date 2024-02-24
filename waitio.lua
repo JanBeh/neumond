@@ -24,7 +24,13 @@ _M.wait_pid = effect.new("waitio.wait_pid")
 -- delivered:
 _M.catch_signal = effect.new("waitio.catch_signal")
 
+-- Effect timeout(seconds) starts a one-shot timer and returns a (to-be-closed)
+-- handle that waits, when called, until the timer has elapsed:
 _M.timeout = effect.new("waitio.timeout")
+
+-- Effect timeout(seconds) starts an interval timer and returns a
+-- (to-be-closed) handle that waits, when called, until the next tick of the
+-- interval:
 _M.interval = effect.new("waitio.interval")
 
 return _M
