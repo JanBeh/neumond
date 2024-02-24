@@ -37,6 +37,20 @@ local weak_mt = { __mode = "k" }
 
 function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
+  local reading_guards = {}
+  local writing_guards = {}
+  local reading_guard_metatbl = {
+    __close = function(self)
+      eventqueue:remove_fd_read(self.fd)
+      self.active = false
+    end,
+  }
+  local writing_guard_metatbl = {
+    __close = function(self)
+      eventqueue:remove_fd_write(self.fd)
+      self.active = false
+    end,
+  }
   local signal_catchers = {}
   local signal_fibers <close> = setmetatable({}, {
     __close = function(self)
@@ -46,17 +60,45 @@ function _M.run(...)
     end,
   })
   local function deregister_fd(fd)
+    reading_guards[fd] = nil
+    writing_guards[fd] = nil
     eventqueue:deregister_fd(fd)
   end
   local function wait_fd_read(fd)
+    local guard = reading_guards[fd]
+    if guard then
+      if guard.active then
+        error(
+          "multiple fibers waiting for read from file descriptor " ..
+          tostring(fd)
+        )
+      end
+    else
+      guard = setmetatable({fd = fd}, reading_guard_metatbl)
+      reading_guards[fd] = guard
+    end
     eventqueue:add_fd_read(fd, fiber.current())
+    local guard <close> = guard
+    guard.active = true
     fiber.sleep()
-    eventqueue:remove_fd_read(fd)
   end
   local function wait_fd_write(fd)
+    local guard = writing_guards[fd]
+    if guard then
+      if guard.active then
+        error(
+          "multiple fibers waiting for write to file descriptor " ..
+          tostring(fd)
+        )
+      end
+    else
+      guard = setmetatable({fd = fd}, writing_guard_metatbl)
+      writing_guards[fd] = guard
+    end
     eventqueue:add_fd_write(fd, fiber.current())
+    local guard <close> = guard
+    guard.active = true
     fiber.sleep()
-    eventqueue:remove_fd_write(fd)
   end
   local function wait_pid(pid)
     local waker = setmetatable({fiber = fiber.current()}, waker_metatbl)
