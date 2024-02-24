@@ -220,6 +220,13 @@ The module provides several effects only (no handlers):
     that eventually goes out of scope to ensure cleanup before garbage
     collection is performed.
 
+It is not allowed to wait for the same resource more than once in parallel
+except for those resources where a handle for waiting is created. Reading and
+writing are considered as two different resources in that matter. Where handles
+are created for waiting, each handle must not be used more than once in
+parallel. Violating these rules may result in an error or unspecified behavior,
+e.g. deadlocks.
+
 ## Module `waitio_fiber`
 
 Module providing handling of the effects defined in the `waitio` module using
