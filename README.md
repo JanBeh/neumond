@@ -1,8 +1,12 @@
 # One-shot algebraic effect handling and asynchronous I/O in Lua
 
-This library is work in progress. It contains several modules for effect
-handling as well as lightweight threads (fibers) and asynchronous I/O based on
-the effect handling system.
+This library is a proof of concept for implementing:
+
+  * *effect handling* on top of Lua's coroutines (in pure Lua)
+  * and on top of that effect handling system (i.e. without further use of
+    coroutines):
+      * *fibers* (lightweight threads)
+      * *asynchronous I/O*
 
 ## Module overview (dependency tree)
 
