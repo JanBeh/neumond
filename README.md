@@ -196,17 +196,16 @@ Module using effects to wait for I/O.
 
 The module provides several effects only (no handlers):
 
-  * **`waitio.wait_fd_read(fd)`** waits until file descriptor `fd` is ready for
-    reading.
+  * **`waitio.select(...)`** waits until one of several listed events occurred.
+    Each event is denoted by two arguments, i.e. the number of arguments passed
+    to the select effect should be a multiple of two. The following arguments
+    are permitted:
 
-  * **`waitio.wait_fd_write(fd)`** waits until file descriptor `fd` is ready
-    for writing.
-
-  * **`waitio.deregister_fd(fd)`** deregisters file descriptor `fd`, which
-    should be done before closing a file descriptor that is currently being
-    waited on. As long as `fd` is an open file descriptor, this function will
-    never report an error; i.e. it can be called also when the file descriptor
-    is not currently being waited on.
+      * `"fd_read"` followed by an integer file descriptor
+      * `"fd_write"` followed by an integer file descriptor
+      * `"pid"` followed by an integer process ID
+      * `"handle"` followed by a handle returned by some other functions in
+        this module (see below)
 
   * **`waitio.catch_signal(sig)`** starts listening for signal `sig` and
     returns a callable handle, which, upon calling, waits until a signal has
@@ -214,15 +213,34 @@ The module provides several effects only (no handlers):
 
   * **`waitio.timeout(seconds)`** starts a timer that elapses after given
     `seconds` and returns a callable handle that, when called, waits until the
-    time has elapsed. The handle may be closed by storing it in a `<close>`
-    variable that eventually goes out of scope to ensure cleanup before the
-    time has elapsed.
+    time has elapsed. The handle can be closed by storing it in a `<close>`
+    variable that eventually goes out of scope to ensure cleanup (otherwise
+    resource cleanup may be delayed until the time has elapsed or garbage
+    collection happens).
 
   * **`waitio.interval(seconds)`** creates an interval with given `seconds` and
     returns a callable handle that, when called, waits until the next interval
-    has elapsed. The handle may be closed by storing it in a `<close>` variable
-    that eventually goes out of scope to ensure cleanup before garbage
-    collection is performed.
+    has elapsed. The handle can be closed by storing it in a `<close>` variable
+    that eventually goes out of scope to ensure cleanup (otherwise resource
+    cleanup may be delayed until garbage collection is performed).
+
+A handle `h` returned by some functions of this module may also be passed to
+`waitio.select` by calling `waitio.select(..., "handle", h, ...)`. When this
+call returns, `h.ready` indicates if the corresponding event occurred, and
+`h.ready` must also be reset to `false` when wanting to reuse the handle to
+wait for the next event (e.g. another occurrence of the same signal or the next
+interval tick).
+
+The following convenience functions are provided:
+
+  * **`waitio.wait_fd_read(fd)`** waits until file descriptor `fd` is ready for
+    reading.
+
+  * **`waitio.wait_fd_write(fd)`** waits until file descriptor `fd` is ready
+    for writing.
+
+  * **`waitio.wait_pid(pid)`** waits until process with process ID `pid` has
+    terminated.
 
 It is not allowed to wait for the same resource more than once in parallel
 except for those resources where a handle for waiting is created. Reading and

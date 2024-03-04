@@ -7,7 +7,6 @@ local waitio = require "waitio"
 local handle_methods = {}
 
 function handle_methods:close()
-  waitio.deregister_fd(self.nbio_handle.fd)
   self.nbio_handle:close()
 end
 
@@ -156,7 +155,6 @@ end
 local listener_methods = {}
 
 function listener_methods:close()
-  waitio.unregister_fd(self.nbio_listener.fd)
   self.nbio_listener:close()
 end
 

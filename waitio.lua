@@ -6,18 +6,33 @@ local _M = {}
 local effect = require "effect"
 
 -- Effect deregister_fd(fd) deregisters file descriptor fd, which should be
--- done before closing a file descriptor that is currently being waited on:
+-- done before closing a file descriptor that has previously been waited on:
 _M.deregister_fd = effect.new("waitio.deregister_fd")
 
--- Effect wait_fd_read(fd) waits until file descriptor fd is ready for reading:
-_M.wait_fd_read = effect.new("waitio.wait_fd_read")
+-- Effect select(...) waits until one of several listed events occurred. Each
+-- event is denoted by two arguments, i.e. the number of arguments passed to
+-- the select effect should be a multiple of two. The following arguments are
+-- permitted:
+--   * "fd_read",  file_descriptor
+--   * "fd_write", file_descriptor
+--   * "pid",      pid
+--   * "handle",   handle (tested for "ready" attribute)
+_M.select = effect.new("waitio.select")
 
--- Effect wait_fd_write(fd) waits until file descriptor fd is ready for
--- writing:
-_M.wait_fd_write = effect.new("waitio.wait_fd_write")
+-- wait_fd_read(fd) waits until file descriptor fd is ready for reading:
+function _M.wait_fd_read(fd)
+  return _M.select("fd_read", fd)
+end
 
--- Effect wait_pid(pid) waits until the process with the given pid has exited:
-_M.wait_pid = effect.new("waitio.wait_pid")
+-- wait_fd_write(fd) waits until file descriptor fd is ready for writing:
+function _M.wait_fd_write(fd)
+  return _M.select("fd_write", fd)
+end
+
+-- wait_pid(pid) waits until the process with the given pid has exited:
+function _M.wait_pid(pid)
+  return _M.select("pid", pid)
+end
 
 -- Effect catch_signal(sig) starts listening for signal sig and returns a
 -- callable handle which, upon calling, waits until a signal has been
