@@ -12,11 +12,40 @@ end
 
 local weak_mt = { __mode = "k" }
 
+local function handle_call_noreset(self)
+  waitio.select("handle", self)
+end
+
+local function handle_call_reset(self)
+  waitio.select("handle", self)
+  self.ready = false
+end
+
+local function handle_index(self, key)
+  if key == "ready" then
+    return self._ready
+  end
+end
+
+local function handle_newindex(self, key, value)
+  if key == "ready" then
+    self._ready = value
+    if value then
+      local fib = self._fiber
+      if fib then
+        self._fiber = false
+        fib:wake()
+      end
+    end
+  else
+    self.key = value
+  end
+end
+
 local handle_reset_metatbl = {
-  __call = function(self)
-    waitio.select("handle", self)
-    self.ready = false
-  end,
+  __call = handle_call_reset,
+  __index = handle_index,
+  __newindex = handle_newindex,
 }
 
 function _M.run(...)
@@ -61,7 +90,7 @@ function _M.run(...)
       end
       local entries = self.handles
       for handle in pairs(entries) do
-        handle.fiber = false
+        handle._fiber = false
         handle_locks[handle] = nil
         entries[handle] = nil
       end
@@ -122,7 +151,7 @@ function _M.run(...)
         end
         poll_state.handles[arg] = true
         handle_locks[arg] = true
-        arg.fiber = current_fiber
+        arg._fiber = current_fiber
       else
         error("unsupported resource type to wait for")
       end
@@ -141,11 +170,6 @@ function _M.run(...)
           wake = function()
             for handle in pairs(handles) do
               handle.ready = true
-              local fib = handle.fiber
-              if fib then
-                handle.fiber = false
-                fib:wake()
-              end
             end
           end,
         }
@@ -153,78 +177,67 @@ function _M.run(...)
       signal_handles[sig] = handles
     end
     local handle = setmetatable(
-      { ready = false, fiber = false },
+      { _ready = false, _fiber = false },
       handle_reset_metatbl
     )
     handles[handle] = true
     return handle
   end
   local function clean_timeout(self)
-    local inner_handle = self.inner_handle
-    self.inner_handle = nil
+    local inner_handle = self._inner_handle
+    self._inner_handle = nil
     if inner_handle then
       eventqueue:remove_timeout(seconds, inner_handle)
     end
   end
   local timeout_metatbl = {
-    __call = function(self) waitio.select("handle", self) end,
+    __call = handle_call_noreset,
+    __index = handle_index,
+    __newindex = handle_newindex,
     __close = clean_timeout,
     __gc = clean_timeout,
   }
   local function timeout(seconds)
     local handle = setmetatable(
-      { ready = false, fiber = false, inner_handle = false },
+      { _ready = false, _fiber = false, _inner_handle = false },
       timeout_metatbl
     )
-    handle.inner_handle = eventqueue:add_timeout(
+    handle._inner_handle = eventqueue:add_timeout(
       seconds,
-      {
-        wake = function()
-          handle.ready = true
-          local fib = handle.fiber
-          if fib then
-            handle.fiber = false
-            fib:wake()
-          end
-        end,
-      }
+      { wake = function() handle.ready = true end }
     )
     return handle
   end
   local function clean_interval(self)
-    local inner_handle = self.inner_handle
-    self.inner_handle = nil
+    local inner_handle = self._inner_handle
+    self._inner_handle = nil
     if inner_handle then
       eventqueue:remove_interval(seconds, inner_handle)
     end
   end
   local interval_metatbl = {
-    __call = function(self)
-      waitio.select("handle", self)
-      self.ready = false
-    end,
+    __call = handle_call_reset,
+    __index = handle_index,
+    __newindex = handle_newindex,
     __close = clean_interval,
     __gc = clean_interval,
   }
   local function interval(seconds)
     local handle = setmetatable(
-      { ready = false, fiber = false, inner_handle = false },
+      { _ready = false, _fiber = false, _inner_handle = false },
       interval_metatbl
     )
-    handle.inner_handle = eventqueue:add_interval(
+    handle._inner_handle = eventqueue:add_interval(
       seconds,
-      {
-        wake = function()
-          handle.ready = true
-          local fib = handle.fiber
-          if fib then
-            handle.fiber = false
-            fib:wake()
-          end
-        end,
-      }
+      { wake = function() handle.ready = true end }
     )
     return handle
+  end
+  local function waiter()
+    return setmetatable(
+      { _ready = false, _fiber = false },
+      handle_reset_metatbl
+    )
   end
   return fiber.handle(
     {
@@ -251,6 +264,9 @@ function _M.run(...)
       end,
       [waitio.interval] = function(resume, seconds)
         return resume(effect.call, interval, seconds)
+      end,
+      [waitio.waiter] = function(resume)
+        return resume(effect.call, waiter)
       end,
     },
     function(body, ...)

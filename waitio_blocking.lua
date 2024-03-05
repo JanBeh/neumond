@@ -11,12 +11,20 @@ end
 
 local weak_mt = { __mode = "k" }
 
-local handle_reset_metatbl = {
-  __call = function(self)
-    waitio.select("handle", self)
-    self.ready = false
-  end,
-}
+local function handle_call_noreset(self)
+  waitio.select("handle", self)
+end
+
+local function handle_call_reset(self)
+  waitio.select("handle", self)
+  self.ready = false
+end
+
+local function handle_index(self, key)
+  if key == "ready" then
+    return self._ready
+  end
+end
 
 function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
@@ -39,7 +47,7 @@ function _M.run(...)
       end
       local entries = self.handles
       for handle in pairs(entries) do
-        handle.waiting = false
+        handle._waiting = false
         entries[handle] = nil
       end
     end,
@@ -53,6 +61,23 @@ function _M.run(...)
     wake = function(self)
       self.ready = true
     end,
+  }
+  local function handle_newindex(self, key, value)
+    if key == "ready" then
+      self._ready = value
+      if value then
+        if handle._waiting then
+          waiter.ready = true
+        end
+      end
+    else
+      self.key = value
+    end
+  end
+  local handle_reset_metatbl = {
+    __call = handle_call_reset,
+    __index = handle_index,
+    __newindex = handle_newindex,
   }
   local function wait_select(...)
     local poll_state <close> = poll_state
@@ -71,10 +96,10 @@ function _M.run(...)
         poll_state.pids[arg] = true
         eventqueue:add_pid(arg, waiter)
       elseif rtype == "handle" then
-        if arg.ready then
+        if arg._ready then
           return
         end
-        arg.waiting = true
+        arg._waiting = true
       else
         error("unsupported resource type to wait for")
       end
@@ -96,9 +121,6 @@ function _M.run(...)
           wake = function()
             for handle in pairs(handles) do
               handle.ready = true
-              if handle.waiting then
-                waiter.ready = true
-              end
             end
           end,
         }
@@ -106,74 +128,67 @@ function _M.run(...)
       signal_handles[sig] = handles
     end
     local handle = setmetatable(
-      { ready = false, waiting = false },
+      { _ready = false, _waiting = false },
       handle_reset_metatbl
     )
     handles[handle] = true
     return handle
   end
   local function clean_timeout(self)
-    local inner_handle = self.inner_handle
-    self.inner_handle = nil
+    local inner_handle = self._inner_handle
+    self._inner_handle = nil
     if inner_handle then
       eventqueue:remove_timeout(seconds, inner_handle)
     end
   end
   local timeout_metatbl = {
-    __call = function(self) waitio.select("handle", self) end,
+    __call = handle_call_noreset,
+    __index = handle_index,
+    __newindex = handle_newindex,
     __close = clean_timeout,
     __gc = clean_timeout,
   }
   local function timeout(seconds)
     local handle = setmetatable(
-      { ready = false, waiting = false, inner_handle = false },
+      { _ready = false, _waiting = false, _inner_handle = false },
       timeout_metatbl
     )
     handle.inner_handle = eventqueue:add_timeout(
       seconds,
-      {
-        wake = function()
-          handle.ready = true
-          if handle.waiting then
-            waiter.ready = true
-          end
-        end,
-      }
+      { wake = function() handle.ready = true end }
     )
     return handle
   end
   local function clean_interval(self)
-    local inner_handle = self.inner_handle
-    self.inner_handle = nil
+    local inner_handle = self._inner_handle
+    self._inner_handle = nil
     if inner_handle then
       eventqueue:remove_interval(seconds, inner_handle)
     end
   end
   local interval_metatbl = {
-    __call = function(self)
-      waitio.select("handle", self)
-      self.ready = false
-    end,
+    __call = handle_call_reset,
+    __index = handle_index,
+    __newindex = handle_newindex,
     __close = clean_interval,
     __gc = clean_interval,
   }
   local function interval(seconds)
     local handle = setmetatable(
-      { ready = false, waiting = false, inner_handle = false },
+      { _ready = false, _waiting = false, _inner_handle = false },
       interval_metatbl
     )
-    handle.inner_handle = eventqueue:add_interval(
+    handle._inner_handle = eventqueue:add_interval(
       seconds,
-      {
-        wake = function()
-          handle.ready = true
-          if handle.waiting then
-            waiter.ready = true
-          end
-        end,
-      }
+      { wake = function() handle.ready = true end }
     )
     return handle
+  end
+  local function waiter()
+    return setmetatable(
+      { _ready = false, _waiting = false },
+      handle_reset_metatbl
+    )
   end
   return effect.handle(
     {

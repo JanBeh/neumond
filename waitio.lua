@@ -48,4 +48,8 @@ _M.timeout = effect.new("waitio.timeout")
 -- interval:
 _M.interval = effect.new("waitio.interval")
 
+-- Effect waiter() returns a handle that, when called, waits until its "ready"
+-- attribute is set to true and automatically resets it to false:
+_M.waiter = effect.new("waitio.waiter")
+
 return _M

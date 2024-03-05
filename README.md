@@ -235,6 +235,10 @@ The module provides several effects only (no handlers):
     that eventually goes out of scope to ensure cleanup (otherwise resource
     cleanup may be delayed until garbage collection is performed).
 
+  * **`waitio.waiter()`** creates handle `h` that, when called, waits until its
+    `h.ready` attribute is set to `true`. The `ready` attribute is reset to
+    `false` when the handle call returns.
+
   * **`waitio.deregister_fd(fd)`** must be performed before closing a file
     descriptor `fd` that is currently waited on. The effect resumes immediately
     with no value and can be safely performed multiple times on the same file
