@@ -177,6 +177,9 @@ function _M.run(...)
   end
   return effect.handle(
     {
+      [waitio.deregister_fd] = function(resume, ...)
+        return resume()
+      end,
       [waitio.select] = function(resume, ...)
         return resume(effect.call, wait_select, ...)
       end,

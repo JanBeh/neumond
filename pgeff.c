@@ -32,6 +32,8 @@ static void pgeff_push_string_trim(lua_State *L, const char *s) {
 }
 
 static int pgeff_dbconn_close(lua_State *L) {
+  // TODO: use deregister_fd on any waited-on file descriptor and properly
+  // handle wakeup
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   if (dbconn->pgconn) {
     PQfinish(dbconn->pgconn);

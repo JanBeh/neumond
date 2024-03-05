@@ -235,6 +235,13 @@ The module provides several effects only (no handlers):
     that eventually goes out of scope to ensure cleanup (otherwise resource
     cleanup may be delayed until garbage collection is performed).
 
+  * **`waitio.deregister_fd(fd)`** must be performed before closing a file
+    descriptor `fd` that is currently waited on. The effect resumes immediately
+    with no value and can be safely performed multiple times on the same file
+    descriptor and does not raise any error in that case. In a multi-fiber
+    environment, a fiber waiting for reading from or writing to that file
+    desciptor will be woken up.
+
 A handle `h` returned by some functions of this module may also be passed to
 `waitio.select` by calling `waitio.select(..., "handle", h, ...)`. When this
 call returns, `h.ready` indicates if the corresponding event occurred, and

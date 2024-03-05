@@ -7,7 +7,12 @@ local waitio = require "waitio"
 local handle_methods = {}
 
 function handle_methods:close()
-  self.nbio_handle:close()
+  local nbio_handle = self.nbio_handle
+  local fd = nbio_handle.fd
+  if fd then
+    waitio.deregister_fd(nbio_handle.fd)
+  end
+  nbio_handle:close()
 end
 
 function handle_methods:shutdown()
@@ -155,7 +160,12 @@ end
 local listener_methods = {}
 
 function listener_methods:close()
-  self.nbio_listener:close()
+  local nbio_listener = self.nbio_listener
+  local fd = nbio_listener.fd
+  if fd then
+    waitio.deregister_fd(fd)
+  end
+  nbio_listener:close()
 end
 
 _M.listener_metatbl = {

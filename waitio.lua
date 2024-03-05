@@ -6,7 +6,7 @@ local _M = {}
 local effect = require "effect"
 
 -- Effect deregister_fd(fd) deregisters file descriptor fd, which should be
--- done before closing a file descriptor that has previously been waited on:
+-- done before closing a file descriptor that is currently waited on:
 _M.deregister_fd = effect.new("waitio.deregister_fd")
 
 -- Effect select(...) waits until one of several listed events occurred. Each

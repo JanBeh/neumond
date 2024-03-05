@@ -22,17 +22,34 @@ local handle_reset_metatbl = {
 function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
   local read_fd_locks, write_fd_locks, pid_locks, handle_locks = {}, {}, {}, {}
+  local function deregister_fd(fd)
+    eventqueue:deregister_fd(fd)
+    local fib = read_fd_locks[fd]
+    if fib then
+      read_fd_locks[fd] = nil
+      fib:wake()
+    end
+    local fib = write_fd_locks[fd]
+    if fib then
+      write_fd_locks[fd] = nil
+      fib:wake()
+    end
+  end
   local poll_state_metatbl = {
     __close = function(self)
       local entries = self.read_fds
       for fd in pairs(entries) do
-        eventqueue:remove_fd_read(fd)
+        if read_fd_locks[fd] then
+          eventqueue:remove_fd_read(fd)
+        end
         read_fd_locks[fd] = nil
         entries[fd] = nil
       end
       local entries = self.write_fds
       for fd in pairs(entries) do
-        eventqueue:remove_fd_write(fd)
+        if write_fd_locks[fd] then
+          eventqueue:remove_fd_write(fd)
+        end
         write_fd_locks[fd] = nil
         entries[fd] = nil
       end
@@ -75,7 +92,7 @@ function _M.run(...)
           )
         end
         poll_state.read_fds[arg] = true
-        read_fd_locks[arg] = true
+        read_fd_locks[arg] = current_fiber
         eventqueue:add_fd_read_once(arg, current_fiber)
       elseif rtype == "fd_write" then
         if write_fd_locks[arg] then
@@ -85,7 +102,7 @@ function _M.run(...)
           )
         end
         poll_state.write_fds[arg] = true
-        write_fd_locks[arg] = true
+        write_fd_locks[arg] = current_fiber
         eventqueue:add_fd_write_once(arg, current_fiber)
       elseif rtype == "pid" then
         if pid_locks[arg] then
@@ -211,6 +228,9 @@ function _M.run(...)
   end
   return fiber.handle(
     {
+      [waitio.deregister_fd] = function(resume, ...)
+        return resume(effect.call, deregister_fd, ...)
+      end,
       [waitio.select] = function(resume, ...)
         return resume(effect.call, wait_select, ...)
       end,
