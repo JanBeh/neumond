@@ -16,7 +16,7 @@ _M.deregister_fd = effect.new("waitio.deregister_fd")
 --   * "fd_read",  file_descriptor
 --   * "fd_write", file_descriptor
 --   * "pid",      pid
---   * "handle",   handle (tested for "ready" attribute)
+--   * "handle",   handle (tested for "ready" attribute, which is not reset)
 _M.select = effect.new("waitio.select")
 
 -- wait_fd_read(fd) waits until file descriptor fd is ready for reading:
