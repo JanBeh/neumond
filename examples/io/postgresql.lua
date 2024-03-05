@@ -1,6 +1,5 @@
 local waitio_fiber = require "waitio_fiber"
 local pgeff = require "pgeff"
-local fiber = require "fiber"
 
 return waitio_fiber.main(function()
   local dbconn = assert(pgeff.connect(""))
