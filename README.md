@@ -8,6 +8,17 @@ This library is a proof of concept for implementing:
       * *fibers* (lightweight threads)
       * *asynchronous I/O*
 
+Some basic asynchronous I/O support is given for:
+
+  * byte streams over local sockets or TCP sockets
+    (including TCP server support)
+  * subprocesses with stdin, stdout, and stderr
+
+Moreover, a small example for integration with a third party C library [libpq]
+is included, allowing asynchronous communication with a PostgreSQL server.
+
+[libpq]: https://www.postgresql.org/docs/current/libpq.html
+
 ## Module overview (dependency tree)
 
   * **`effect`** (effect handling)
@@ -17,13 +28,13 @@ This library is a proof of concept for implementing:
           * **`waitio_blocking`** (waiting for I/O through blocking)
           * **`waitio_fiber`** (waiting for I/O utilizing fibers)
           * **`eio`** (basic I/O)
-  * ***`lkq`*** ([`kqueue`] interface)
+  * ***`lkq`*** ([kqueue] interface)
       * `waitio_blocking`
       * `waitio_fiber`
   * ***`nbio`*** (basic non-blocking I/O interface written in C)
       * `eio`
 
-[`kqueue`]: https://man.freebsd.org/cgi/man.cgi?kqueue
+[kqueue]: https://man.freebsd.org/cgi/man.cgi?kqueue
 
 Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
