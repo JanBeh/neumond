@@ -147,8 +147,12 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
             lua_pushinteger(L, row+1);
             lua_newtable(L);
             for (int col=0; col<cols; col++) {
+              const char *value = PQgetvalue(pgres, row, col);
               lua_pushinteger(L, col+1);
-              lua_pushstring(L, PQgetvalue(pgres, row, col));
+              lua_pushstring(L, value);
+              lua_settable(L, -3);
+              lua_pushstring(L, PQfname(pgres, col));
+              lua_pushstring(L, value);
               lua_settable(L, -3);
             }
             lua_settable(L, -3);
