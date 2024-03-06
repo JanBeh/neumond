@@ -9,8 +9,9 @@
 #define PGEFF_RESULT_MT_REGKEY "pgeff_result"
 
 #define PGEFF_SELECT_UPVALIDX 1
+#define PGEFF_DEREGISTER_FD_UPVALIDX 2
 
-#define PGEFF_DBCONN_METHODS_UPVALIDX 1
+#define PGEFF_DBCONN_METHODS_UPVALIDX 3
 
 #define PGEFF_STATE_IDLE 0
 #define PGEFF_STATE_FLUSHING 1
@@ -18,6 +19,7 @@
 
 typedef struct {
   PGconn *pgconn;
+  int fd;
   int state;
 } pgeff_dbconn_t;
 
@@ -31,15 +33,27 @@ static void pgeff_push_string_trim(lua_State *L, const char *s) {
   lua_pushlstring(L, s, len);
 }
 
-static int pgeff_dbconn_close(lua_State *L) {
-  // TODO: use deregister_fd on any waited-on file descriptor and properly
-  // handle wakeup
-  pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+static int pgeff_dbconn_close_cont(
+  lua_State *L, int status, lua_KContext ctx
+) {
+  pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   if (dbconn->pgconn) {
     PQfinish(dbconn->pgconn);
     dbconn->pgconn = NULL;
   }
   return 0;
+}
+
+static int pgeff_dbconn_close(lua_State *L) {
+  pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+  if (dbconn->fd != -1) {
+    int fd = dbconn->fd;
+    dbconn->fd = -1;
+    lua_pushvalue(L, lua_upvalueindex(PGEFF_DEREGISTER_FD_UPVALIDX));
+    lua_pushinteger(L, fd);
+    lua_callk(L, 1, 0, (lua_KContext)dbconn, pgeff_dbconn_close_cont);
+  }
+  return pgeff_dbconn_close_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
 static int pgeff_result_close(lua_State *L) {
@@ -59,8 +73,9 @@ static int pgeff_dbconn_index(lua_State *L) {
 }
 
 static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
-  pgeff_dbconn_t *const dbconn = (pgeff_dbconn_t *)ctx;
+  pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   while (1) {
+    dbconn->fd = -1;
     switch (PQconnectPoll(dbconn->pgconn)) {
       case PGRES_POLLING_OK:
         if (PQsetnonblocking(dbconn->pgconn, 1)) {
@@ -70,15 +85,17 @@ static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
         }
         return 1;
       case PGRES_POLLING_READING:
+        dbconn->fd = PQsocket(dbconn->pgconn);
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
         lua_pushliteral(L, "fd_read");
-        lua_pushinteger(L, PQsocket(dbconn->pgconn));
+        lua_pushinteger(L, dbconn->fd);
         lua_callk(L, 2, 0, ctx, pgeff_connect_cont);
         break;
       case PGRES_POLLING_WRITING:
+        dbconn->fd = PQsocket(dbconn->pgconn);
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
         lua_pushliteral(L, "fd_write");
-        lua_pushinteger(L, PQsocket(dbconn->pgconn));
+        lua_pushinteger(L, dbconn->fd);
         lua_callk(L, 2, 0, ctx, pgeff_connect_cont);
         break;
       case PGRES_POLLING_FAILED:
@@ -94,6 +111,7 @@ static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
 static int pgeff_connect(lua_State *L) {
   const char *conninfo = luaL_checkstring(L, 1);
   pgeff_dbconn_t *dbconn = lua_newuserdatauv(L, sizeof(pgeff_dbconn_t), 0);
+  dbconn->fd = -1;
   dbconn->state = PGEFF_STATE_IDLE;
   dbconn->pgconn = PQconnectStart(conninfo);
   luaL_setmetatable(L, PGEFF_DBCONN_MT_REGKEY);
@@ -105,8 +123,12 @@ static int pgeff_connect(lua_State *L) {
 }
 
 static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
-  pgeff_dbconn_t *const dbconn = (pgeff_dbconn_t *)ctx;
+  pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   while (1) {
+    dbconn->fd = -1;
+    if (!dbconn->pgconn) {
+      return luaL_error(L, "database handle has been closed during query");
+    }
     if (!PQconsumeInput(dbconn->pgconn)) {
       lua_pushnil(L);
       pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
@@ -166,19 +188,20 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
         break;
       default: abort();
     }
+    dbconn->fd = PQsocket(dbconn->pgconn);
     switch (dbconn->state) {
       case PGEFF_STATE_FLUSHING:
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
         lua_pushliteral(L, "fd_read");
-        lua_pushinteger(L, PQsocket(dbconn->pgconn));
+        lua_pushinteger(L, dbconn->fd);
         lua_pushliteral(L, "fd_write");
-        lua_pushinteger(L, PQsocket(dbconn->pgconn));
+        lua_pushinteger(L, dbconn->fd);
         lua_callk(L, 4, 0, ctx, pgeff_query_cont);
         break;
       case PGEFF_STATE_CONSUMING:
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
         lua_pushliteral(L, "fd_read");
-        lua_pushinteger(L, PQsocket(dbconn->pgconn));
+        lua_pushinteger(L, dbconn->fd);
         lua_callk(L, 2, 0, ctx, pgeff_query_cont);
         break;
       default: abort();
@@ -190,6 +213,9 @@ static int pgeff_query(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   const char *querystring = luaL_checkstring(L, 2);
   lua_settop(L, 2);
+  if (!dbconn->pgconn) {
+    return luaL_error(L, "database handle has been closed");
+  }
   if (dbconn->state != PGEFF_STATE_IDLE) {
     return luaL_error(L, "database handle is in use");
   }
@@ -232,13 +258,17 @@ int luaopen_pgeff(lua_State *L) {
   lua_pushliteral(L, "waitio");
   lua_call(L, 1, 1);
   lua_getfield(L, -1, "select");
-  lua_remove(L, -2);
+  lua_getfield(L, -2, "deregister_fd");
+  lua_remove(L, -3);
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY);
   lua_newtable(L);
-  lua_pushvalue(L, -3);
-  luaL_setfuncs(L, pgeff_dbconn_methods, 1);
-  luaL_setfuncs(L, pgeff_dbconn_metamethods, 1);
+  lua_pushvalue(L, -4);
+  lua_pushvalue(L, -4);
+  lua_pushvalue(L, -2);
+  lua_pushvalue(L, -2);
+  luaL_setfuncs(L, pgeff_dbconn_methods, 2);
+  luaL_setfuncs(L, pgeff_dbconn_metamethods, 3);
   lua_pop(L, 1);
 
   luaL_newmetatable(L, PGEFF_RESULT_MT_REGKEY);
@@ -246,7 +276,8 @@ int luaopen_pgeff(lua_State *L) {
   lua_pop(L, 1);
 
   luaL_newlibtable(L, pgeff_funcs);
-  lua_pushvalue(L, -2);
-  luaL_setfuncs(L, pgeff_funcs, 1);
+  lua_pushvalue(L, -3);
+  lua_pushvalue(L, -3);
+  luaL_setfuncs(L, pgeff_funcs, 2);
   return 1;
 }
