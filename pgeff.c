@@ -17,6 +17,30 @@
 #define PGEFF_STATE_FLUSHING 1
 #define PGEFF_STATE_CONSUMING 2
 
+#define PGEFF_SQLTYPE_OTHER 0
+#define PGEFF_SQLTYPE_BOOL 1
+#define PGEFF_SQLTYPE_INT 2
+#define PGEFF_SQLTYPE_FLOAT 3
+
+static int pgeff_sqltype(Oid oid) {
+  switch (oid) {
+    case 16:   /* BOOL */
+      return PGEFF_SQLTYPE_BOOL;
+    case 20:   /* INT8 */
+    case 21:   /* INT2 */
+    case 23:   /* INT4 */
+    case 26:   /* OID  */
+    case 28:   /* XID  */
+    case 5069: /* XID8 */
+      return PGEFF_SQLTYPE_INT;
+    case 700:  /* FLOAT4 */
+    case 701:  /* FLOAT8 */
+      return PGEFF_SQLTYPE_FLOAT;
+    default:
+      return PGEFF_SQLTYPE_OTHER;
+  }
+}
+
 typedef struct {
   PGconn *pgconn;
   int fd;
@@ -178,12 +202,12 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
           int cols = PQnfields(pgres);
           lua_newtable(L);
           for (int col=0; col<cols; col++) {
-            Oid oid = PQftype(pgres, col);
+            Oid type_oid = PQftype(pgres, col);
             lua_pushinteger(L, col+1);
-            lua_pushinteger(L, oid);
+            lua_pushinteger(L, type_oid);
             lua_settable(L, -3);
             lua_pushstring(L, PQfname(pgres, col));
-            lua_pushinteger(L, oid);
+            lua_pushinteger(L, type_oid);
             lua_settable(L, -3);
           }
           lua_setfield(L, -2, "type_oid");
@@ -194,14 +218,33 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
               const char *value =
                 PQgetisnull(pgres, row, col) ? NULL :
                 PQgetvalue(pgres, row, col);
-              lua_pushinteger(L, col+1);
-              if (value) lua_pushstring(L, value);
-              else lua_pushnil(L);
-              lua_settable(L, -3);
-              lua_pushstring(L, PQfname(pgres, col));
-              if (value) lua_pushstring(L, value);
-              else lua_pushnil(L);
-              lua_settable(L, -3);
+              if (value) {
+                lua_pushinteger(L, col+1);
+                switch (pgeff_sqltype(PQftype(pgres, col))) {
+                  case PGEFF_SQLTYPE_BOOL:
+                    lua_pushboolean(L, value[0] == 't');
+                    break;
+                  case PGEFF_SQLTYPE_INT:
+                    if (!lua_stringtonumber(L, value)) {
+                      lua_pushstring(L, value);
+                    } else {
+                      lua_pushinteger(L, lua_tointeger(L, -1));
+                      lua_remove(L, -2);
+                    }
+                    break;
+                  case PGEFF_SQLTYPE_FLOAT:
+                    if (!lua_stringtonumber(L, value)) {
+                      lua_pushstring(L, value);
+                    }
+                    break;
+                  default:
+                    lua_pushstring(L, value);
+                }
+                lua_pushstring(L, PQfname(pgres, col));
+                lua_pushvalue(L, -2);
+                lua_settable(L, -5);
+                lua_settable(L, -3);
+              }
             }
             lua_settable(L, -3);
           }

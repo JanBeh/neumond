@@ -13,6 +13,8 @@ return waitio_fiber.main(function()
   end
   assert(assert(tonumber(result[1].val)) == a + b)
   assert(result.type_oid.val == 23) -- OID 23 is an INT4
+  assert(type(result[1].val) == "number")
+  assert(math.type(result[1].val) == "integer")
 
   local result = dbconn:query("SELECT CAST($1 AS INT)", nil)
   if result.error_message then
