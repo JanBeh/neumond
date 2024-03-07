@@ -12,6 +12,7 @@ return waitio_fiber.main(function()
     error(result.error_message)
   end
   assert(assert(tonumber(result[1].val)) == a + b)
+  assert(result.type_oid.val == 23) -- OID 23 is an INT4
 
   -- expect syntax error (error class "42"):
   local result = dbconn:query("SELEEEECT")

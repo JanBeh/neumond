@@ -176,6 +176,17 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
           }
           int rows = PQntuples(pgres);
           int cols = PQnfields(pgres);
+          lua_newtable(L);
+          for (int col=0; col<cols; col++) {
+            Oid oid = PQftype(pgres, col);
+            lua_pushinteger(L, col+1);
+            lua_pushinteger(L, oid);
+            lua_settable(L, -3);
+            lua_pushstring(L, PQfname(pgres, col));
+            lua_pushinteger(L, oid);
+            lua_settable(L, -3);
+          }
+          lua_setfield(L, -2, "type_oid");
           for (int row=0; row<rows; row++) {
             lua_pushinteger(L, row+1);
             lua_newtable(L);
