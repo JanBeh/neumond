@@ -4,10 +4,16 @@ local pgeff = require "pgeff"
 return waitio_fiber.main(function()
   local dbconn = assert(pgeff.connect(""))
 
-  local result = dbconn:query("SELECT 15+7 AS val")
-  assert(assert(tonumber(result[1].val)) == 22)
+  local a, b = 15, 7
+  local result = dbconn:query(
+    "SELECT CAST($1 AS INT) + CAST($2 AS INT) AS val", a, b
+  )
+  if result.error_message then
+    error(result.error_message)
+  end
+  assert(assert(tonumber(result[1].val)) == a + b)
 
-  local res1, res2 = dbconn:query("SELECT 8+3 AS val; SELECT 5")
-  assert(assert(tonumber(res1[1].val)) == 11)
-  assert(assert(tonumber(res2[1][1])) == 5)
+  -- expect syntax error (error class "42"):
+  local result = dbconn:query("SELEEEECT")
+  assert(result.error_code and string.sub(result.error_code, 1, 2) == "42")
 end)

@@ -165,6 +165,15 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
           result->pgres = pgres;
           luaL_setmetatable(L, PGEFF_RESULT_MT_REGKEY);
           lua_newtable(L);
+          char *errmsg = PQresultErrorMessage(pgres);
+          if (errmsg[0]) {
+            pgeff_push_string_trim(L, errmsg);
+            lua_setfield(L, -2, "error_message");
+            char *sqlstate = PQresultErrorField(pgres, PG_DIAG_SQLSTATE);
+            if (!sqlstate) sqlstate = "";
+            pgeff_push_string_trim(L, sqlstate);
+            lua_setfield(L, -2, "error_code");
+          }
           int rows = PQntuples(pgres);
           int cols = PQnfields(pgres);
           for (int row=0; row<rows; row++) {
@@ -212,18 +221,25 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
 static int pgeff_query(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   const char *querystring = luaL_checkstring(L, 2);
-  lua_settop(L, 2);
+  int nparams = lua_gettop(L) - 2;
   if (!dbconn->pgconn) {
     return luaL_error(L, "database handle has been closed");
   }
   if (dbconn->state != PGEFF_STATE_IDLE) {
     return luaL_error(L, "database handle is in use");
   }
-  if (!PQsendQuery(dbconn->pgconn, querystring)) {
+  const char **values = lua_newuserdatauv(L, nparams * sizeof(char *), 0);
+  for (int i=0; i<nparams; i++) {
+    values[i] = luaL_tolstring(L, i+3, NULL);
+  }
+  if (!PQsendQueryParams(
+    dbconn->pgconn, querystring, nparams, NULL, values, NULL, NULL, 0
+  )) {
     lua_pushnil(L);
     pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
     return 2;
   }
+  lua_settop(L, 2);
   dbconn->state = PGEFF_STATE_FLUSHING;
   pgeff_query_cont(L, LUA_OK, (lua_KContext)dbconn);
   return 0;
