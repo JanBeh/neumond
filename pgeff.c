@@ -22,6 +22,8 @@
 #define PGEFF_SQLTYPE_INT 2
 #define PGEFF_SQLTYPE_FLOAT 3
 
+#define PGEFF_OID_BOOL 16
+
 static int pgeff_sqltype(Oid oid) {
   switch (oid) {
     case 16:   /* BOOL */
@@ -286,12 +288,22 @@ static int pgeff_query(lua_State *L) {
   if (dbconn->state != PGEFF_STATE_IDLE) {
     return luaL_error(L, "database handle is in use");
   }
+  Oid *type_oids = lua_newuserdatauv(L, nparams * sizeof(Oid), 0);
   const char **values = lua_newuserdatauv(L, nparams * sizeof(char *), 0);
   for (int i=0; i<nparams; i++) {
-    values[i] = luaL_optstring(L, i+3, NULL);
+    int j = i+3;
+    switch (lua_type(L, j)) {
+      case LUA_TBOOLEAN:
+        type_oids[i] = PGEFF_OID_BOOL;
+        values[i] = lua_toboolean(L, j) ? "t" : "f";
+        break;
+      default:
+        type_oids[i] = 0;
+        values[i] = luaL_optstring(L, j, NULL);
+    }
   }
   if (!PQsendQueryParams(
-    dbconn->pgconn, querystring, nparams, NULL, values, NULL, NULL, 0
+    dbconn->pgconn, querystring, nparams, type_oids, values, NULL, NULL, 0
   )) {
     lua_pushnil(L);
     pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
