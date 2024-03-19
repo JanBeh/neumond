@@ -471,6 +471,11 @@ An I/O handle `h` provides the following attributes and methods:
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.
 
+## Module `fastcgi`
+
+Lua Module providing FastCGI server capabilities based on `eio` and `fiber`.
+Undocumented yet, see source code and example in `examples/io/fastcgi.lua`.
+
 ## Caveats
 
 On Linux, [`libkqueue`] is needed. Some older versions of this library do not
