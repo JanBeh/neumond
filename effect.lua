@@ -8,6 +8,7 @@ local select       = select
 local setmetatable = setmetatable
 local tostring     = tostring
 local type         = type
+local pcall        = pcall
 local xpcall       = xpcall
 local coroutine_create      = coroutine.create
 local coroutine_isyieldable = coroutine.isyieldable
@@ -412,6 +413,30 @@ function _M.discontinue(resume)
     error(result, 0)
   end
   -- "early return marker" has been caught successfully.
+end
+
+-- Function processing pcall's and xpcall's results
+local function process_pcall_results(...)
+  local success, result = ...
+  -- Check if an exception is reported and if it's an early return marker.
+  if not success and getmetatable(result) == early_return_metatbl then
+    -- Exception that is an early return marker has been caught.
+    -- Re-raise the exception:
+    error(result)
+  end
+  -- No early return marker has been caught.
+  -- Pass all arguments to callee:
+  return ...
+end
+
+-- pcall function where early return markers are not caught:
+function _M.pcall(...)
+  return process_pcall_results(pcall(...))
+end
+
+-- xpcall function where early return markers are not caught:
+function _M.xpcall(...)
+  return process_pcall_results(xpcall(...))
 end
 
 -- Return module table:

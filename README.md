@@ -116,6 +116,11 @@ The module provides the following functions:
     discontinued when an effect handler returns (or throws an error) without
     resuming.
 
+  * **`effect.pcall`** and **`effect.xpcall`** are drop-in replacements for
+    Lua's `pcall` and `xpcall` functions, where the drop-in replacement does
+    not catch errors that are internally used by this module to unwind the
+    stack when discontinuing an action.
+
 In many cases, tail-call elimination can be performed. If an effect handler
 installed with `effect.handle` exits with `return resume(...)`, or if an effect
 handler installed with `effect.handle_once` exits with
