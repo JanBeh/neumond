@@ -276,6 +276,23 @@ are created for waiting, each handle must not be used more than once in
 parallel. Violating these rules may result in an error or unspecified behavior,
 e.g. deadlocks.
 
+The `waitio` module also provides a simple synchronization mechanism which is
+independent of the `fiber` module:
+
+  * **`waitio.mutex()`** returns a mutex `m`. Calling `m` locks the mutex and
+  returns a guard that should be stored in a `<close>` variable which will
+  unlock the mutex when closed.
+
+A mutex protected section looks as follows:
+
+```
+local mutex = waitio.mutex()
+local func()
+  local guard <close> = mutex()
+  -- do stuff here
+end
+```
+
 ## Module `waitio_fiber`
 
 Module providing handling of the effects defined in the `waitio` module using
