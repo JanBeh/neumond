@@ -9,38 +9,19 @@ local waitio = require "waitio"
 local waitio_fiber = require "waitio_fiber"
 local eio = require "eio"
 
-local terminate = effect.new("terminate") -- terminate program
-local close = effect.new("close") -- close FastCGI connection
-
+-- Constants for FastCGI:
 local fcgi_rtypes = {
-  BEGIN_REQUEST = 1,
-  ABORT_REQUEST = 2,
-  END_REQUEST = 3,
-  PARAMS = 4,
-  STDIN = 5,
-  STDOUT = 6,
-  STDERR = 7,
-  DATA = 8,
-  GET_VALUES = 9,
-  GET_VALUES_RESULT = 10,
+  BEGIN_REQUEST = 1, ABORT_REQUEST = 2, END_REQUEST = 3,
+  PARAMS = 4, STDIN = 5, STDOUT = 6, STDERR = 7,
+  GET_VALUES = 9, GET_VALUES_RESULT = 10,
   UNKNOWN_TYPE = 11,
 }
+local fcgi_pstatus = { REQUEST_COMPLETE = 0, OVERLOADED = 2, UNKNOWN_ROLE = 3 }
+local fcgi_roles = { FCGI_RESPONDER = 1 }
+local fcgi_flags = { KEEP_CONN = 1 }
 
-local fcgi_pstatus = {
-  REQUEST_COMPLETE = 0,
-  CANT_MPX_CONN = 1,
-  OVERLOADED = 2,
-  UNKNOWN_ROLE = 3,
-}
-
-local fcgi_roles = {
-  FCGI_RESPONDER = 1,
-}
-
-local fcgi_flags = {
-  KEEP_CONN = 1,
-}
-
+-- Parsing FastCGI name-value lists:
+local nv_eof_err = "unexpected end in FastCGI name-value list"
 local function parse_pairs(str)
   local tbl = {}
   local pos = 1
@@ -50,21 +31,18 @@ local function parse_pairs(str)
     if name_len < 0x80 then
       pos = pos + 1
     else
-      assert(pos + 3 <= str_len, "unexpected end in FCGI name-value list")
+      assert(pos + 3 <= str_len, nv_eof_err)
       name_len, pos = (">I4"):unpack(str, pos) & 0x7fffffff
     end
-    assert(pos <= str_len, "unexpected end in FCGI name-value list")
+    assert(pos <= str_len, nv_eof_err)
     local value_len = ("B"):unpack(str, pos)
     if value_len < 0x80 then
       pos = pos + 1
     else
-      assert(pos + 3 <= str_len, "unexpected end in FCGI name-value list")
+      assert(pos + 3 <= str_len, nv_eof_err)
       value_len, pos = (">I4"):unpack(str, pos) & 0x7fffffff
     end
-    assert(
-      pos + name_len + value_len <= str_len + 1,
-      "unexpected end in FCGI name-value list"
-    )
+    assert(pos + name_len + value_len <= str_len + 1, nv_eof_err)
     local name = string.sub(str, pos, pos+name_len-1)
     pos = pos + name_len
     local value = string.sub(str, pos, pos+value_len-1)
@@ -74,7 +52,11 @@ local function parse_pairs(str)
   return tbl
 end
 
-local function connection_handler_impl(conn, request_handler)
+-- Effect terminating the connection handler and thus closing the connection:
+local close_connection = effect.new("close_connection")
+
+-- Connection handler without handling the close_connection effect:
+local function connection_handler_action(conn, request_handler)
   local write_mutex = waitio.mutex()
   local requests = {}
   local function send_record_unlocked(rtype, req_id, content)
@@ -175,7 +157,7 @@ local function connection_handler_impl(conn, request_handler)
               end_request(req_id, fcgi_pstatus.REQUEST_COMPLETE, 0)
             end
             if not request._keep_conn then
-              close()
+              close_connection()
             end
           end)
         end
@@ -220,14 +202,14 @@ local function connection_handler_impl(conn, request_handler)
   end
 end
 
-local function close_handler(resume)
-end
-local close_handlers = { [close] = close_handler }
+-- Invocation of connection_handler while handling the close_connection effect:
+local close_connection_handling = { [close_connection] = function(resume) end }
 local function connection_handler(...)
-  fiber.handle(close_handlers, connection_handler_impl, ...)
+  fiber.handle(close_connection_handling, connection_handler_action, ...)
 end
 
-local function run(fcgi_path, request_handler)
+-- FastCGI server with missing fiber.scope invocation:
+local function run_without_scope(fcgi_path, request_handler)
   local listener = assert(eio.locallisten(fcgi_path))
   while true do
     local conn = listener:accept()
@@ -243,18 +225,26 @@ local function run(fcgi_path, request_handler)
   end
 end
 
+-- Run FastCGI server (without waitio_fiber main loop):
 function _M.run(...)
-  return fiber.scope(run, ...)
+  return fiber.scope(run_without_scope, ...)
 end
 
+-- Effect terminate_main is used to terminate main function below:
+local terminate_main = effect.new("terminate_main")
+local terminate_main_handling = { [terminate_main] = function(resume) end }
+
+-- Run FastCGI server with waitio_fiber main loop:
 function _M.main(...)
+  -- NOTE: Handling the terminate_main effect outside waitio_fiber.main allows
+  -- to avoid an extra fiber.scope invocation.
   return effect.handle(
-    { [terminate] = function(resume) end },
+    terminate_main_handling,
     waitio_fiber.main,
     function(...)
-      fiber.spawn(function() eio.catch_signal(2)(); terminate() end)
-      fiber.spawn(function() eio.catch_signal(15)(); terminate() end)
-      return run(...)
+      fiber.spawn(function() eio.catch_signal(2)(); terminate_main() end)
+      fiber.spawn(function() eio.catch_signal(15)(); terminate_main() end)
+      return run_without_scope(...)
     end,
     ...
   )
