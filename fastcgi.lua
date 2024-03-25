@@ -75,9 +75,23 @@ local function connection_handler_action(conn, request_handler)
       (">I4Bxxx"):pack(app_status, protocol_status)
     )
   end
+  local stdout_buffer = nil
+  local stdout_written
   local request_metatbl = {
     __index = {
       write = function(self, content)
+        local length = #content
+        if stdout_buffer then
+          stdout_buffer[#stdout_buffer+1] = content
+          stdout_written = stdout_written + length
+          if stdout_written < 1024 then return end
+          content = table.concat(stdout_buffer)
+          stdout_buffer = nil
+        elseif length < 1024 then
+          stdout_buffer = {content}
+          stdout_written = length
+          return
+        end
         local guard <close> = write_mutex()
         send_record_unlocked(fcgi_rtypes.STDOUT, self._req_id, content)
       end,
@@ -87,7 +101,17 @@ local function connection_handler_action(conn, request_handler)
       flush = function(self, content)
         local guard <close> = write_mutex()
         if content ~= nil and content ~= "" then
+          if stdout_buffer then
+            stdout_buffer[#stdout_buffer+1] = content
+            content = table.concat(stdout_buffer)
+            stdout_buffer = nil
+          end
           send_record_unlocked(fcgi_rtypes.STDOUT, self._req_id, content)
+        elseif stdout_buffer then
+          send_record_unlocked(
+            fcgi_rtypes.STDOUT, self._req_id, table.concat(stdout_buffer)
+          )
+          stdout_buffer = nil
         end
         assert(conn:flush())
       end,
