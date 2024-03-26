@@ -107,14 +107,16 @@ local function connection_handler_action(conn, request_handler)
   -- Metatable for request handles:
   local request_metatbl = {
     -- Methods of request handles:
-    -- TODO: finish STDOUT and STDERR streams with empty content and handle
-    --       empty content passed to the methods
     __index = {
       -- Method for buffered writing to STDOUT
       write = function(self, content)
         -- Assert that argument is a string:
         if type(content) ~= "string" then
           error("string expected", 2)
+        end
+        -- Do nothing if content is empty:
+        if content == "" then
+          return
         end
         -- Determine length of content to be written:
         local length = #content
@@ -278,6 +280,13 @@ local function connection_handler_action(conn, request_handler)
             local status, result = effect.xpcall(
               request_handler, debug.traceback, request
             )
+            -- Close STDOUT and STDERR streams:
+            do
+              local guard <close> = write_mutex()
+              send_record_unlocked(fcgi_rtypes.STDOUT, req_id, "")
+              send_record_unlocked(fcgi_rtypes.STDERR, req_id, "")
+              assert(conn:flush())
+            end
             -- Mark request ID as inactive:
             requests[req_id] = nil
             -- Check if there was an error in the request handler:
