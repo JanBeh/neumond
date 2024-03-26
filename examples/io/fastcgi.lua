@@ -18,11 +18,9 @@ fastcgi.main(fcgi_path, function(req)
     req:write('<p>The following GET parameters have been received:</p>\n')
     req:write('<ul>\n')
     for key, value in pairs(get_params) do
-      req:write('<li>')
-      req:write(web.encode_html(key))
-      req:write(': ')
-      req:write(web.encode_html(value))
-      req:write('</li>')
+      req:write(
+        '<li>', web.encode_html(key), ': ', web.encode_html(value), '</li>'
+      )
     end
     req:write('</ul>\n')
   else
@@ -33,11 +31,9 @@ fastcgi.main(fcgi_path, function(req)
     req:write('<p>The following POST parameters have been received:</p>\n')
     req:write('<ul>\n')
     for key, value in pairs(post_params) do
-      req:write('<li>')
-      req:write(web.encode_html(key))
-      req:write(': ')
-      req:write(web.encode_html(value))
-      req:write('</li>')
+      req:write(
+        '<li>', web.encode_html(key), ': ', web.encode_html(value), '</li>'
+      )
     end
     req:write('</ul>\n')
   end

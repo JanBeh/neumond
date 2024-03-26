@@ -109,10 +109,20 @@ local function connection_handler_action(conn, request_handler)
     -- Methods of request handles:
     __index = {
       -- Method for buffered writing to STDOUT
-      write = function(self, content)
-        -- Assert that argument is a string:
-        if type(content) ~= "string" then
-          error("string expected", 2)
+      write = function(self, content, ...)
+        -- Determine argument count:
+        local arg_count = select("#", content, ...)
+        -- Check if more than one argument was given:
+        if arg_count > 1 then
+          -- More than one argument was given:
+          -- Concatenate arguments:
+          content = table.concat({content, ...}, nil, 1, arg_count)
+        else
+          -- Only one argument was given.
+          -- Assert that argument is a string:
+          if type(content) ~= "string" then
+            error("string expected", 2)
+          end
         end
         -- Do nothing if content is empty:
         if content == "" then
@@ -151,7 +161,15 @@ local function connection_handler_action(conn, request_handler)
         -- Send content to webserver and flush:
         send_record_flush(fcgi_rtypes.STDERR, self._req_id, content)
       end,
-      flush = function(self, content)
+      flush = function(self, content, ...)
+        -- Determine argument count:
+        local arg_count = select("#", content, ...)
+        -- Check if more than one argument was given:
+        if arg_count > 1 then
+          -- More than one argument was given:
+          -- Concatenate arguments:
+          content = table.concat({content, ...}, nil, 1, arg_count)
+        end
         -- Lock mutex for sending data to webserver:
         local guard <close> = write_mutex()
         -- Check if (non-empty) content is passed as argument:

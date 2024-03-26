@@ -8,7 +8,7 @@ waitio_fiber.main(
       if line == "" then
         break
       end
-      eio.stdout:flush("Got: " .. line .. "\n")
+      eio.stdout:flush("Got: ", line, "\n")
     end
     eio.stdout:flush("EOF\n")
   end
