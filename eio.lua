@@ -93,7 +93,7 @@ function handle_methods:write(data)
 end
 
 function handle_methods:flush(data)
-  if data and data ~= "" then
+  if data ~= nil and data ~= "" then
     -- write_unbuffered also flushes
     local start = 1
     local total = #data
