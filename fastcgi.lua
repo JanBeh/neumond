@@ -292,8 +292,10 @@ local function connection_handler_action(conn, request_handler)
             -- Check if there was an error in the request handler:
             if not status then
               -- There was an error in the request handler.
-              -- Print error (TODO: better logging):
-              print("Error in request handler: " .. tostring(result))
+              -- Print error to application's stderr:
+              eio.stderr:flush(
+                "Error in request handler: " .. tostring(result) .. "\n"
+              )
               -- Send REQUEST_COMPLETE record with non-zero application status:
               end_request(req_id, fcgi_pstatus.REQUEST_COMPLETE, 1)
             else
@@ -402,8 +404,9 @@ local function run_without_scope(fcgi_path, request_handler)
       -- Check if there was an error in the connection handler:
       if not success then
         -- There was an error in the connection handler:
-        -- Print error (TODO: better logging):
-        print("Error in connection handler: " .. tostring(errmsg))
+        -- Print error to application's stderr:
+        eio.stderr:flush(
+          "Error in connection handler: " .. tostring(errmsg) .. "\n")
       end
     end)
   end
