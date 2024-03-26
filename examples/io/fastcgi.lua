@@ -12,7 +12,6 @@ fastcgi.main(fcgi_path, function(req)
   print("------------")
   req:write("Content-type: text/plain\n\n")
   req:write("Hello World!\n")
-  req:flush()
 end)
 
 print("FastCGI server terminated.")

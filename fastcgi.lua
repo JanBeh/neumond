@@ -280,13 +280,22 @@ local function connection_handler_action(conn, request_handler)
             local status, result = effect.xpcall(
               request_handler, debug.traceback, request
             )
-            -- Close STDOUT and STDERR streams:
-            do
-              local guard <close> = write_mutex()
-              send_record_unlocked(fcgi_rtypes.STDOUT, req_id, "")
-              send_record_unlocked(fcgi_rtypes.STDERR, req_id, "")
-              assert(conn:flush())
+            -- NOTE: At this point it is assumed that the request handle is no
+            -- longer used. Thus no locking is required.
+            -- Check if there is any buffered data for STDOUT.
+            if request._stdout_buffer then
+              -- There is buffered data for STDOUT.
+              -- Send buffered content to webserver (without locking):
+              send_record_unlocked(
+                fcgi_rtypes.STDOUT,
+                req_id,
+                table.concat(request._stdout_buffer)
+              )
             end
+            -- Close STDOUT and STDERR streams and flush socket:
+            send_record_unlocked(fcgi_rtypes.STDOUT, req_id, "")
+            send_record_unlocked(fcgi_rtypes.STDERR, req_id, "")
+            assert(conn:flush())
             -- Mark request ID as inactive:
             requests[req_id] = nil
             -- Check if there was an error in the request handler:
