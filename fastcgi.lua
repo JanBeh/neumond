@@ -396,7 +396,7 @@ local function run_without_scope(fcgi_path, request_handler)
       if not success then
         -- There was an error in the connection handler:
         -- Print error (TODO: better logging):
-        print("Error in handler: " .. tostring(errmsg))
+        print("Error in connection handler: " .. tostring(errmsg))
       end
     end)
   end
