@@ -203,8 +203,8 @@ local function connection_handler_action(conn, request_handler)
         -- Check if variable name is known:
         if name == "FCGI_MPXS_CONNS" then
           -- FCGI_MPXS_CONNS variable value has been requested.
-          -- Add response with value "0" to response buffer (TODO: return "1"):
-          local value = "0"
+          -- Add response with value "1" to response buffer:
+          local value = "1"
           chunks[#chunks+1] = (">I4I4"):pack(#name, #value)
           chunks[#chunks+1] = name
           chunks[#chunks+1] = value
