@@ -104,10 +104,6 @@ local function connection_handler_action(conn, request_handler)
       (">I4Bxxx"):pack(app_status, protocol_status)
     )
   end
-  -- Buffer for STDOUT stream:
-  local stdout_buffer = nil
-  -- Number of bytes buffered for STDOUT (valid if stdout_buffer ~= nil):
-  local stdout_written
   -- Metatable for request handles:
   local request_metatbl = {
     -- Methods of request handles:
@@ -124,23 +120,23 @@ local function connection_handler_action(conn, request_handler)
         local length = #content
         -- Check if buffered data exists or if content to be written is short
         -- enough to be buffered:
-        if stdout_buffer then
+        if self._stdout_buffer then
           -- Buffered data exists.
           -- Add content to buffer and update its length:
-          stdout_buffer[#stdout_buffer+1] = content
-          stdout_written = stdout_written + length
+          self._stdout_buffer[#self._stdout_buffer+1] = content
+          self._stdout_written = self._stdout_written + length
           -- If total length is too small, then do not send any record yet:
-          if stdout_written < 1024 then return end
+          if self._stdout_written < 1024 then return end
           -- Concatenate buffer (concatenated result will be sent):
-          content = table.concat(stdout_buffer)
+          content = table.concat(self._stdout_buffer)
           -- Clear buffer:
-          stdout_buffer = nil
+          self._stdout_buffer = nil
         elseif length < 1024 then
           -- No buffered data exists, but content is short enough to be
           -- buffered.
           -- Store content and its length in buffer:
-          stdout_buffer = {content}
-          stdout_written = length
+          self._stdout_buffer = {content}
+          self._stdout_written = length
           -- Do not send any record yet:
           return
         end
@@ -164,25 +160,25 @@ local function connection_handler_action(conn, request_handler)
             error("string expected", 2)
           end
           -- Check if there is any buffered data.
-          if stdout_buffer then
+          if self._stdout_buffer then
             -- There is buffered data.
             -- Add content to buffer:
-            stdout_buffer[#stdout_buffer+1] = content
+            self._stdout_buffer[#self._stdout_buffer+1] = content
             -- Concatenate buffer (concatenated result will be sent):
-            content = table.concat(stdout_buffer)
+            content = table.concat(self._stdout_buffer)
             -- Clear buffer:
-            stdout_buffer = nil
+            self._stdout_buffer = nil
           end
           -- Send content (argument or from buffer) to webserver:
           send_record_unlocked(fcgi_rtypes.STDOUT, self._req_id, content)
-        elseif stdout_buffer then
+        elseif self._stdout_buffer then
           -- No (non-empty) content passed to method, but buffer is non-empty.
           -- Concatenate buffer and send to webserver:
           send_record_unlocked(
-            fcgi_rtypes.STDOUT, self._req_id, table.concat(stdout_buffer)
+            fcgi_rtypes.STDOUT, self._req_id, table.concat(self._stdout_buffer)
           )
           -- Clear buffer:
-          stdout_buffer = nil
+          self._stdout_buffer = nil
         end
         -- Flush socket:
         assert(conn:flush())
@@ -234,6 +230,8 @@ local function connection_handler_action(conn, request_handler)
           _params_chunks = {},
           _stdin_chunks = {},
           _keep_conn = flags & fcgi_flags.KEEP_CONN ~= 0,
+          _stdout_buffer = nil,
+          _stdout_written = nil, -- valid if _stdout_buffer ~= nil
           stdin_waiter = waitio.waiter(),
           abort_waiter = waitio.waiter(),
         },
