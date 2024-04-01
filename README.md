@@ -449,15 +449,17 @@ An I/O handle `h` provides the following attributes and methods:
     ambiguities, EOF is indicated by returning `false` (and an error message).
     I/O errors are indicated by `nil` and an error message.
 
-  * **`h:write(data)`** waits repeatedly until all `data` could be stored in a
-    buffer and/or written out. Returns `true` on success, `false` and an error
-    message in case of a disconnected receiver (broken pipe), and `nil` and an
-    error message in case of other I/O errors.
+  * **`h:write(data, ...)`** waits repeatedly until all `data` could be stored
+    in a buffer and/or written out. Returns `true` on success, `false` and an
+    error message in case of a disconnected receiver (broken pipe), and `nil`
+    and an error message in case of other I/O errors. Multiple arguments may be
+    supplied in which case they get concatenated.
 
-  * **`h:flush(data)`** waits repeatedly until all buffered data and the
+  * **`h:flush(data, ...)`** waits repeatedly until all buffered data and the
     optionally passed `data` could be written out. Returns `true` on success,
     `false` and an error message in case of a disconnected receiver (broken
-    pipe), and `nil` and an error message in case of other I/O errors.
+    pipe), and `nil` and an error message in case of other I/O errors. Multiple
+    arguments may be supplied in which case they get concatenated.
 
   * **`h:shutdown()`** closes the sending part but not the receiving part of a
     connection. This function returns immediately and may discard any
