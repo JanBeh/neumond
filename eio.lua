@@ -72,8 +72,9 @@ function handle_methods:read(maxlen, terminator)
 end
 
 function handle_methods:write(data, ...)
-  if ... ~= nil then
-    data = table.concat({data, ...}, nil, 1, 1 + select("#", ...))
+  local arg_count = select("#", data, ...)
+  if arg_count > 1 then
+    data = table.concat({data, ...}, nil, 1, arg_count)
   end
   if data == "" then
     return true
@@ -96,8 +97,9 @@ function handle_methods:write(data, ...)
 end
 
 function handle_methods:flush(data, ...)
-  if ... ~= nil then
-    data = table.concat({data, ...}, nil, 1, 1 + select("#", ...))
+  local arg_count = select("#", data, ...)
+  if arg_count > 1 then
+    data = table.concat({data, ...}, nil, 1, arg_count)
   end
   if data ~= nil and data ~= "" then
     -- write_unbuffered also flushes
