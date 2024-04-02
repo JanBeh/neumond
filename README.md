@@ -28,6 +28,7 @@ is included, allowing asynchronous communication with a PostgreSQL server.
           * **`waitio_blocking`** (waiting for I/O through blocking)
           * **`waitio_fiber`** (waiting for I/O utilizing fibers)
           * **`eio`** (basic I/O)
+          * ***`pgeff`*** (PostgreSQL interface)
   * ***`lkq`*** ([kqueue] interface)
       * `waitio_blocking`
       * `waitio_fiber`
@@ -474,6 +475,13 @@ An I/O handle `h` provides the following attributes and methods:
 
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.
+
+## Module `pgeff`
+
+Module written in C that provides an asynchronous interface to [PostgreSQL].
+Undocumented yet, see source code and example in `examples/io/postgresql.lua`.
+
+[PostgreSQL]: https://www.postgresql.org/
 
 ## Module `scgi`
 
