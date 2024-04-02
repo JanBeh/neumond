@@ -1,11 +1,13 @@
+local effect = require "effect"
+local fiber = require "fiber"
+local waitio_fiber = require "waitio_fiber"
+local eio = require "eio"
 local scgi = require "scgi"
 local web = require "web"
 
 local scgi_path = assert(..., "no socket path given")
 
-print("Starting SCGI server.")
-
-scgi.main(scgi_path, function(conn, params)
+local function request_handler(conn, params)
   print("NEW REQUEST:")
   for name, value in pairs(params) do
     print(name .. "=" .. value)
@@ -42,6 +44,24 @@ scgi.main(scgi_path, function(conn, params)
   conn:write('<form method="POST">\n')
   conn:write('<input type="text" name="demokey">')
   conn:write('<input type="submit" value="Submit POST request">')
-end)
+end
+
+local terminate = effect.new("terminate")
+
+print("Starting SCGI server.")
+
+effect.handle(
+  {
+    [terminate] = function(resume, sig)
+      print("Terminating SCGI server due to " .. sig .. ".")
+    end
+  },
+  waitio_fiber.main,
+  function()
+    fiber.spawn(function() eio.catch_signal(2)(); terminate("SIGINT") end)
+    fiber.spawn(function() eio.catch_signal(15)(); terminate("SIGTERM") end)
+    scgi.run(scgi_path, request_handler)
+  end
+)
 
 print("SCGI server terminated.")

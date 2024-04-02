@@ -5,8 +5,6 @@ local _M = {}
 
 local effect = require "effect"
 local fiber = require "fiber"
-local waitio = require "waitio"
-local waitio_fiber = require "waitio_fiber"
 local eio = require "eio"
 
 _M.max_header_length = 1024 * 256
@@ -36,8 +34,8 @@ local function connection_handler(conn, request_handler)
   assert(conn:flush())
 end
 
--- SCGI server with missing fiber.scope invocation:
-local function run_without_scope(fcgi_path, request_handler)
+-- Run SCGI server:
+function _M.run(fcgi_path, request_handler)
   -- Listen on local socket:
   local listener = assert(eio.locallisten(fcgi_path))
   while true do
@@ -60,33 +58,6 @@ local function run_without_scope(fcgi_path, request_handler)
       end
     end)
   end
-end
-
--- Run SCGI server (without waitio_fiber main loop):
-function _M.run(...)
-  return fiber.scope(run_without_scope, ...)
-end
-
--- Effect terminate_main is used to terminate main function below:
-local terminate_main = effect.new("terminate_main")
-local terminate_main_handling = { [terminate_main] = function(resume) end }
-
--- Action for main function below:
-local function main_action(...)
-  -- Terminate on SIGINT and SIGTERM:
-  fiber.spawn(function() eio.catch_signal(2)(); terminate_main() end)
-  fiber.spawn(function() eio.catch_signal(15)(); terminate_main() end)
-  -- Call run function without a fiber.scope invocation:
-  return run_without_scope(...)
-end
-
--- Run SCGI server with waitio_fiber main loop:
-function _M.main(...)
-  -- NOTE: Handling the terminate_main effect outside waitio_fiber.main allows
-  -- to avoid an extra fiber.scope invocation.
-  return effect.handle(
-    terminate_main_handling, waitio_fiber.main, main_action, ...
-  )
 end
 
 return _M

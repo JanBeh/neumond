@@ -17,6 +17,9 @@ Some basic asynchronous I/O support is given for:
 Moreover, a small example for integration with a third party C library [libpq]
 is included, allowing asynchronous communication with a PostgreSQL server.
 
+Web applications can be built using the `scgi` module, which builds on top of
+fibers and asynchronous I/O.
+
 [libpq]: https://www.postgresql.org/docs/current/libpq.html
 
 ## Module overview (dependency tree)
@@ -24,10 +27,12 @@ is included, allowing asynchronous communication with a PostgreSQL server.
   * **`effect`** (effect handling)
       * **`fiber`** (lightweight threads)
           * `waitio_fiber`
+          * `scgi`
       * **`waitio`** (waiting for I/O)
           * **`waitio_blocking`** (waiting for I/O through blocking)
           * **`waitio_fiber`** (waiting for I/O utilizing fibers)
           * **`eio`** (basic I/O)
+              * **`scgi`** (SCGI server)
           * ***`pgeff`*** (PostgreSQL interface)
   * ***`lkq`*** ([kqueue] interface)
       * `waitio_blocking`
@@ -476,17 +481,20 @@ An I/O handle `h` provides the following attributes and methods:
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.
 
+## Module `scgi`
+
+Lua module providing SCGI ([Simple Common Gateway Interface]) server
+capabilities based on `eio` and `fiber`. Undocumented yet, see source code and
+example in `examples/io/scgi.lua`.
+
+[Simple Common Gateway Interface]: https://en.wikipedia.org/wiki/Simple_Common_Gateway_Interface
+
 ## Module `pgeff`
 
 Module written in C that provides an asynchronous interface to [PostgreSQL].
 Undocumented yet, see source code and example in `examples/io/postgresql.lua`.
 
 [PostgreSQL]: https://www.postgresql.org/
-
-## Module `scgi`
-
-Lua module providing SCGI server capabilities based on `eio` and `fiber`.
-Undocumented yet, see source code and example in `examples/io/scgi.lua`.
 
 ## Caveats
 
