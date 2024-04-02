@@ -429,6 +429,13 @@ static int nbio_locallisten(lua_State *L) {
     lua_pushstring(L, errmsg);
     return 2;
   }
+  if (chmod(path, 0666)) {
+    nbio_prepare_errmsg(errno);
+    close(fd);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
   if (listen(fd, NBIO_LISTEN_BACKLOG)) {
     nbio_prepare_errmsg(errno);
     close(fd);

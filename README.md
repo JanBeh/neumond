@@ -386,7 +386,9 @@ Available functions:
 
   * **`eio.locallisten(path)`** listens for connections to a local socket given
     by `path` on the filesystem and returns a listener handle on success (`nil`
-    and error message otherwise).
+    and error message otherwise). A pre-existing socket entry in the file
+    system is unlinked automatically and permissions of the new socket are set
+    to world read- and writeable.
 
   * **`eio.tcplisten(host, port)`** runs a TCP server at the given interface
     (`host`) and `port` and returns a listener handle on success (`nil` and
