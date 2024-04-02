@@ -473,10 +473,10 @@ An I/O handle `h` provides the following attributes and methods:
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.
 
-## Modules `fastcgi` and `scgi`
+## Module `scgi`
 
-Lua modules providing FastCGI/SCGI server capabilities based on `eio` and
-`fiber`. Undocumented yet, see source code and examples in `examples/io`.
+Lua module providing SCGI server capabilities based on `eio` and `fiber`.
+Undocumented yet, see source code and example in `examples/io/scgi.lua`.
 
 ## Caveats
 
