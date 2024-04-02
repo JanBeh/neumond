@@ -410,7 +410,7 @@ static int nbio_locallisten(lua_State *L) {
     );
   }
   struct stat sb;
-  if (stat(path, &sb) == 0) {
+  if (lstat(path, &sb) == 0) {
     if (S_ISSOCK(sb.st_mode)) unlink(path);
   }
   struct sockaddr_un sockaddr = { .sun_family = AF_LOCAL };
