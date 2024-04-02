@@ -1,4 +1,4 @@
--- FastCGI library
+-- SCGI library
 
 _ENV = setmetatable({}, { __index = _G })
 local _M = {}
