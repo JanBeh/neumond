@@ -63,7 +63,7 @@ local function check_call(...)
 end
 
 -- Performs an effect:
-function _M.perform(...)
+local function perform(...)
   if coroutine_isyieldable() then
     return check_call(coroutine_yield(...))
   end
@@ -72,6 +72,7 @@ function _M.perform(...)
     2
   )
 end
+_M.perform = perform
 
 -- Convenience function, which creates an object that is suitable to be used as
 -- an effect, because it is callable and has a string representation:
@@ -81,7 +82,7 @@ function _M.new(name)
   end
   local str = name .. " effect"
   return setmetatable({}, {
-    __call = _M.perform,
+    __call = perform,
     __tostring = function() return str end,
   })
 end
