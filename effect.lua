@@ -91,12 +91,6 @@ end
 -- last resumed coroutine of every coroutine:
 local children = setmetatable({}, { __mode = "k" })
 
--- Exception handler for actions (functions whose effects are handled), which
--- catches exceptions and adds a stack trace to the error message:
-local function action_wrapper(action, ...)
-  return xpcall(action, debug_traceback, ...)
-end
-
 -- handle(handlers, action, ...) runs action(...) under the context of an
 -- effect handler and returns the return value of the action function (possibly
 -- modified by effect handlers).
@@ -109,11 +103,11 @@ end
 -- effect handler has returned. To be able to use the resume function after the
 -- handler has returned, use the handle_once function instead.
 --
-function _M.handle(handlers, ...)
-  -- The action function gets wrapped by the action_wrapper function to ensure
-  -- that errors will contain a stack trace. The action function is passed to
-  -- the action wrapped on the first "resume".
-  local action_thread = coroutine_create(action_wrapper)
+function _M.handle(handlers, action, ...)
+  -- The action function gets wrapped by the xpcall function to ensure that
+  -- errors will contain a stack trace. The arguments to xpcall (including the
+  -- action function) are passed on the first "resume".
+  local action_thread = coroutine_create(xpcall)
   -- Function to allow handling coroutine.resume's variable number of return
   -- values:
   local process_action_results
@@ -129,13 +123,14 @@ function _M.handle(handlers, ...)
   -- Implementation for local variable process_action_results defined above:
   function process_action_results(coro_success, ...)
     -- Check if the coroutine threw an exception (should never happen as it's
-    -- supposed to be caught by the action_wrapper function):
+    -- supposed to be caught by the xpcall function that has been passed to
+    -- coroutine.create):
     if coro_success then
       -- There was no exception caught.
       -- Check if coroutine finished exection:
       if coroutine_status(action_thread) == "dead" then
         -- Coroutine finished execution.
-        -- Check if action_wrapper caught an exception:
+        -- Check if xpcall caught an exception:
         local success, result = ...
         if success then
           -- Return coroutine's return values (except for the first value which
@@ -143,7 +138,7 @@ function _M.handle(handlers, ...)
           return select(2, ...)
         end
         -- An error happened during execution of the action function.
-        -- Re-throw exception that has been caught by action_wrapper:
+        -- Re-throw exception that has been caught by xpcall:
         error(result, 0)
       else
         -- Coroutine suspended execution.
@@ -265,10 +260,12 @@ function _M.handle(handlers, ...)
       ))
     end
   end
-  -- Invoke resume function for the first time with action function (first
-  -- element in "...") passed as first argument, and pass caught exceptions to
-  -- close function defined above:
-  return close(xpcall(resume, debug_traceback, ...))
+  -- Invoke the resume function for the first time, passing the arguments
+  -- action, debug.traceback, and variable arguments to the resume function;
+  -- while catching exceptions by wrapping the resume call with another xpcall
+  -- (which gets another debug.traceback as argument) and pass that xpcall's
+  -- results to the close function defined above:
+  return close(xpcall(resume, debug_traceback, action, debug_traceback, ...))
 end
 
 -- Ephemeron that allows obtaining the coroutine behind a resume function that
@@ -377,11 +374,11 @@ function _M.handle_once(handlers, action, ...)
     return resume(...)
   else
     -- action is not a previously returned resume function.
-    -- Create new coroutine with action_wrapper:
-    action_thread = coroutine_create(action_wrapper)
+    -- Create new coroutine with xpcall:
+    action_thread = coroutine_create(xpcall)
     -- Use resume function to start coroutine for the first time, in which case
-    -- the action needs to be passed as first argument:
-    return resume(action, ...)
+    -- the action and debug.traceback needs to be passed as first arguments:
+    return resume(action, debug_traceback, ...)
   end
 end
 
