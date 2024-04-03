@@ -17,12 +17,13 @@ _M.deregister_fd = effect.new("waitio.deregister_fd")
 
 -- Effect select(...) waits until one of several listed events occurred. Each
 -- event is denoted by two arguments, i.e. the number of arguments passed to
--- the select effect should be a multiple of two. The following arguments are
+-- the select effect must be a multiple of two. The following arguments are
 -- permitted:
---   * "fd_read",  file_descriptor
---   * "fd_write", file_descriptor
---   * "pid",      pid
---   * "handle",   handle (tested for "ready" attribute, which is not reset)
+--   * "fd_read" followed by an integer file descriptor
+--   * "fd_write" followed by an integer file descriptor
+--   * "pid" followed by an integer process ID
+--   * "handle" followed by a handle that is tested for the "ready" attribute
+--     (which is not reset)
 _M.select = effect.new("waitio.select")
 
 -- wait_fd_read(fd) waits until file descriptor fd is ready for reading:
@@ -75,7 +76,8 @@ function _M.mutex()
       local w = table.remove(waiters, 1)
       if w then
         -- Waiter handle was obtained.
-        -- Set waiter handle to be ready (e.g. wakeup a waiting fiber):
+        -- Set waiter handle to be ready (handle's __newindex metamethod will
+        -- then wakeup a waiting fiber if applicable):
         w.ready = true
       end
     end,
