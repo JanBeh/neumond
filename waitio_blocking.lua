@@ -1,4 +1,12 @@
-_ENV = setmetatable({}, { __index = _G })
+-- Module for handling waitio effects through blocking
+
+-- Disallow setting global variables in the implementation of this module:
+_ENV = setmetatable({}, {
+  __index = _G,
+  __newindex = function() error("cannot set global variable", 2) end,
+})
+
+-- Table containing all public items of this module:
 local _M = {}
 
 local effect = require "effect"
