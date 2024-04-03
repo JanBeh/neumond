@@ -9,6 +9,37 @@ local eio = require "eio"
 
 _M.max_header_length = 1024 * 256
 
+local request_methods = {}
+
+function request_methods:write(...)
+  return self._conn:write(...)
+end
+
+function request_methods:flush(...)
+  return self._conn:flush(...)
+end
+
+function request_methods:read(maxlen, terminator)
+  local remaining = self._remaining
+  if maxlen == nil or maxlen > remaining then
+    maxlen = remaining
+  end
+  local result, errmsg = self._conn:read(maxlen, terminator)
+  if not result then
+    return result, errmsg
+  end
+  remaining = remaining - #result
+  self._remaining = remaining
+  if maxlen == nil and terminator == nil and remaining > 0 then
+    error("unexpected EOF in request body")
+  end
+  return result
+end
+
+local request_metatbl = {
+  __index = request_methods,
+}
+
 local function connection_handler(conn, request_handler)
   local header_len = assert(
     tonumber(string.match(assert(conn:read(16, ":")), "^([0-9]+):")),
@@ -24,8 +55,16 @@ local function connection_handler(conn, request_handler)
   for key, value in string.gmatch(header, "([^\0]+)\0([^\0]+)\0") do
     params[key] = value
   end
+  local request = setmetatable(
+    {
+      _conn = conn,
+      _remaining = assert(tonumber(params.CONTENT_LENGTH or 0)),
+      cgi_params = params,
+    },
+    request_metatbl
+  )
   local success, errmsg = effect.xpcall(
-    request_handler, debug.traceback, conn, params
+    request_handler, debug.traceback, request
   )
   if not success then
     eio.stderr:flush(

@@ -7,44 +7,43 @@ local web = require "web"
 
 local scgi_path = assert(..., "no socket path given")
 
-local function request_handler(conn, params)
-  local body
-  local body_len = assert(tonumber(params.CONTENT_LENGTH or 0))
-  local body = assert(conn:read(body_len))
-  assert(#body == body_len)
+local function request_handler(req)
+  local body = req:read()
   print("NEW REQUEST:")
-  for name, value in pairs(params) do
+  for name, value in pairs(req.cgi_params) do
     print(name .. "=" .. value)
   end
   print("------------")
-  local get_params = web.decode_urlencoded_form(params.QUERY_STRING or "")
-  conn:write('Content-type: text/html\n\n')
-  conn:write('<html><head><title>FastCGI demo</title></head><body>\n')
+  local get_params = web.decode_urlencoded_form(
+    req.cgi_params.QUERY_STRING or ""
+  )
+  req:write('Content-type: text/html\n\n')
+  req:write('<html><head><title>FastCGI demo</title></head><body>\n')
   if next(get_params) then
-    conn:write('<p>The following GET parameters have been received:</p>\n')
-    conn:write('<ul>\n')
+    req:write('<p>The following GET parameters have been received:</p>\n')
+    req:write('<ul>\n')
     for key, value in pairs(get_params) do
-      conn:write(
+      req:write(
         '<li>', web.encode_html(key), ': ', web.encode_html(value), '</li>'
       )
     end
-    conn:write('</ul>\n')
+    req:write('</ul>\n')
   else
   end
-  if params.CONTENT_TYPE == "application/x-www-form-urlencoded" then
+  if req.cgi_params.CONTENT_TYPE == "application/x-www-form-urlencoded" then
     local post_params = web.decode_urlencoded_form(body)
-    conn:write('<p>The following POST parameters have been received:</p>\n')
-    conn:write('<ul>\n')
+    req:write('<p>The following POST parameters have been received:</p>\n')
+    req:write('<ul>\n')
     for key, value in pairs(post_params) do
-      conn:write(
+      req:write(
         '<li>', web.encode_html(key), ': ', web.encode_html(value), '</li>'
       )
     end
-    conn:write('</ul>\n')
+    req:write('</ul>\n')
   end
-  conn:write('<form method="POST">\n')
-  conn:write('<input type="text" name="demokey">')
-  conn:write('<input type="submit" value="Submit POST request">')
+  req:write('<form method="POST">\n')
+  req:write('<input type="text" name="demokey">')
+  req:write('<input type="submit" value="Submit POST request">')
 end
 
 local terminate = effect.new("terminate")
