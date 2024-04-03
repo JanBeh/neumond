@@ -5,7 +5,9 @@ local _M = {}
 
 local effect = require "effect"
 local fiber = require "fiber"
+local waitio = require "waitio"
 local eio = require "eio"
+local web = require "web"
 
 _M.max_header_length = 1024 * 256
 
@@ -19,8 +21,16 @@ function request_methods:flush(...)
   return self._conn:flush(...)
 end
 
-function request_methods:read(maxlen, terminator)
-  local remaining = self._remaining
+function request_methods:read(...)
+  if self._request_body_processing then
+    error("request body has already been processed", 2)
+  end
+    return request_methods:_read(...)
+end
+
+function request_methods:_read(maxlen, terminator)
+  self._request_body_fresh = false
+  local remaining = self._request_body_remaining
   if maxlen == nil or maxlen > remaining then
     maxlen = remaining
   end
@@ -29,15 +39,47 @@ function request_methods:read(maxlen, terminator)
     return result, errmsg
   end
   remaining = remaining - #result
-  self._remaining = remaining
+  self._request_body_remaining = remaining
   if maxlen == nil and terminator == nil and remaining > 0 then
     error("unexpected EOF in request body")
   end
   return result
 end
 
+function request_methods:process_request_body()
+  if self._request_body_processing then
+    return
+  end
+  if not self._request_body_fresh then
+    error("request body has already been read", 2)
+  end
+  self._request_body_processing = true
+  local mutex = waitio.mutex()
+  self._request_body_mutex = mutex
+  local guard = mutex()
+  fiber.spawn(function()
+    local guard <close> = guard
+    local body = self:_read()
+    local content_type = self.cgi_params.CONTENT_TYPE
+    if content_type == "application/x-www-form-urlencoded" then
+      self.post_params = web.decode_urlencoded_form(body)
+    else
+      self.post_params = {}
+    end
+  end)
+end
+
 local request_metatbl = {
-  __index = request_methods,
+  __index = function(self, key)
+    if key == "post_params" then
+      self:process_request_body()
+      do
+        local guard <close> = self._request_body_mutex()
+      end
+      return rawget(self, "post_params")
+    end
+    return request_methods[key]
+  end,
 }
 
 local function connection_handler(conn, request_handler)
@@ -58,8 +100,11 @@ local function connection_handler(conn, request_handler)
   local request = setmetatable(
     {
       _conn = conn,
-      _remaining = assert(tonumber(params.CONTENT_LENGTH or 0)),
+      _request_body_remaining = assert(tonumber(params.CONTENT_LENGTH or 0)),
+      _request_body_fresh = true,
+      _request_body_processing = false,
       cgi_params = params,
+      get_params = web.decode_urlencoded_form(params.QUERY_STRING or ""),
     },
     request_metatbl
   )

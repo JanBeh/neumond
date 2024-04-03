@@ -39,6 +39,8 @@ fibers and asynchronous I/O.
       * `waitio_fiber`
   * ***`nbio`*** (basic non-blocking I/O interface written in C)
       * `eio`
+  * **`web`** (functions for web application development)
+      * `scgi`
 
 [kqueue]: https://man.freebsd.org/cgi/man.cgi?kqueue
 

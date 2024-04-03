@@ -8,21 +8,18 @@ local web = require "web"
 local scgi_path = assert(..., "no socket path given")
 
 local function request_handler(req)
-  local body = req:read()
+  req:process_request_body() -- start processing request body immediately
   print("NEW REQUEST:")
   for name, value in pairs(req.cgi_params) do
     print(name .. "=" .. value)
   end
   print("------------")
-  local get_params = web.decode_urlencoded_form(
-    req.cgi_params.QUERY_STRING or ""
-  )
   req:write('Content-type: text/html\n\n')
   req:write('<html><head><title>FastCGI demo</title></head><body>\n')
-  if next(get_params) then
+  if next(req.get_params) then
     req:write('<p>The following GET parameters have been received:</p>\n')
     req:write('<ul>\n')
-    for key, value in pairs(get_params) do
+    for key, value in pairs(req.get_params) do
       req:write(
         '<li>', web.encode_html(key), ': ', web.encode_html(value), '</li>'
       )
@@ -31,10 +28,9 @@ local function request_handler(req)
   else
   end
   if req.cgi_params.CONTENT_TYPE == "application/x-www-form-urlencoded" then
-    local post_params = web.decode_urlencoded_form(body)
     req:write('<p>The following POST parameters have been received:</p>\n')
     req:write('<ul>\n')
-    for key, value in pairs(post_params) do
+    for key, value in pairs(req.post_params) do
       req:write(
         '<li>', web.encode_html(key), ': ', web.encode_html(value), '</li>'
       )
