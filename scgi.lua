@@ -21,7 +21,7 @@ local function connection_handler(conn, request_handler)
   assert(#separator == 1, "unexpected EOF after SCGI header")
   assert(separator == ",", "unexpected byte after SCGI header")
   local params = {}
-  for key, value in string.gmatch(header, "([^\0]*)\0([^\0]*)\0") do
+  for key, value in string.gmatch(header, "([^\0]+)\0([^\0]+)\0") do
     params[key] = value
   end
   local success, errmsg = effect.xpcall(
