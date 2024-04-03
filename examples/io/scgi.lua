@@ -8,6 +8,10 @@ local web = require "web"
 local scgi_path = assert(..., "no socket path given")
 
 local function request_handler(conn, params)
+  local body
+  local body_len = assert(tonumber(params.CONTENT_LENGTH or 0))
+  local body = assert(conn:read(body_len))
+  assert(#body == body_len)
   print("NEW REQUEST:")
   for name, value in pairs(params) do
     print(name .. "=" .. value)
@@ -28,9 +32,6 @@ local function request_handler(conn, params)
   else
   end
   if params.CONTENT_TYPE == "application/x-www-form-urlencoded" then
-    local body_len = assert(tonumber(params.CONTENT_LENGTH))
-    local body = assert(conn:read(body_len))
-    assert(#body == body_len)
     local post_params = web.decode_urlencoded_form(body)
     conn:write('<p>The following POST parameters have been received:</p>\n')
     conn:write('<ul>\n')
