@@ -8,10 +8,13 @@
 #define PGEFF_DBCONN_MT_REGKEY "pgeff_dbconn"
 #define PGEFF_RESULT_MT_REGKEY "pgeff_result"
 
-#define PGEFF_SELECT_UPVALIDX 1
-#define PGEFF_DEREGISTER_FD_UPVALIDX 2
+#define PGEFF_MODULE_UPVALIDX 1
+#define PGEFF_SELECT_UPVALIDX 2
+#define PGEFF_DEREGISTER_FD_UPVALIDX 3
 
-#define PGEFF_DBCONN_METHODS_UPVALIDX 3
+#define PGEFF_DBCONN_METHODS_UPVALIDX 4
+
+#define PGEFF_DBCONN_ATTR_USERVALIDX 1
 
 #define PGEFF_STATE_IDLE 0
 #define PGEFF_STATE_FLUSHING 1
@@ -92,10 +95,24 @@ static int pgeff_result_close(lua_State *L) {
 }
 
 static int pgeff_dbconn_index(lua_State *L) {
-  //pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+  luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   lua_settop(L, 2);
-  lua_gettable(L, lua_upvalueindex(PGEFF_DBCONN_METHODS_UPVALIDX));
+  lua_getiuservalue(L, 1, PGEFF_DBCONN_ATTR_USERVALIDX);
+  lua_pushvalue(L, 2);
+  lua_rawget(L, -2);
+  if (!lua_isnil(L, -1)) return 1;
+  lua_settop(L, 2);
+  lua_rawget(L, lua_upvalueindex(PGEFF_DBCONN_METHODS_UPVALIDX));
   return 1;
+}
+
+static int pgeff_dbconn_newindex(lua_State *L) {
+  luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+  lua_settop(L, 3);
+  lua_getiuservalue(L, 1, PGEFF_DBCONN_ATTR_USERVALIDX);
+  lua_insert(L, 2);
+  lua_rawset(L, 2);
+  return 0;
 }
 
 static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
@@ -136,7 +153,9 @@ static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
 
 static int pgeff_connect(lua_State *L) {
   const char *conninfo = luaL_checkstring(L, 1);
-  pgeff_dbconn_t *dbconn = lua_newuserdatauv(L, sizeof(pgeff_dbconn_t), 0);
+  pgeff_dbconn_t *dbconn = lua_newuserdatauv(L, sizeof(pgeff_dbconn_t), 1);
+  lua_newtable(L);
+  lua_setiuservalue(L, -2, PGEFF_DBCONN_ATTR_USERVALIDX);
   dbconn->fd = -1;
   dbconn->state = PGEFF_STATE_IDLE;
   dbconn->pgconn = PQconnectStart(conninfo);
@@ -182,7 +201,7 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
             dbconn->state = PGEFF_STATE_IDLE;
             return lua_gettop(L) - 2;
           }
-          if (!lua_checkstack(L, 1)) {
+          if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
             return luaL_error(L, "too many results for Lua stack");
           }
           pgeff_result_t *result = lua_newuserdatauv(
@@ -222,25 +241,33 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
                 PQgetvalue(pgres, row, col);
               if (value) {
                 lua_pushinteger(L, col+1);
-                switch (pgeff_sqltype(PQftype(pgres, col))) {
-                  case PGEFF_SQLTYPE_BOOL:
-                    lua_pushboolean(L, value[0] == 't');
-                    break;
-                  case PGEFF_SQLTYPE_INT:
-                    if (!lua_stringtonumber(L, value)) {
+                Oid type_oid = PQftype(pgres, col);
+                lua_geti(L, 2, type_oid);
+                if (lua_isnil(L, -1)) {
+                  lua_pop(L, 1);
+                  switch (pgeff_sqltype(type_oid)) {
+                    case PGEFF_SQLTYPE_BOOL:
+                      lua_pushboolean(L, value[0] == 't');
+                      break;
+                    case PGEFF_SQLTYPE_INT:
+                      if (!lua_stringtonumber(L, value)) {
+                        lua_pushstring(L, value);
+                      } else {
+                        lua_pushinteger(L, lua_tointeger(L, -1));
+                        lua_remove(L, -2);
+                      }
+                      break;
+                    case PGEFF_SQLTYPE_FLOAT:
+                      if (!lua_stringtonumber(L, value)) {
+                        lua_pushstring(L, value);
+                      }
+                      break;
+                    default:
                       lua_pushstring(L, value);
-                    } else {
-                      lua_pushinteger(L, lua_tointeger(L, -1));
-                      lua_remove(L, -2);
-                    }
-                    break;
-                  case PGEFF_SQLTYPE_FLOAT:
-                    if (!lua_stringtonumber(L, value)) {
-                      lua_pushstring(L, value);
-                    }
-                    break;
-                  default:
-                    lua_pushstring(L, value);
+                  }
+                } else {
+                  lua_pushstring(L, value);
+                  lua_call(L, 1, 1);
                 }
                 lua_pushstring(L, PQfname(pgres, col));
                 lua_pushvalue(L, -2);
@@ -290,14 +317,31 @@ static int pgeff_query(lua_State *L) {
   }
   Oid *type_oids = lua_newuserdatauv(L, nparams * sizeof(Oid), 0);
   const char **values = lua_newuserdatauv(L, nparams * sizeof(char *), 0);
+  lua_getfield(L, 1, "input_converter");
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    lua_getfield(L,
+      lua_upvalueindex(PGEFF_MODULE_UPVALIDX), "input_converter"
+    );
+  }
+  int input_conversion = !lua_isnil(L, -1);
   for (int i=0; i<nparams; i++) {
     int j = i+3;
+    if (input_conversion) {
+      lua_pushvalue(L, -1);
+      lua_pushvalue(L, j);
+      lua_call(L, 1, 1);
+      lua_replace(L, j);
+    }
     switch (lua_type(L, j)) {
       case LUA_TBOOLEAN:
         type_oids[i] = PGEFF_OID_BOOL;
         values[i] = lua_toboolean(L, j) ? "t" : "f";
         break;
       default:
+        if (input_conversion && !lua_isnil(L, j) && !lua_tostring(L, j)) {
+          return luaL_error(L, "input converter did not return a string");
+        }
         type_oids[i] = 0;
         values[i] = luaL_optstring(L, j, NULL);
     }
@@ -309,7 +353,18 @@ static int pgeff_query(lua_State *L) {
     pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
     return 2;
   }
-  lua_settop(L, 2);
+  lua_settop(L, 1);
+  lua_getfield(L, 1, "output_converters");
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    lua_getfield(L,
+      lua_upvalueindex(PGEFF_MODULE_UPVALIDX), "output_converters"
+    );
+  }
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    lua_newtable(L);
+  }
   dbconn->state = PGEFF_STATE_FLUSHING;
   pgeff_query_cont(L, LUA_OK, (lua_KContext)dbconn);
   return 0;
@@ -325,6 +380,7 @@ static const struct luaL_Reg pgeff_dbconn_metamethods[] = {
   {"__close", pgeff_dbconn_close},
   {"__gc", pgeff_dbconn_close},
   {"__index", pgeff_dbconn_index},
+  {"__newindex", pgeff_dbconn_newindex},
   {NULL, NULL}
 };
 
@@ -340,6 +396,12 @@ static const struct luaL_Reg pgeff_funcs[] = {
 
 // Library initialization:
 int luaopen_pgeff(lua_State *L) {
+  luaL_newmetatable(L, PGEFF_RESULT_MT_REGKEY);
+  luaL_setfuncs(L, pgeff_result_metamethods, 0);
+  lua_pop(L, 1);
+
+  luaL_newlibtable(L, pgeff_funcs);
+
   lua_getglobal(L, "require");
   lua_pushliteral(L, "waitio");
   lua_call(L, 1, 1);
@@ -349,21 +411,19 @@ int luaopen_pgeff(lua_State *L) {
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY);
   lua_newtable(L);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -2);
-  lua_pushvalue(L, -2);
-  luaL_setfuncs(L, pgeff_dbconn_methods, 2);
-  luaL_setfuncs(L, pgeff_dbconn_metamethods, 3);
-  lua_pop(L, 1);
-
-  luaL_newmetatable(L, PGEFF_RESULT_MT_REGKEY);
-  luaL_setfuncs(L, pgeff_result_metamethods, 0);
-  lua_pop(L, 1);
-
-  luaL_newlibtable(L, pgeff_funcs);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
   lua_pushvalue(L, -3);
   lua_pushvalue(L, -3);
-  luaL_setfuncs(L, pgeff_funcs, 2);
+  lua_pushvalue(L, -3);
+  luaL_setfuncs(L, pgeff_dbconn_methods, 3);
+  luaL_setfuncs(L, pgeff_dbconn_metamethods, 4);
+  lua_pop(L, 1);
+
+  lua_pushvalue(L, -3);
+  lua_pushvalue(L, -3);
+  lua_pushvalue(L, -3);
+  luaL_setfuncs(L, pgeff_funcs, 3);
   return 1;
 }
