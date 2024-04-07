@@ -58,7 +58,7 @@ typedef struct {
 
 static void pgeff_push_string_trim(lua_State *L, const char *s) {
   size_t len = strlen(s);
-  while (s[len-1] == '\n') len--;
+  if (s[len-1] == '\n') len--;
   lua_pushlstring(L, s, len);
 }
 
