@@ -85,7 +85,9 @@ static int pgeff_dbconn_close(lua_State *L) {
 }
 
 static int pgeff_result_close(lua_State *L) {
-  pgeff_result_t *result = luaL_checkudata(L, 1, PGEFF_RESULT_MT_REGKEY);
+  // luaL_checkudata not necessary as userdata value is never exposed to user:
+  //pgeff_result_t *result = luaL_checkudata(L, 1, PGEFF_RESULT_MT_REGKEY);
+  pgeff_result_t *result = lua_touserdata(L, 1);
   if (result->pgres) {
     PQclear(result->pgres);
     result->pgres = NULL;
