@@ -66,6 +66,7 @@ static int pgeff_dbconn_close_cont(
   lua_State *L, int status, lua_KContext ctx
 ) {
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
+  dbconn->fd = -1;
   if (dbconn->pgconn) {
     PQfinish(dbconn->pgconn);
     dbconn->pgconn = NULL;
@@ -76,10 +77,8 @@ static int pgeff_dbconn_close_cont(
 static int pgeff_dbconn_close(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   if (dbconn->fd != -1) {
-    int fd = dbconn->fd;
-    dbconn->fd = -1;
     lua_pushvalue(L, lua_upvalueindex(PGEFF_DEREGISTER_FD_UPVALIDX));
-    lua_pushinteger(L, fd);
+    lua_pushinteger(L, dbconn->fd);
     lua_callk(L, 1, 0, (lua_KContext)dbconn, pgeff_dbconn_close_cont);
   }
   return pgeff_dbconn_close_cont(L, LUA_OK, (lua_KContext)dbconn);
