@@ -14,14 +14,14 @@ local function request_handler(req)
   local result = dbconn:query([[
 CREATE TABLE IF NOT EXISTS account (
   id SERIAL8 PRIMARY KEY,
-  name TEXT NOT NULL );]]);
+  name TEXT NOT NULL );]])();
   if result.error_message then
     error(result.error_message)
   end
   if req.post_params.action == "add" then
     local result = dbconn:query(
       "INSERT INTO account (name) VALUES ($1)", req.post_params.name
-    )
+    )()
     if result.error_message then
       error(result.error_message)
     end
@@ -30,14 +30,14 @@ CREATE TABLE IF NOT EXISTS account (
     for key, value in pairs(req.post_params) do
       local id = tonumber((string.match(key, "^id([0-9]+)$")))
       if id then
-        local result = dbconn:query("DELETE FROM account WHERE id=$1", id)
+        local result = dbconn:query("DELETE FROM account WHERE id=$1", id)()
         if result.error_message then
           error(result.error_message)
         end
       end
     end
   end
-  local result = dbconn:query("SELECT * FROM account ORDER BY name, id")
+  local result = dbconn:query("SELECT * FROM account ORDER BY name, id")()
   if result.error_message then
     error(result.error_message)
   end
