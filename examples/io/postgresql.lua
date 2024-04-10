@@ -47,7 +47,7 @@ return waitio_fiber.main(function()
   --local result = dbconn:query("SELEEEECT")()
   --assert(result.error_code and string.sub(result.error_code, 1, 2) == "42")
 
-  dbconn.input_converter = input_converter
+  pgeff.input_converter = input_converter
   dbconn.output_converters = {
     [1005] = int_array_converter, -- INT2[]'s OID is 1005
     [1007] = int_array_converter, -- INT4[]'s OID is 1007

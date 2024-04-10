@@ -480,6 +480,7 @@ int luaopen_pgeff(lua_State *L) {
   lua_pop(L, 1);
 
   luaL_newlibtable(L, pgeff_funcs);
+  lua_pushvalue(L, -1);
 
   lua_getglobal(L, "require");
   lua_pushliteral(L, "waitio");
@@ -487,7 +488,6 @@ int luaopen_pgeff(lua_State *L) {
   lua_getfield(L, -1, "select");
   lua_getfield(L, -2, "deregister_fd");
   lua_remove(L, -3);
-
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY);
   lua_pushvalue(L, -4);
@@ -513,9 +513,6 @@ int luaopen_pgeff(lua_State *L) {
   luaL_setfuncs(L, pgeff_deferred_metamethods, 4);
   lua_pop(L, 1);
 
-  lua_pushvalue(L, -3);
-  lua_pushvalue(L, -3);
-  lua_pushvalue(L, -3);
   luaL_setfuncs(L, pgeff_funcs, 3);
   return 1;
 }
