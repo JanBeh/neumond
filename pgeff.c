@@ -94,13 +94,14 @@ static int pgeff_dbconn_close(lua_State *L) {
   return pgeff_dbconn_close_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
-static int pgeff_result_close(lua_State *L) {
+static int pgeff_result_gc(lua_State *L) {
   // luaL_checkudata not necessary as userdata value is never exposed to user:
   //pgeff_result_t *result = luaL_checkudata(L, 1, PGEFF_RESULT_MT_REGKEY);
   pgeff_result_t *result = lua_touserdata(L, 1);
   if (result->pgres) {
     PQclear(result->pgres);
-    result->pgres = NULL;
+    // setting to NULL not necessary as __gc metamethod is only called once:
+    //result->pgres = NULL;
   }
   return 0;
 }
@@ -462,7 +463,7 @@ static const struct luaL_Reg pgeff_deferred_metamethods[] = {
 };
 
 static const struct luaL_Reg pgeff_result_metamethods[] = {
-  {"__gc", pgeff_result_close},
+  {"__gc", pgeff_result_gc},
   {NULL, NULL}
 };
 
