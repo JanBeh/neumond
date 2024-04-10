@@ -24,7 +24,8 @@
 #define PGEFF_DEFERRED_DBCONN_USERVALIDX 1
 #define PGEFF_DEFERRED_NEXT_USERVALIDX 2
 #define PGEFF_DEFERRED_WAITER_USERVALIDX 3
-#define PGEFF_DEFERRED_USERVAL_COUNT 3
+#define PGEFF_DEFERRED_RESULT_USERVALIDX 4
+#define PGEFF_DEFERRED_USERVAL_COUNT 4
 
 #define PGEFF_STATE_QUEUED 0
 #define PGEFF_STATE_READY 1
@@ -303,6 +304,7 @@ static int pgeff_deferred_await_cont(
               lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_LAST_USERVALIDX);
             } else {
               // NOTE: this requires that waking up a waiter does not yield
+              // TODO: allow yielding here?
               lua_getiuservalue(L, -1, PGEFF_DEFERRED_WAITER_USERVALIDX);
               if (!lua_isnil(L, -1)) {
                 lua_pushliteral(L, "ready");
@@ -311,7 +313,10 @@ static int pgeff_deferred_await_cont(
               }
               lua_pop(L, 1);
             }
+            // TODO: catch case where multiple result sets are returned?
             lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX);
+            lua_pushvalue(L, -1);
+            lua_setiuservalue(L, 1, PGEFF_DEFERRED_RESULT_USERVALIDX);
             return lua_gettop(L) - 3;
           }
           if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
@@ -461,11 +466,30 @@ static int pgeff_deferred_await(lua_State *L) {
   }
 }
 
-static int pgeff_deferred_index(lua_State *L) {
-  luaL_checkudata(L, 1, PGEFF_DEFERRED_MT_REGKEY);
+static int pgeff_deferred_index_cont(
+  lua_State *L, int status, lua_KContext ctx
+) {
+  lua_getiuservalue(L, 1, PGEFF_DEFERRED_RESULT_USERVALIDX);
+  if (!lua_isnil(L, -1)) {
+    lua_pushvalue(L, 2);
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) return 1;
+  }
   lua_settop(L, 2);
   lua_rawget(L, lua_upvalueindex(PGEFF_METHODS_UPVALIDX));
   return 1;
+}
+
+static int pgeff_deferred_index(lua_State *L) {
+  luaL_checkudata(L, 1, PGEFF_DEFERRED_MT_REGKEY);
+  lua_settop(L, 2);
+  lua_getiuservalue(L, 1, PGEFF_DEFERRED_RESULT_USERVALIDX);
+  if (lua_isnil(L, -1)) {
+    lua_settop(L, 2);
+    lua_pushvalue(L, 1);
+    lua_callk(L, 0, 0, (lua_KContext)NULL, pgeff_deferred_index_cont);
+  }
+  return pgeff_deferred_index_cont(L, LUA_OK, (lua_KContext)NULL);
 }
 
 static const struct luaL_Reg pgeff_dbconn_methods[] = {

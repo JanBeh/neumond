@@ -5,13 +5,13 @@ local pgeff = require "pgeff"
 return waitio_fiber.main(function()
   local dbconn = assert(pgeff.connect(""))
 
-  local deferred1 = dbconn:query("SELECT 'A'")
-  local deferred2 = dbconn:query("SELECT 'B'")
+  local result1 = dbconn:query("SELECT 'A'")
+  local result2 = dbconn:query("SELECT 'B'")
 
   fiber.spawn(function()
     print("runs second")
-    assert(deferred1()[1][1] == 'A')
+    assert(result1[1][1] == 'A')
   end)
   print("runs first")
-  assert(deferred2()[1][1] == 'B')
+  assert(result2[1][1] == 'B')
 end)
