@@ -18,9 +18,11 @@
 #define PGEFF_DBCONN_ATTR_USERVALIDX 1
 #define PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX 2
 #define PGEFF_DBCONN_DEFERRED_LAST_USERVALIDX 3
+#define PGEFF_DBCONN_USERVAL_COUNT 3
 
 #define PGEFF_DEFERRED_DBCONN_USERVALIDX 1
 #define PGEFF_DEFERRED_NEXT_USERVALIDX 2
+#define PGEFF_DEFERRED_USERVAL_COUNT 2
 
 #define PGEFF_STATE_IDLE 0
 #define PGEFF_STATE_FLUSHING 1
@@ -170,7 +172,9 @@ static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
 
 static int pgeff_connect(lua_State *L) {
   const char *conninfo = luaL_checkstring(L, 1);
-  pgeff_dbconn_t *dbconn = lua_newuserdatauv(L, sizeof(pgeff_dbconn_t), 3);
+  pgeff_dbconn_t *dbconn = lua_newuserdatauv(L,
+    sizeof(pgeff_dbconn_t), PGEFF_DBCONN_USERVAL_COUNT
+  );
   lua_newtable(L);
   lua_setiuservalue(L, -2, PGEFF_DBCONN_ATTR_USERVALIDX);
   dbconn->fd = -1;
@@ -234,7 +238,7 @@ static int pgeff_query(lua_State *L) {
   }
   lua_settop(L, 1);
   pgeff_deferred_t *deferred = lua_newuserdatauv(L,
-    sizeof(pgeff_deferred_t), 2
+    sizeof(pgeff_deferred_t), PGEFF_DEFERRED_USERVAL_COUNT
   ); // 2
   deferred->state = PGEFF_STATE_IDLE;
   luaL_setmetatable(L, PGEFF_DEFERRED_MT_REGKEY);
