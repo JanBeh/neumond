@@ -12,8 +12,9 @@
 #define PGEFF_MODULE_UPVALIDX 1
 #define PGEFF_SELECT_UPVALIDX 2
 #define PGEFF_DEREGISTER_FD_UPVALIDX 3
+#define PGEFF_WAITER_UPVALIDX 4
 
-#define PGEFF_METHODS_UPVALIDX 4
+#define PGEFF_METHODS_UPVALIDX 5
 
 #define PGEFF_DBCONN_ATTR_USERVALIDX 1
 #define PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX 2
@@ -22,12 +23,14 @@
 
 #define PGEFF_DEFERRED_DBCONN_USERVALIDX 1
 #define PGEFF_DEFERRED_NEXT_USERVALIDX 2
-#define PGEFF_DEFERRED_USERVAL_COUNT 2
+#define PGEFF_DEFERRED_WAITER_USERVALIDX 3
+#define PGEFF_DEFERRED_USERVAL_COUNT 3
 
-#define PGEFF_STATE_IDLE 0
-#define PGEFF_STATE_FLUSHING 1
-#define PGEFF_STATE_CONSUMING 2
-#define PGEFF_STATE_DONE 3
+#define PGEFF_STATE_QUEUED 0
+#define PGEFF_STATE_READY 1
+#define PGEFF_STATE_WAITING 2
+#define PGEFF_STATE_FLUSHING 3
+#define PGEFF_STATE_CONSUMING 4
 
 #define PGEFF_SQLTYPE_OTHER 0
 #define PGEFF_SQLTYPE_BOOL 1
@@ -240,7 +243,7 @@ static int pgeff_query(lua_State *L) {
   pgeff_deferred_t *deferred = lua_newuserdatauv(L,
     sizeof(pgeff_deferred_t), PGEFF_DEFERRED_USERVAL_COUNT
   ); // 2
-  deferred->state = PGEFF_STATE_IDLE;
+  deferred->state = PGEFF_STATE_QUEUED;
   luaL_setmetatable(L, PGEFF_DEFERRED_MT_REGKEY);
   lua_pushvalue(L, 1);
   lua_setiuservalue(L, 2, PGEFF_DEFERRED_DBCONN_USERVALIDX);
@@ -248,6 +251,7 @@ static int pgeff_query(lua_State *L) {
   lua_pushvalue(L, 2);
   if (lua_isnil(L, 3)) {
     lua_setiuservalue(L, 1, PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX);
+    deferred->state = PGEFF_STATE_READY;
   } else {
     lua_setiuservalue(L, 3, PGEFF_DEFERRED_NEXT_USERVALIDX);
   }
@@ -293,8 +297,21 @@ static int pgeff_deferred_await_cont(
         while (!PQisBusy(dbconn->pgconn)) {
           PGresult *pgres = PQgetResult(dbconn->pgconn);
           if (!pgres) {
-            deferred->state = PGEFF_STATE_DONE;
-            // TODO: remove deferred result from linked list
+            lua_getiuservalue(L, 1, PGEFF_DEFERRED_NEXT_USERVALIDX);
+            if (lua_isnil(L, -1)) {
+              lua_pushnil(L);
+              lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_LAST_USERVALIDX);
+            } else {
+              // NOTE: this requires that waking up a waiter does not yield
+              lua_getiuservalue(L, -1, PGEFF_DEFERRED_WAITER_USERVALIDX);
+              if (!lua_isnil(L, -1)) {
+                lua_pushliteral(L, "ready");
+                lua_pushboolean(L, 1);
+                lua_settable(L, -3);
+              }
+              lua_pop(L, 1);
+            }
+            lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX);
             return lua_gettop(L) - 3;
           }
           if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
@@ -406,14 +423,22 @@ static int pgeff_deferred_await_cont(
   }
 }
 
+static int pgeff_deferred_await_use_waiter(
+  lua_State *L, int status, lua_KContext ctx
+) {
+  lua_pushvalue(L, -1);
+  lua_setiuservalue(L, 1, PGEFF_DEFERRED_WAITER_USERVALIDX);
+  lua_callk(L, 0, 0, (lua_KContext)NULL, pgeff_deferred_await_cont);
+  return pgeff_deferred_await_cont(L, LUA_OK, (lua_KContext)NULL);
+}
+
 static int pgeff_deferred_await(lua_State *L) {
   pgeff_deferred_t *deferred = luaL_checkudata(L, 1, PGEFF_DEFERRED_MT_REGKEY);
-  lua_settop(L, 1);
-  lua_getiuservalue(L, 1, PGEFF_DEFERRED_DBCONN_USERVALIDX); // 2
-  if (deferred->state != PGEFF_STATE_IDLE) {
+  if (deferred->state > PGEFF_STATE_READY) {
     return luaL_error(L, "cannot await database result multiple times");
   }
-  // TODO: check if deferred result is first in linked list, and wait if not
+  lua_settop(L, 1);
+  lua_getiuservalue(L, 1, PGEFF_DEFERRED_DBCONN_USERVALIDX); // 2
   lua_getfield(L, 2, "output_converters"); // 3
   if (lua_isnil(L, -1)) {
     lua_pop(L, 1);
@@ -425,13 +450,15 @@ static int pgeff_deferred_await(lua_State *L) {
     lua_pop(L, 1);
     lua_newtable(L);
   }
-  deferred->state = PGEFF_STATE_FLUSHING;
-  return pgeff_deferred_await_cont(L, LUA_OK, (lua_KContext)NULL);
-}
-
-static int pgeff_deferred_gc(lua_State *L) {
-  // TODO
-  return 0;
+  if (deferred->state == PGEFF_STATE_QUEUED) {
+    deferred->state = PGEFF_STATE_FLUSHING;
+    lua_pushvalue(L, lua_upvalueindex(PGEFF_WAITER_UPVALIDX));
+    lua_callk(L, 0, 1, (lua_KContext)NULL, pgeff_deferred_await_use_waiter);
+    return pgeff_deferred_await_use_waiter(L, LUA_OK, (lua_KContext)NULL);
+  } else {
+    deferred->state = PGEFF_STATE_FLUSHING;
+    return pgeff_deferred_await_cont(L, LUA_OK, (lua_KContext)NULL);
+  }
 }
 
 static int pgeff_deferred_index(lua_State *L) {
@@ -461,7 +488,6 @@ static const struct luaL_Reg pgeff_deferred_methods[] = {
 
 static const struct luaL_Reg pgeff_deferred_metamethods[] = {
   {"__call", pgeff_deferred_await},
-  {"__gc", pgeff_deferred_gc},
   {"__index", pgeff_deferred_index},
   {NULL, NULL}
 };
@@ -491,32 +517,37 @@ int luaopen_pgeff(lua_State *L) {
   lua_call(L, 1, 1);
   lua_getfield(L, -1, "select");
   lua_getfield(L, -2, "deregister_fd");
-  lua_remove(L, -3);
+  lua_getfield(L, -3, "waiter");
+  lua_remove(L, -4);
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
   lua_newtable(L);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
-  luaL_setfuncs(L, pgeff_dbconn_methods, 3);
-  luaL_setfuncs(L, pgeff_dbconn_metamethods, 4);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  luaL_setfuncs(L, pgeff_dbconn_methods, 4);
+  luaL_setfuncs(L, pgeff_dbconn_metamethods, 5);
   lua_pop(L, 1);
 
   luaL_newmetatable(L, PGEFF_DEFERRED_MT_REGKEY);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
   lua_newtable(L);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
-  lua_pushvalue(L, -4);
-  luaL_setfuncs(L, pgeff_deferred_methods, 3);
-  luaL_setfuncs(L, pgeff_deferred_metamethods, 4);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  lua_pushvalue(L, -5);
+  luaL_setfuncs(L, pgeff_deferred_methods, 4);
+  luaL_setfuncs(L, pgeff_deferred_metamethods, 5);
   lua_pop(L, 1);
 
-  luaL_setfuncs(L, pgeff_funcs, 3);
+  luaL_setfuncs(L, pgeff_funcs, 4);
   return 1;
 }
