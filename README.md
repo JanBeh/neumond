@@ -248,9 +248,12 @@ The module provides several effects only (no handlers):
     that eventually goes out of scope to ensure cleanup (otherwise resource
     cleanup may be delayed until garbage collection is performed).
 
-  * **`waitio.waiter()`** creates handle `h` that, when called, waits until its
-    `h.ready` attribute is set to `true`. The `ready` attribute is reset to
-    `false` when the handle call returns.
+  * **`waitio.sync()`** creates and returns a handle `sleeper` and a function
+    `waker` (as two return values). Calling `sleeper` will wait until `waker`
+    has been called. The `waker` function may be called first, in which case
+    the next call to `sleper` will return immediately. The `sleeper` handle may
+    also be passed to the `waitio.select` function (after the string
+    `"handle"`).
 
   * **`waitio.deregister_fd(fd)`** must be performed before closing a file
     descriptor `fd` that is currently waited on. The effect resumes immediately

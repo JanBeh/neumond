@@ -28,11 +28,9 @@ local function handle_call_reset(self)
   self.ready = false
 end
 
-local function handle_index(self, key)
-  if key == "ready" then
-    return self._ready
-  end
-end
+local handle_reset_metatbl = {
+  __call = handle_call_reset,
+}
 
 function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
@@ -70,23 +68,6 @@ function _M.run(...)
       self.ready = true
     end,
   }
-  local function handle_newindex(self, key, value)
-    if key == "ready" then
-      self._ready = value
-      if value then
-        if handle._waiting then
-          waiter.ready = true
-        end
-      end
-    else
-      self.key = value
-    end
-  end
-  local handle_reset_metatbl = {
-    __call = handle_call_reset,
-    __index = handle_index,
-    __newindex = handle_newindex,
-  }
   local function wait_select(...)
     local poll_state <close> = poll_state
     for argidx = 1, math.huge, 2 do
@@ -104,7 +85,7 @@ function _M.run(...)
         poll_state.pids[arg] = true
         eventqueue:add_pid(arg, waiter)
       elseif rtype == "handle" then
-        if arg._ready then
+        if arg.ready then
           return
         end
         arg._waiting = true
@@ -127,8 +108,8 @@ function _M.run(...)
         sig,
         {
           wake = function()
-            for handle in pairs(handles) do
-              handle.ready = true
+            for handle, waker in pairs(handles) do
+              waker()
             end
           end,
         }
@@ -136,10 +117,15 @@ function _M.run(...)
       signal_handles[sig] = handles
     end
     local handle = setmetatable(
-      { _ready = false, _waiting = false },
+      { ready = false, _waiting = false },
       handle_reset_metatbl
     )
-    handles[handle] = true
+    handles[handle] = function()
+      handle.ready = true
+      if handle._waiting then
+        waiter.ready = true
+      end
+    end
     return handle
   end
   local function clean_timeout(self)
@@ -151,19 +137,24 @@ function _M.run(...)
   end
   local timeout_metatbl = {
     __call = handle_call_noreset,
-    __index = handle_index,
-    __newindex = handle_newindex,
     __close = clean_timeout,
     __gc = clean_timeout,
   }
   local function timeout(seconds)
     local handle = setmetatable(
-      { _ready = false, _waiting = false, _inner_handle = false },
+      { ready = false, _waiting = false, _inner_handle = false },
       timeout_metatbl
     )
     handle.inner_handle = eventqueue:add_timeout(
       seconds,
-      { wake = function() handle.ready = true end }
+      {
+        wake = function()
+          handle.ready = true
+          if handle._waiting then
+            waiter.ready = true
+          end
+        end,
+      }
     )
     return handle
   end
@@ -176,27 +167,39 @@ function _M.run(...)
   end
   local interval_metatbl = {
     __call = handle_call_reset,
-    __index = handle_index,
-    __newindex = handle_newindex,
     __close = clean_interval,
     __gc = clean_interval,
   }
   local function interval(seconds)
     local handle = setmetatable(
-      { _ready = false, _waiting = false, _inner_handle = false },
+      { ready = false, _waiting = false, _inner_handle = false },
       interval_metatbl
     )
     handle._inner_handle = eventqueue:add_interval(
       seconds,
-      { wake = function() handle.ready = true end }
+      {
+        wake = function()
+          handle.ready = true
+          if handle._waiting then
+            waiter.ready = true
+          end
+        end,
+      }
     )
     return handle
   end
-  local function waiter()
-    return setmetatable(
-      { _ready = false, _waiting = false },
+  local function sync()
+    local sleeper = setmetatable(
+      { ready = false, _waiting = false },
       handle_reset_metatbl
     )
+    local function waker()
+      sleeper.ready = true
+      if sleeper._waiting then
+        waiter.ready = true
+      end
+    end
+    return sleeper, waker
   end
   return effect.handle(
     {
@@ -223,6 +226,9 @@ function _M.run(...)
       end,
       [waitio.interval] = function(resume, seconds)
         return resume(effect.call, interval, seconds)
+      end,
+      [waitio.sync] = function(resume)
+        return resume(effect.call, sync)
       end,
     },
     ...

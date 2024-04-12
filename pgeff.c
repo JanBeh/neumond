@@ -12,7 +12,7 @@
 #define PGEFF_MODULE_UPVALIDX 1
 #define PGEFF_SELECT_UPVALIDX 2
 #define PGEFF_DEREGISTER_FD_UPVALIDX 3
-#define PGEFF_WAITER_UPVALIDX 4
+#define PGEFF_SYNC_UPVALIDX 4
 
 #define PGEFF_METHODS_UPVALIDX 5
 
@@ -23,7 +23,7 @@
 
 #define PGEFF_DEFERRED_DBCONN_USERVALIDX 1
 #define PGEFF_DEFERRED_NEXT_USERVALIDX 2
-#define PGEFF_DEFERRED_WAITER_USERVALIDX 3
+#define PGEFF_DEFERRED_WAKER_USERVALIDX 3
 #define PGEFF_DEFERRED_RESULT_USERVALIDX 4
 #define PGEFF_DEFERRED_USERVAL_COUNT 4
 
@@ -303,15 +303,11 @@ static int pgeff_deferred_await_cont(
               lua_pushnil(L);
               lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_LAST_USERVALIDX);
             } else {
-              // NOTE: this requires that waking up a waiter does not yield
+              // NOTE: this requires that waking up a sleeper does not yield
               // TODO: allow yielding here?
-              lua_getiuservalue(L, -1, PGEFF_DEFERRED_WAITER_USERVALIDX);
-              if (!lua_isnil(L, -1)) {
-                lua_pushliteral(L, "ready");
-                lua_pushboolean(L, 1);
-                lua_settable(L, -3);
-              }
-              lua_pop(L, 1);
+              lua_getiuservalue(L, -1, PGEFF_DEFERRED_WAKER_USERVALIDX);
+              if (lua_isnil(L, -1)) lua_pop(L, 1);
+              else lua_call(L, 0, 0);
             }
             // TODO: catch case where multiple result sets are returned?
             lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX);
@@ -428,11 +424,10 @@ static int pgeff_deferred_await_cont(
   }
 }
 
-static int pgeff_deferred_await_use_waiter(
+static int pgeff_deferred_await_use_sleeper(
   lua_State *L, int status, lua_KContext ctx
 ) {
-  lua_pushvalue(L, -1);
-  lua_setiuservalue(L, 1, PGEFF_DEFERRED_WAITER_USERVALIDX);
+  lua_setiuservalue(L, 1, PGEFF_DEFERRED_WAKER_USERVALIDX);
   lua_callk(L, 0, 0, (lua_KContext)NULL, pgeff_deferred_await_cont);
   return pgeff_deferred_await_cont(L, LUA_OK, (lua_KContext)NULL);
 }
@@ -457,9 +452,9 @@ static int pgeff_deferred_await(lua_State *L) {
   }
   if (deferred->state == PGEFF_STATE_QUEUED) {
     deferred->state = PGEFF_STATE_FLUSHING;
-    lua_pushvalue(L, lua_upvalueindex(PGEFF_WAITER_UPVALIDX));
-    lua_callk(L, 0, 1, (lua_KContext)NULL, pgeff_deferred_await_use_waiter);
-    return pgeff_deferred_await_use_waiter(L, LUA_OK, (lua_KContext)NULL);
+    lua_pushvalue(L, lua_upvalueindex(PGEFF_SYNC_UPVALIDX));
+    lua_callk(L, 0, 2, (lua_KContext)NULL, pgeff_deferred_await_use_sleeper);
+    return pgeff_deferred_await_use_sleeper(L, LUA_OK, (lua_KContext)NULL);
   } else {
     deferred->state = PGEFF_STATE_FLUSHING;
     return pgeff_deferred_await_cont(L, LUA_OK, (lua_KContext)NULL);
@@ -541,7 +536,7 @@ int luaopen_pgeff(lua_State *L) {
   lua_call(L, 1, 1);
   lua_getfield(L, -1, "select");
   lua_getfield(L, -2, "deregister_fd");
-  lua_getfield(L, -3, "waiter");
+  lua_getfield(L, -3, "sync");
   lua_remove(L, -4);
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY);

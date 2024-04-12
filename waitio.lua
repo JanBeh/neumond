@@ -55,30 +55,30 @@ _M.timeout = effect.new("waitio.timeout")
 -- interval:
 _M.interval = effect.new("waitio.interval")
 
--- Effect waiter() returns a handle that, when called, waits until its "ready"
--- attribute is set to true and automatically resets it to false:
-_M.waiter = effect.new("waitio.waiter")
+-- Effect sync() returns a sleeper (as first return value) and a waker (as
+-- second return value) where the sleeper, when called, will wait until the
+-- waker has been called:
+_M.sync = effect.new("waitio.sync")
 
 -- Function mutex() creates a mutex handle that, when called, waits until the
 -- mutex can be locked and returns a to-be-closed lock guard:
 function _M.mutex()
   -- State of mutex (locked or unlocked):
   local locked = false
-  -- FIFO queue of waiter handles:
-  local waiters = {}
+  -- FIFO queue of waker handles:
+  local wakers = {}
   -- Mutex guard to be returned when mutex was locked:
   local guard = setmetatable({}, {
     -- Function to be executed when mutex guard is closed:
     __close = function()
       -- Set mutex state to unlocked:
       locked = false
-      -- Get waiter handle from FIFO queue if possible:
-      local w = table.remove(waiters, 1)
-      if w then
-        -- Waiter handle was obtained.
-        -- Set waiter handle to be ready (handle's __newindex metamethod will
-        -- then wakeup a waiting fiber if applicable):
-        w.ready = true
+      -- Get waker from FIFO queue if possible:
+      local waker = table.remove(wakers, 1)
+      if waker then
+        -- Waker was obtained.
+        -- Trigger waker:
+        waker()
       end
     end,
   })
@@ -87,12 +87,12 @@ function _M.mutex()
     -- Check if mutex is locked:
     if locked then
       -- Mutex is locked.
-      -- Create new waiter handle:
-      local w = _M.waiter()
-      -- Store waiter handle in FIFO queue:
-      waiters[#waiters+1] = w
-      -- Wait for waiter to be ready:
-      w()
+      -- Create new waker and waiter pair:
+      local sleeper, waker = _M.sync()
+      -- Store waker in FIFO queue:
+      wakers[#wakers+1] = waker
+      -- Wait for wakeup:
+      sleeper()
     end
     -- Set mutex state to locked:
     locked = true
