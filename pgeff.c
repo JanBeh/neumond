@@ -262,6 +262,15 @@ static int pgeff_query(lua_State *L) {
   return 1;
 }
 
+static int pgeff_deferred_await_finish(
+  lua_State *L, int status, lua_KContext ctx
+) {
+  lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX);
+  lua_pushvalue(L, -1);
+  lua_setiuservalue(L, 1, PGEFF_DEFERRED_RESULT_USERVALIDX);
+  return lua_gettop(L) - 3;
+}
+
 static int pgeff_deferred_await_cont(
   lua_State *L, int status, lua_KContext ctx
 ) {
@@ -303,17 +312,13 @@ static int pgeff_deferred_await_cont(
               lua_pushnil(L);
               lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_LAST_USERVALIDX);
             } else {
-              // NOTE: this requires that waking up a sleeper does not yield
-              // TODO: allow yielding here?
               lua_getiuservalue(L, -1, PGEFF_DEFERRED_WAKER_USERVALIDX);
               if (lua_isnil(L, -1)) lua_pop(L, 1);
-              else lua_call(L, 0, 0);
+              else lua_callk(L,
+                0, 0, (lua_KContext)NULL, pgeff_deferred_await_finish
+              );
             }
-            // TODO: catch case where multiple result sets are returned?
-            lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX);
-            lua_pushvalue(L, -1);
-            lua_setiuservalue(L, 1, PGEFF_DEFERRED_RESULT_USERVALIDX);
-            return lua_gettop(L) - 3;
+            return pgeff_deferred_await_finish(L, LUA_OK, (lua_KContext)NULL);
           }
           if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
             return luaL_error(L, "too many results for Lua stack");
