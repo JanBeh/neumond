@@ -7,6 +7,7 @@
 
 #define PGEFF_DBCONN_MT_REGKEY "pgeff_dbconn"
 #define PGEFF_DEFERRED_MT_REGKEY "pgeff_deferred"
+#define PGEFF_ERROR_MT_REGKEY "pgeff_error"
 #define PGEFF_RESULT_MT_REGKEY "pgeff_result"
 
 #define PGEFF_MODULE_UPVALIDX 1
@@ -266,7 +267,7 @@ static int pgeff_deferred_await_finish(
   lua_State *L, int status, lua_KContext ctx
 ) {
   lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX);
-  lua_pushvalue(L, -1);
+  lua_pushvalue(L, 4);
   lua_setiuservalue(L, 1, PGEFF_DEFERRED_RESULT_USERVALIDX);
   return lua_gettop(L) - 3;
 }
@@ -283,7 +284,11 @@ static int pgeff_deferred_await_cont(
     }
     if (!PQconsumeInput(dbconn->pgconn)) {
       lua_pushnil(L);
+      lua_newtable(L);
       pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
+      lua_setfield(L, -2, "message");
+      luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+      // TODO: unlock and poison next deferred result
       return 2;
     }
     if (deferred->state == PGEFF_STATE_FLUSHING) {
@@ -295,7 +300,11 @@ static int pgeff_deferred_await_cont(
           break;
         case -1:
           lua_pushnil(L);
+          lua_newtable(L);
           pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
+          lua_setfield(L, -2, "message");
+          luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+          // TODO: unlock and poison next deferred result
           return 2;
         default: abort();
       }
@@ -305,6 +314,13 @@ static int pgeff_deferred_await_cont(
         break;
       case PGEFF_STATE_CONSUMING:
         while (!PQisBusy(dbconn->pgconn)) {
+          pgeff_result_t *result = NULL;
+          if (lua_type(L, 4) != LUA_TNIL) {
+            if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
+              return luaL_error(L, "too many results for Lua stack");
+            }
+            result = lua_newuserdatauv(L, sizeof(pgeff_result_t), 0);
+          }
           PGresult *pgres = PQgetResult(dbconn->pgconn);
           if (!pgres) {
             lua_getiuservalue(L, 1, PGEFF_DEFERRED_NEXT_USERVALIDX);
@@ -320,31 +336,32 @@ static int pgeff_deferred_await_cont(
             }
             return pgeff_deferred_await_finish(L, LUA_OK, (lua_KContext)NULL);
           }
-          if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
-            return luaL_error(L, "too many results for Lua stack");
+          if (lua_type(L, 4) == LUA_TNIL) {
+            PQclear(pgres);
+            goto pgeff_deferred_await_skip;
           }
-          pgeff_result_t *result = lua_newuserdatauv(
-            L, sizeof(pgeff_result_t), 0
-          );
           result->pgres = pgres;
           luaL_setmetatable(L, PGEFF_RESULT_MT_REGKEY);
-          lua_newtable(L);
           char *errmsg = PQresultErrorMessage(pgres);
-          if (errmsg[0]) {
-            pgeff_push_string_trim(L, errmsg);
-            lua_setfield(L, -2, "error_message");
+          if (errmsg[0] || PQresultStatus(pgres) == PGRES_PIPELINE_ABORTED) {
+            lua_settop(L, 3);
+            lua_pushnil(L);
+            lua_newtable(L);
+            if (errmsg[0]) pgeff_push_string_trim(L, errmsg);
+            else lua_pushliteral(L, "pipeline aborted");
+            lua_setfield(L, -2, "message");
             char *sqlstate = PQresultErrorField(pgres, PG_DIAG_SQLSTATE);
             if (!sqlstate) sqlstate = "";
             pgeff_push_string_trim(L, sqlstate);
-            lua_setfield(L, -2, "error_code");
-          } else if (PQresultStatus(pgres) == PGRES_PIPELINE_ABORTED) {
-            lua_pushliteral(L, "pipeline aborted");
-            lua_setfield(L, -2, "error_message");
-            lua_pushliteral(L, "*");
-            lua_setfield(L, -2, "error_code");
+            lua_setfield(L, -2, "code");
+            luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+            result->pgres = NULL;
+            PQclear(pgres);
+            goto pgeff_deferred_await_skip;
           }
           int rows = PQntuples(pgres);
           int cols = PQnfields(pgres);
+          lua_newtable(L);
           lua_newtable(L);
           for (int col=0; col<cols; col++) {
             Oid type_oid = PQftype(pgres, col);
@@ -404,6 +421,7 @@ static int pgeff_deferred_await_cont(
           result->pgres = NULL;
           PQclear(pgres);
           lua_remove(L, -2);
+          pgeff_deferred_await_skip:;
         }
         break;
       default: abort();
@@ -469,12 +487,10 @@ static int pgeff_deferred_await(lua_State *L) {
 static int pgeff_deferred_index_cont(
   lua_State *L, int status, lua_KContext ctx
 ) {
-  lua_getiuservalue(L, 1, PGEFF_DEFERRED_RESULT_USERVALIDX);
-  if (!lua_isnil(L, -1)) {
-    lua_pushvalue(L, 2);
-    lua_rawget(L, -2);
-    if (!lua_isnil(L, -1)) return 1;
-  }
+  if (lua_isnil(L, 3)) lua_error(L);
+  lua_pushvalue(L, 2);
+  lua_rawget(L, 3);
+  if (!lua_isnil(L, -1)) return 1;
   lua_settop(L, 2);
   lua_rawget(L, lua_upvalueindex(PGEFF_METHODS_UPVALIDX));
   return 1;
@@ -487,9 +503,14 @@ static int pgeff_deferred_index(lua_State *L) {
   if (lua_isnil(L, -1)) {
     lua_settop(L, 2);
     lua_pushvalue(L, 1);
-    lua_callk(L, 0, 0, (lua_KContext)NULL, pgeff_deferred_index_cont);
+    lua_callk(L, 0, 2, (lua_KContext)NULL, pgeff_deferred_index_cont);
   }
   return pgeff_deferred_index_cont(L, LUA_OK, (lua_KContext)NULL);
+}
+
+static int pgeff_error_tostring(lua_State *L) {
+  lua_getfield(L, 1, "message");
+  return 1;
 }
 
 static const struct luaL_Reg pgeff_dbconn_methods[] = {
@@ -516,6 +537,15 @@ static const struct luaL_Reg pgeff_deferred_metamethods[] = {
   {NULL, NULL}
 };
 
+static const struct luaL_Reg pgeff_error_methods[] = {
+  {NULL, NULL}
+};
+
+static const struct luaL_Reg pgeff_error_metamethods[] = {
+  {"__tostring", pgeff_error_tostring},
+  {NULL, NULL}
+};
+
 static const struct luaL_Reg pgeff_result_metamethods[] = {
   {"__gc", pgeff_result_gc},
   {NULL, NULL}
@@ -525,6 +555,18 @@ static const struct luaL_Reg pgeff_funcs[] = {
   {"connect", pgeff_connect},
   {NULL, NULL}
 };
+
+#define pgeff_userdata_helper() do { \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_newtable(L); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+  } while (0)
 
 // Library initialization:
 int luaopen_pgeff(lua_State *L) {
@@ -545,31 +587,21 @@ int luaopen_pgeff(lua_State *L) {
   lua_remove(L, -4);
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_newtable(L);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
+  pgeff_userdata_helper();
   luaL_setfuncs(L, pgeff_dbconn_methods, 4);
   luaL_setfuncs(L, pgeff_dbconn_metamethods, 5);
   lua_pop(L, 1);
 
   luaL_newmetatable(L, PGEFF_DEFERRED_MT_REGKEY);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_newtable(L);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
-  lua_pushvalue(L, -5);
+  pgeff_userdata_helper();
   luaL_setfuncs(L, pgeff_deferred_methods, 4);
   luaL_setfuncs(L, pgeff_deferred_metamethods, 5);
+  lua_pop(L, 1);
+
+  luaL_newmetatable(L, PGEFF_ERROR_MT_REGKEY);
+  pgeff_userdata_helper();
+  luaL_setfuncs(L, pgeff_error_methods, 4);
+  luaL_setfuncs(L, pgeff_error_metamethods, 5);
   lua_pop(L, 1);
 
   luaL_setfuncs(L, pgeff_funcs, 4);
