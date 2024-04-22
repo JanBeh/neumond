@@ -2,6 +2,7 @@
 
 -- Explicitly import certain items from Lua's standard library as local
 -- variables for performance improvements to avoid table lookups:
+local assert       = assert
 local error        = error
 local getmetatable = getmetatable
 local select       = select
@@ -10,6 +11,7 @@ local tostring     = tostring
 local type         = type
 local pcall        = pcall
 local xpcall       = xpcall
+local coroutine_close       = coroutine.close
 local coroutine_create      = coroutine.create
 local coroutine_isyieldable = coroutine.isyieldable
 local coroutine_resume      = coroutine.resume
@@ -37,14 +39,6 @@ local call = setmetatable({}, {
   __tostring = function() return "call marker" end,
 })
 _M.call = call
-
--- Metatable for special "early return markers" passed to the resume function
--- (along with a call marker and the error function), which indicate that the
--- effect handler does not wish to resume the action:
-local early_return_metatbl = {
-  __tostring = function() return "effect handler did not resume" end,
-}
-_M.early_return_metatbl = early_return_metatbl
 
 -- Helper function for check_call function:
 local function do_call(dummy, func, ...)
@@ -87,9 +81,13 @@ function _M.new(name)
   })
 end
 
--- Ephemeron aiding to provide better stack traces by storing the
--- last resumed coroutine of every coroutine:
-local children = setmetatable({}, { __mode = "k" })
+-- Metatable for to-be-closed variable that ensures closing of to-be-closed
+-- variables of stored coroutine (value for "thread" key)
+local coro_cleaner_metatbl = {
+  __close = function(self)
+    assert(coroutine_close(self.thread))
+  end,
+}
 
 -- handle(handlers, action, ...) runs action(...) under the context of an
 -- effect handler and returns the return value of the action function (possibly
@@ -108,14 +106,16 @@ function _M.handle(handlers, action, ...)
   -- errors will contain a stack trace. The arguments to xpcall (including the
   -- action function) are passed on the first "resume".
   local action_thread = coroutine_create(xpcall)
+  -- Ensure that coroutine's to-be-closed variables will be closed on return:
+  local coro_cleaner <close> = setmetatable(
+    {thread = action_thread}, coro_cleaner_metatbl
+  )
   -- Function to allow handling coroutine.resume's variable number of return
   -- values:
   local process_action_results
-  -- Function resuming the coroutine. On first invocation, action function must
-  -- be passed as first argument.
+  -- Function resuming the coroutine. On first invocation, the arguments to
+  -- xpcall (including the action function) must be passed as first argument.
   local function resume(...)
-    -- Store current coroutine in children ephemereon for better stack traces:
-    children[coroutine_running()] = action_thread
     -- Pass all arguments to coroutine.resume and pass all results to
     -- process_action_results function as defined below:
     return process_action_results(coroutine_resume(action_thread, ...))
@@ -183,89 +183,9 @@ function _M.handle(handlers, action, ...)
       error("unhandled error in coroutine: " .. tostring((...)))
     end
   end
-  -- Define close function, which expects xpcall's return values when invoking
-  -- xpcall(resume, ...). The close function ensures cleanup in case of an
-  -- exception or an early return in a handler as well as proper stack traces.
-  local return_values, error_message
-  local early_return_marker = setmetatable({}, early_return_metatbl)
-  local function close(success, ...)
-    -- Check if coroutine finished execution or if there was an early return or
-    -- an exception in the handler:
-    if coroutine_status(action_thread) == "dead" then
-      -- Coroutine finished execution.
-      -- Check if there was an exception (typically re-thrown by
-      -- process_action_results function above):
-      if success then
-        -- There was no exception.
-        -- Return return values:
-        return ...
-      end
-      -- There was an exception.
-      -- Check if the exception is an "early return marker" thrown by *this*
-      -- closure:
-      if ... == early_return_marker then
-        -- An "early return marker" thrown by this closure has been caught.
-        -- Return memorized return values or re-throw memorized exception:
-        if error_message then
-          error(error_message, 0)
-        else
-          return table_unpack(return_values, 1, return_values.n)
-        end
-      else
-        -- The exception is not an "early return marker" or it is an
-        -- "early return marker" created by a different closure.
-        -- Re-raise the exception:
-        error(..., 0)
-      end
-    else
-      -- There was an early return or an exception in the handler.
-      -- Check if there was an exception in the handler:
-      if success then
-        -- The handler returned normally.
-        -- Memorize return values:
-        return_values, error_message = table_pack(...), nil
-      else
-        -- There was an exception in the handler.
-        -- Check if error message is a string:
-        if type((...)) == "string" then
-          -- Error message is a string.
-          -- Extend error message with stack traces of each involved
-          -- coroutine's stack:
-          local idx, error_parts = 0, {}
-          local this_thread = coroutine_running()
-          local thread = children[this_thread]
-          while thread and coroutine_status(thread) ~= "dead" do
-            idx = idx - 1
-            error_parts[idx] = debug_traceback(thread)
-            thread = children[thread]
-          end
-          idx = idx - 1
-          error_parts[idx] = debug_traceback(this_thread)
-          idx = idx - 1
-          error_parts[idx] = ...
-          -- Memorize extended error message:
-          return_values, error_message =
-            nil, table_concat(error_parts, "\n", idx, -1)
-        else
-          -- Error message is not a string (e.g. another closure's
-          -- "early return marker" or another table or userdata).
-          -- Memorize original error message:
-          return_values, error_message = nil, ...
-        end
-      end
-      -- Throw "early return marker" within the coroutine to unwind the stack
-      -- of the coroutine:
-      return close(xpcall(
-        resume, debug_traceback, call, error, early_return_marker
-      ))
-    end
-  end
-  -- Invoke the resume function for the first time, passing the arguments
-  -- action, debug.traceback, and variable arguments to the resume function;
-  -- while catching exceptions by wrapping the resume call with another xpcall
-  -- (which gets another debug.traceback as argument) and pass that xpcall's
-  -- results to the close function defined above:
-  return close(xpcall(resume, debug_traceback, action, debug_traceback, ...))
+  -- Invoke the resume function for the first time, passing the arguments for
+  -- xpcall:
+  return resume(action, debug_traceback, ...)
 end
 
 -- Ephemeron that allows obtaining the coroutine behind a resume function that
@@ -320,7 +240,6 @@ function _M.handle_once(handlers, action, ...)
   -- resume2 function to handler instead:
   local process_action_results
   local function resume(...)
-    children[coroutine_running()] = action_thread
     return process_action_results(coroutine_resume(action_thread, ...))
   end
   function process_action_results(coro_success, ...)
@@ -339,7 +258,6 @@ function _M.handle_once(handlers, action, ...)
             -- Create resume2 function, which serves as a resume function that
             -- does not perform further effect handling:
             function resume2(...)
-              children[coroutine_running()] = action_thread
               return pass_action_results(
                 resume2,
                 coroutine_resume(action_thread, ...)
@@ -385,56 +303,17 @@ end
 -- Function that invalidates a resume function previously returned by
 -- handle_once, and which unwinds the stack and executes finalizers:
 function _M.discontinue(resume)
-  -- Check if argument is a resume function previously returned by handle_once:
-  if not action_threads_cache[resume] then
-    -- Argument is not a resume function previously returned by handle_once.
+  -- Obtain coroutine from resume function (succeeds if it is a resume function
+  -- created by handle_once):
+  local action_thread = action_threads_cache[resume]
+  -- Check if coroutine could be obtained.
+  if not action_thread then
+    -- Argument is not a resume function created by handle_once.
     -- Throw an error:
     error("argument to discontinue is not a continuation", 2)
   end
-  -- Argument is a resume function previously returned by handle_once.
-  -- Create an "early return marker" and resume coroutine by passing that
-  -- marker (along with a call marker and the error function) to the coroutine,
-  -- which then unwinds the stack by throwing the marker, and re-catch that
-  -- marker using xpcall:
-  local early_return_marker = setmetatable({}, early_return_metatbl)
-  local success, result = xpcall(
-    resume, debug_traceback, call, error, early_return_marker
-  )
-  -- Check if any exception was caught:
-  if success then
-    -- No exception was caught, which is unexpected:
-    error("discontinued action returned with: " .. tostring(result))
-  -- Check if caught exception is the created "early return marker":
-  elseif result ~= early_return_marker then
-    -- Another exception has been caught.
-    -- Re-throw exception:
-    error(result, 0)
-  end
-  -- "early return marker" has been caught successfully.
-end
-
--- Function processing pcall's and xpcall's results
-local function process_pcall_results(...)
-  local success, result = ...
-  -- Check if an exception is reported and if it's an early return marker.
-  if not success and getmetatable(result) == early_return_metatbl then
-    -- Exception that is an early return marker has been caught.
-    -- Re-raise the exception:
-    error(result)
-  end
-  -- No early return marker has been caught.
-  -- Pass all arguments to callee:
-  return ...
-end
-
--- pcall function where early return markers are not caught:
-function _M.pcall(...)
-  return process_pcall_results(pcall(...))
-end
-
--- xpcall function where early return markers are not caught:
-function _M.xpcall(...)
-  return process_pcall_results(xpcall(...))
+  -- Close to-be-closed variables of coroutine:
+  assert(coroutine_close(action_thread))
 end
 
 -- Return module table:

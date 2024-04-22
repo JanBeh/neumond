@@ -108,7 +108,7 @@ local function connection_handler(conn, request_handler)
     },
     request_metatbl
   )
-  local success, errmsg = effect.xpcall(
+  local success, errmsg = xpcall(
     request_handler, debug.traceback, request
   )
   if not success then
@@ -130,7 +130,7 @@ function _M.run(fcgi_path, request_handler)
       -- Ensure that connection gets closed when fiber terminates:
       local conn <close> = conn
       -- Execute connection handler and catch errors:
-      local success, errmsg = effect.xpcall(
+      local success, errmsg = xpcall(
         connection_handler, debug.traceback, conn, request_handler
       )
       -- Check if there was an error in the connection handler:
