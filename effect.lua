@@ -84,6 +84,12 @@ local coro_cleaner_metatbl = {
   end,
 }
 
+-- Assert function that does not prepend position information to the error:
+local function assert_nopos(success, ...)
+  if success then return ... end
+  error(..., 0)
+end
+
 -- handle(handlers, action, ...) runs action(...) under the context of an
 -- effect handler and returns the return value of the action function (possibly
 -- modified by effect handlers).
@@ -125,53 +131,44 @@ function _M.handle(handlers, action, ...)
       -- Check if coroutine finished exection:
       if coroutine_status(action_thread) == "dead" then
         -- Coroutine finished execution.
-        -- Check if xpcall caught an exception:
-        local success, result = ...
-        if success then
-          -- Return coroutine's return values (except for the first value which
-          -- is true to indicate success) because coroutine has returned:
-          return select(2, ...)
-        end
-        -- An error happened during execution of the action function.
-        -- Re-throw exception that has been caught by xpcall:
-        error(result, 0)
-      else
-        -- Coroutine suspended execution.
-        -- Lookup possible handler:
-        local handler = handlers[...]
-        if handler then
-          -- A handler has been found.
-          --
-          -- The following would ensure that each resume function is only used
-          -- once, but the check is ommitted for performance reasons because it
-          -- would create a new closure that needs to be garbage collected:
-          --
-          --local resumed = false
-          --local function resume_once(...)
-          --  if resumed then
-          --    error("cannot resume twice", 2)
-          --  end
-          --  resumed = true
-          --  return resume(...)
-          --end
-          --return handler(resume_once, select(2, ...))
-          --
-          -- Instead, the already existing resume closure is returned and
-          -- passed to the handler function, followed by the arguments of the
-          -- effect invocation:
-          return handler(resume, select(2, ...))
-        end
-        -- No suitable handler has been found.
-        -- Check if the current coroutine is the main coroutine:
-        if coroutine_isyieldable() then
-          -- It is possible to yield again.
-          -- Pass yield further down the stack and return its results back up:
-          return resume(coroutine_yield(...))
-        end
-        -- The current coroutine is the main coroutine, thus the effect or
-        -- yield cannot be handled and an exception is thrown:
-        error("unhandled effect or yield: " .. tostring((...)), 0)
+        -- Return coroutine's return values on success or re-throw exception:
+        return assert_nopos(...)
       end
+      -- Coroutine suspended execution.
+      -- Lookup possible handler:
+      local handler = handlers[...]
+      if handler then
+        -- A handler has been found.
+        --
+        -- The following would ensure that each resume function is only used
+        -- once, but the check is ommitted for performance reasons because it
+        -- would create a new closure that needs to be garbage collected:
+        --
+        --local resumed = false
+        --local function resume_once(...)
+        --  if resumed then
+        --    error("cannot resume twice", 2)
+        --  end
+        --  resumed = true
+        --  return resume(...)
+        --end
+        --return handler(resume_once, select(2, ...))
+        --
+        -- Instead, the already existing resume closure is returned and
+        -- passed to the handler function, followed by the arguments of the
+        -- effect invocation:
+        return handler(resume, select(2, ...))
+      end
+      -- No suitable handler has been found.
+      -- Check if the current coroutine is the main coroutine:
+      if coroutine_isyieldable() then
+        -- It is possible to yield again.
+        -- Pass yield further down the stack and return its results back up:
+        return resume(coroutine_yield(...))
+      end
+      -- The current coroutine is the main coroutine, thus the effect or
+      -- yield cannot be handled and an exception is thrown:
+      error("unhandled effect or yield: " .. tostring((...)), 0)
     else
       -- Resuming the coroutine reported an error. This should normally not
       -- happen unless a resume function was used twice.
@@ -194,17 +191,12 @@ local function pass_action_results(resume, coro_success, ...)
   -- handle_once, but do not execute any handler anymore.
   if coro_success then
     if coroutine_status(action_threads_cache[resume]) == "dead" then
-      local success, result = ...
-      if success then
-        return select(2, ...)
-      end
-      error(result, 0)
-    else
-      if coroutine_isyieldable() then
-        return resume(coroutine_yield(...))
-      end
-      error("unhandled effect or yield: " .. tostring((...)), 0)
+      return assert_nopos(...)
     end
+    if coroutine_isyieldable() then
+      return resume(coroutine_yield(...))
+    end
+    error("unhandled effect or yield: " .. tostring((...)), 0)
   else
     error("unhandled error in coroutine: " .. tostring((...)))
   end
@@ -240,38 +232,33 @@ function _M.handle_once(handlers, action, ...)
   function process_action_results(coro_success, ...)
     if coro_success then
       if coroutine_status(action_thread) == "dead" then
-        local success, result = ...
-        if success then
-          return select(2, ...)
-        end
-        error(result, 0)
-      else
-        local handler = handlers[...]
-        if handler then
-          -- Check if resume2 function does already exist:
-          if not resume2 then
-            -- Create resume2 function, which serves as a resume function that
-            -- does not perform further effect handling:
-            function resume2(...)
-              return pass_action_results(
-                resume2,
-                coroutine_resume(action_thread, ...)
-              )
-            end
-            -- Store coroutine associated to created resume2 function in
-            -- ephemeron to enable reusing the coroutine for tail-call
-            -- elimination:
-            action_threads_cache[resume2] = action_thread
-          end
-          -- resume2 function exists at this point.
-          -- Use resume2 function when invoking handler:
-          return handler(resume2, select(2, ...))
-        end
-        if coroutine_isyieldable() then
-          return resume(coroutine_yield(...))
-        end
-        error("unhandled effect or yield: " .. tostring((...)), 0)
+        return assert_nopos(...)
       end
+      local handler = handlers[...]
+      if handler then
+        -- Check if resume2 function does already exist:
+        if not resume2 then
+          -- Create resume2 function, which serves as a resume function that
+          -- does not perform further effect handling:
+          function resume2(...)
+            return pass_action_results(
+              resume2,
+              coroutine_resume(action_thread, ...)
+            )
+          end
+          -- Store coroutine associated to created resume2 function in
+          -- ephemeron to enable reusing the coroutine for tail-call
+          -- elimination:
+          action_threads_cache[resume2] = action_thread
+        end
+        -- resume2 function exists at this point.
+        -- Use resume2 function when invoking handler:
+        return handler(resume2, select(2, ...))
+      end
+      if coroutine_isyieldable() then
+        return resume(coroutine_yield(...))
+      end
+      error("unhandled effect or yield: " .. tostring((...)), 0)
     else
       error("unhandled error in coroutine: " .. tostring((...)))
     end
