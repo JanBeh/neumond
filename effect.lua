@@ -90,9 +90,33 @@ local function assert_nopos(success, ...)
   error(..., 0)
 end
 
+-- Ephemeron holding stack trace information for non-string error objects:
+local traces = setmetatable({}, {__mode = "k"})
+
+-- Function adding or storing stack trace to/for error objects:
+local function add_traceback(errmsg)
+  -- Check if error message is a string.
+  if type(errmsg) == "string" then
+    -- Error message is a string.
+    --
+    return debug_traceback(errmsg, 2)
+  end
+  -- Error message is not a string.
+  -- Store stack trace in ephemeron, prepending an existing stack trace if one
+  -- exists:
+  traces[errmsg] = debug_traceback(traces[errmsg], 2)
+  -- Return original error object:
+  return errmsg
+end
+
+-- Function obtaining stack trace for non-string error objects:
+function _M.get_traceback(errmsg)
+  return traces[errmsg]
+end
+
 -- pcall function that modifies the error object to contain a stack trace:
 local function pcall_traceback(func, ...)
-  return xpcall(func, debug_traceback, ...)
+  return xpcall(func, add_traceback, ...)
 end
 
 -- handle(handlers, action, ...) runs action(...) under the context of an

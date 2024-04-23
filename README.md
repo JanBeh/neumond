@@ -124,6 +124,9 @@ The module provides the following functions:
     discontinued when an effect handler returns (or throws an error) without
     resuming.
 
+  * **`effect.get_traceback(errmsg)`** obtains a stack trace for a non-string
+    error object `errmsg`.
+
 In many cases, tail-call elimination can be performed. If an effect handler
 installed with `effect.handle` exits with `return resume(...)`, or if an effect
 handler installed with `effect.handle_once` exits with
