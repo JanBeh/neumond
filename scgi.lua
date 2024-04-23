@@ -3,7 +3,6 @@
 _ENV = setmetatable({}, { __index = _G })
 local _M = {}
 
-local effect = require "effect"
 local fiber = require "fiber"
 local waitio = require "waitio"
 local eio = require "eio"
