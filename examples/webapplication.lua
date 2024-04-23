@@ -11,6 +11,7 @@ local scgi_path = assert(..., "no socket path given")
 local function request_handler(req)
   req:process_request_body()
   local dbconn = assert(pgeff.connect("dbname=demoapplication"))
+  assert(dbconn:query("BEGIN")()) -- TODO: use pipelining better
   local result = assert(dbconn:query([[
 CREATE TABLE IF NOT EXISTS account (
   id SERIAL8 PRIMARY KEY,
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS account (
   local result = assert(
     dbconn:query("SELECT * FROM account ORDER BY name, id")()
   )
+  assert(dbconn:query("COMMIT")()) -- TODO: use pipelining better
   req:write("Content-type: text/html\n\n")
   req:write('<html><head><title>demoapplication</title></head><body>\n')
   req:write('<h1>Accounts</h1>\n')
