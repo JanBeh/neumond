@@ -9,19 +9,14 @@ local select       = select
 local setmetatable = setmetatable
 local tostring     = tostring
 local type         = type
-local pcall        = pcall
 local xpcall       = xpcall
 local coroutine_close       = coroutine.close
 local coroutine_create      = coroutine.create
 local coroutine_isyieldable = coroutine.isyieldable
 local coroutine_resume      = coroutine.resume
-local coroutine_running     = coroutine.running
 local coroutine_status      = coroutine.status
 local coroutine_yield       = coroutine.yield
 local debug_traceback = debug.traceback
-local table_concat = table.concat
-local table_pack   = table.pack
-local table_unpack = table.unpack
 
 -- Disallow global variables in the implementation of this module:
 _ENV = setmetatable({}, {
