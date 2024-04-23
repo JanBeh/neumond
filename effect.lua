@@ -77,7 +77,7 @@ function _M.new(name)
 end
 
 -- Metatable for to-be-closed variable that ensures closing of to-be-closed
--- variables of stored coroutine (value for "thread" key)
+-- variables of stored coroutine (value for "thread" key):
 local coro_cleaner_metatbl = {
   __close = function(self)
     assert(coroutine_close(self.thread))
