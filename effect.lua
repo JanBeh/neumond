@@ -90,7 +90,8 @@ local function assert_nopos(success, ...)
   error(..., 0)
 end
 
-local function xpcall_traceback(func, ...)
+-- pcall function that modifies the error object to contain a stack trace:
+local function pcall_traceback(func, ...)
   return xpcall(func, debug_traceback, ...)
 end
 
@@ -107,11 +108,10 @@ end
 -- handler has returned, use the handle_once function instead.
 --
 function _M.handle(handlers, action, ...)
-  -- The action function gets wrapped by the xpcall_traceback function to
-  -- ensure that errors will contain a stack trace. The arguments to
-  -- xpcall_traceback (including the action function) are passed on the first
-  -- "resume".
-  local action_thread = coroutine_create(xpcall_traceback)
+  -- The action function gets wrapped by the pcall_traceback function to ensure
+  -- that errors will contain a stack trace. The arguments to pcall_traceback
+  -- (including the action function) are passed on the first "resume".
+  local action_thread = coroutine_create(pcall_traceback)
   -- Ensure that coroutine's to-be-closed variables will be closed on return:
   local coro_cleaner <close> = setmetatable(
     {thread = action_thread}, coro_cleaner_metatbl
@@ -120,7 +120,7 @@ function _M.handle(handlers, action, ...)
   -- values:
   local process_action_results
   -- Function resuming the coroutine. On first invocation, the arguments to
-  -- xpcall_traceback (including the action function) must be passed as first
+  -- pcall_traceback (including the action function) must be passed as first
   -- argument.
   local function resume(...)
     -- Pass all arguments to coroutine.resume and pass all results to
@@ -130,7 +130,7 @@ function _M.handle(handlers, action, ...)
   -- Implementation for local variable process_action_results defined above:
   function process_action_results(coro_success, ...)
     -- Check if the coroutine threw an exception (should never happen as it's
-    -- supposed to be caught by the xpcall_traceback function that has been
+    -- supposed to be caught by the pcall_traceback function that has been
     -- passed to coroutine.create):
     if coro_success then
       -- There was no exception caught.
@@ -182,7 +182,7 @@ function _M.handle(handlers, action, ...)
     end
   end
   -- Invoke the resume function for the first time, passing the arguments for
-  -- xpcall_traceback:
+  -- pcall_traceback:
   return resume(action, ...)
 end
 
@@ -280,8 +280,8 @@ function _M.handle_once(handlers, action, ...)
     return resume(...)
   else
     -- action is not a previously returned resume function.
-    -- Create new coroutine with xpcall_traceback:
-    action_thread = coroutine_create(xpcall_traceback)
+    -- Create new coroutine with pcall_traceback:
+    action_thread = coroutine_create(pcall_traceback)
     -- Use resume function to start coroutine for the first time, in which case
     -- the action needs to be passed as first argument:
     return resume(action, ...)
