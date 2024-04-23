@@ -76,17 +76,11 @@ function _M.new(name)
   })
 end
 
--- Metatable for to-be-closed variable that ensures closing of to-be-closed
--- variables of stored coroutine (value for "thread" key):
-local coro_cleaner_metatbl = {
-  __close = function(self)
-    assert(coroutine_close(self.thread))
-  end,
-}
-
 -- Assert function that does not prepend position information to the error:
 local function assert_nopos(success, ...)
-  if success then return ... end
+  if success then
+    return ...
+  end
   error(..., 0)
 end
 
@@ -109,15 +103,38 @@ local function add_traceback(errmsg)
   return errmsg
 end
 
--- Function obtaining stack trace for non-string error objects:
-function _M.get_traceback(errmsg)
-  return traces[errmsg]
-end
-
 -- pcall function that modifies the error object to contain a stack trace:
 local function pcall_traceback(func, ...)
   return xpcall(func, add_traceback, ...)
 end
+
+-- Helper function for auto_traceback, acting like assert but appending stored
+-- stack trace (if exists) to error messages:
+local function assert_traceback(success, ...)
+  if success then
+    return ...
+  end
+  local trace = traces[...]
+  if trace then
+    error(tostring((...)) .. "\n" .. trace, 0)
+  else
+    error(..., 0)
+  end
+end
+
+-- auto_traceback(action, ...) runs action(...) and stringifies any uncaught
+-- errors and appends a stack trace if applicable:
+function _M.auto_traceback(...)
+  return assert_traceback(pcall_traceback(...))
+end
+
+-- Metatable for to-be-closed variable that ensures closing of to-be-closed
+-- variables of stored coroutine (value for "thread" key):
+local coro_cleaner_metatbl = {
+  __close = function(self)
+    assert(coroutine_close(self.thread))
+  end,
+}
 
 -- handle(handlers, action, ...) runs action(...) under the context of an
 -- effect handler and returns the return value of the action function (possibly

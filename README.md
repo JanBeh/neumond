@@ -124,8 +124,11 @@ The module provides the following functions:
     discontinued when an effect handler returns (or throws an error) without
     resuming.
 
-  * **`effect.get_traceback(errmsg)`** obtains a stack trace for a non-string
-    error object `errmsg`.
+  * **`effect.auto_traceback(action, ...)`** calls the `action` function with
+    given arguments and ensures that thrown error objects are automatically
+    stringified and get a stack trace appended. This function should be used
+    as an outer wrapper if non-string error objects may be thrown, in order to
+    see stack traces in case of unhandled errors.
 
 In many cases, tail-call elimination can be performed. If an effect handler
 installed with `effect.handle` exits with `return resume(...)`, or if an effect

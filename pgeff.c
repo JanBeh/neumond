@@ -14,9 +14,8 @@
 #define PGEFF_SELECT_UPVALIDX 2
 #define PGEFF_DEREGISTER_FD_UPVALIDX 3
 #define PGEFF_SYNC_UPVALIDX 4
-#define PGEFF_GET_TRACEBACK_UPVALIDX 5
 
-#define PGEFF_METHODS_UPVALIDX 6
+#define PGEFF_METHODS_UPVALIDX 5
 
 #define PGEFF_DBCONN_ATTR_USERVALIDX 1
 #define PGEFF_DBCONN_DEFERRED_FIRST_USERVALIDX 2
@@ -510,17 +509,7 @@ static int pgeff_deferred_index(lua_State *L) {
 }
 
 static int pgeff_error_tostring(lua_State *L) {
-  lua_settop(L, 1);
   lua_getfield(L, 1, "message");
-  lua_pushvalue(L, lua_upvalueindex(PGEFF_GET_TRACEBACK_UPVALIDX));
-  lua_pushvalue(L, 1);
-  lua_call(L, 1, 1);
-  if (lua_isnil(L, -1)) lua_pop(L, 1);
-  else {
-    lua_pushliteral(L, "\n");
-    lua_insert(L, -2);
-    lua_concat(L, 3);
-  }
   return 1;
 }
 
@@ -568,17 +557,15 @@ static const struct luaL_Reg pgeff_funcs[] = {
 };
 
 #define pgeff_userdata_helper() do { \
-    lua_pushvalue(L, -6); \
-    lua_pushvalue(L, -6); \
-    lua_pushvalue(L, -6); \
-    lua_pushvalue(L, -6); \
-    lua_pushvalue(L, -6); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
     lua_newtable(L); \
-    lua_pushvalue(L, -6); \
-    lua_pushvalue(L, -6); \
-    lua_pushvalue(L, -6); \
-    lua_pushvalue(L, -6); \
-    lua_pushvalue(L, -6); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
   } while (0)
 
 // Library initialization:
@@ -599,30 +586,24 @@ int luaopen_pgeff(lua_State *L) {
   lua_getfield(L, -3, "sync");
   lua_remove(L, -4);
 
-  lua_getglobal(L, "require");
-  lua_pushliteral(L, "effect");
-  lua_call(L, 1, 1);
-  lua_getfield(L, -1, "get_traceback");
-  lua_remove(L, -2);
-
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY);
   pgeff_userdata_helper();
-  luaL_setfuncs(L, pgeff_dbconn_methods, 5);
-  luaL_setfuncs(L, pgeff_dbconn_metamethods, 6);
+  luaL_setfuncs(L, pgeff_dbconn_methods, 4);
+  luaL_setfuncs(L, pgeff_dbconn_metamethods, 5);
   lua_pop(L, 1);
 
   luaL_newmetatable(L, PGEFF_DEFERRED_MT_REGKEY);
   pgeff_userdata_helper();
-  luaL_setfuncs(L, pgeff_deferred_methods, 5);
-  luaL_setfuncs(L, pgeff_deferred_metamethods, 6);
+  luaL_setfuncs(L, pgeff_deferred_methods, 4);
+  luaL_setfuncs(L, pgeff_deferred_metamethods, 5);
   lua_pop(L, 1);
 
   luaL_newmetatable(L, PGEFF_ERROR_MT_REGKEY);
   pgeff_userdata_helper();
-  luaL_setfuncs(L, pgeff_error_methods, 5);
-  luaL_setfuncs(L, pgeff_error_metamethods, 6);
+  luaL_setfuncs(L, pgeff_error_methods, 4);
+  luaL_setfuncs(L, pgeff_error_metamethods, 5);
   lua_pop(L, 1);
 
-  luaL_setfuncs(L, pgeff_funcs, 5);
+  luaL_setfuncs(L, pgeff_funcs, 4);
   return 1;
 }

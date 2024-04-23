@@ -1,3 +1,4 @@
+local effect = require "effect"
 local waitio_fiber = require "waitio_fiber"
 local pgeff = require "pgeff"
 
@@ -23,8 +24,7 @@ local function input_converter(v)
   return v
 end
 
-
-return waitio_fiber.main(function()
+return effect.auto_traceback(waitio_fiber.main, function()
   local dbconn = assert(pgeff.connect(""))
 
   local a, b = 15, 7

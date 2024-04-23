@@ -69,7 +69,8 @@ end
 
 local terminate = effect.new("terminate")
 
-effect.handle(
+effect.auto_traceback(
+  effect.handle,
   { [terminate] = function(resume, sig) end },
   waitio_fiber.main,
   function()
