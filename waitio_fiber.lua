@@ -30,23 +30,6 @@ local function handle_call_reset(self)
   self.ready = false
 end
 
---[[ TODO
-local function handle_newindex(self, key, value)
-  if key == "ready" then
-    self._ready = value
-    if value then
-      local fib = self._fiber
-      if fib then
-        self._fiber = false
-        fib:wake()
-      end
-    end
-  else
-    self.key = value
-  end
-end
---]]
-
 local handle_reset_metatbl = {
   __call = handle_call_reset,
 }
