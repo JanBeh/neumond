@@ -10,7 +10,6 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
-local effect = require "effect"
 local fiber = require "fiber"
 local waitio = require "waitio"
 local lkq = require "lkq"
@@ -253,31 +252,31 @@ function _M.run(...)
   return fiber.handle(
     {
       [waitio.deregister_fd] = function(resume, ...)
-        return resume(effect.call, deregister_fd, ...)
+        return resume:call(deregister_fd, ...)
       end,
       [waitio.select] = function(resume, ...)
-        return resume(effect.call, wait_select, ...)
+        return resume:call(wait_select, ...)
       end,
       [waitio.wait_fd_read] = function(resume, fd)
-        return resume(effect.call, wait_fd_read, fd)
+        return resume:call(wait_fd_read, fd)
       end,
       [waitio.wait_fd_write] = function(resume, fd)
-        return resume(effect.call, wait_fd_write, fd)
+        return resume:call(wait_fd_write, fd)
       end,
       [waitio.wait_pid] = function(resume, pid)
-        return resume(effect.call, wait_pid, pid)
+        return resume:call(wait_pid, pid)
       end,
       [waitio.catch_signal] = function(resume, sig)
-        return resume(effect.call, catch_signal, sig)
+        return resume:call(catch_signal, sig)
       end,
       [waitio.timeout] = function(resume, seconds)
-        return resume(effect.call, timeout, seconds)
+        return resume:call(timeout, seconds)
       end,
       [waitio.interval] = function(resume, seconds)
-        return resume(effect.call, interval, seconds)
+        return resume:call(interval, seconds)
       end,
       [waitio.sync] = function(resume)
-        return resume(effect.call, sync)
+        return resume:call(sync)
       end,
     },
     function(body, ...)

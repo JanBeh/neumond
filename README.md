@@ -103,20 +103,15 @@ The module provides the following functions:
     given arguments and, during execution of the action function, handles those
     effects which are listed as key in the `handlers` table. The value in the
     handlers table is the corresponding handler, which is is a function that
-    retrieves a continuation function (usually named "`resume`") as first
+    retrieves a continuation object (usually named "`resume`") as first
     argument followed by optional arguments that have been passed to the
     `effect.perform` function. Handlers in the `handlers` table passed to the
-    `effect.handle` function may resume the action only *before* returning,
-    unless the continuation has been made persistent with
-    `effect.persist(resume)`. Optional arguments passed to the continuation
-    function are returned by `effect.perform`.
-
-  * **`effect.persist(resume)`** disables automatic discontinuation of the
-    `resume` continuation function when an effect handler returns.
-
-  * **`effect.discontinue(resume)`** releases a continuation (`resume`) that
-    has previously been made persistent. This closes all to-be-closed variables
-    of the action.
+    `effect.handle` function may resume the action by calling the continuation,
+    where optional arguments are returned by `effect.perform` then. If a
+    continuation object needs to be called after an effect handler returned,
+    it needs to be made persistent with the **`resume:persistent()`** method
+    and can later be called or discontinued with **`resume:discontinue()`**
+    (which closes all to-be-closed variables of the action).
 
   * **`effect.auto_traceback(action, ...)`** calls the `action` function with
     given arguments and ensures that thrown error objects are automatically
@@ -126,11 +121,9 @@ The module provides the following functions:
 
 Sometimes an effect hander may wish to execute code in the context of the
 performer of the effect (e.g. to perform other effects in *that* context). To
-achieve this, it is possible to pass to the continuation function (`resume`)
-the special value **`effect.call`** followed by a function (or callable object)
-`f` and optional arguments. In that case, `effect.perform` will not return
-those values but call the function `f` (with given arguments) and return `f`'s
-return values.
+achieve this, it is possible to use the method **`resume:call(func, ...)`**.
+In that case, `effect.perform` will call the function `func` (with given
+arguments) and return `f`'s return values.
 
 ## Module `fiber`
 

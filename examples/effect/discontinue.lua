@@ -22,10 +22,8 @@ effect.handle(
 local resume = effect.handle(
   {
     [exit] = function(resume)
-      -- effect.persist will disable auto-discontinuation:
-      effect.persist(resume)
-      -- This allows us to return the continuation function:
-      return resume
+      -- resume:persistent() will disable auto-discontinuation:
+      return resume:persistent()
     end,
   },
   function()
@@ -40,4 +38,4 @@ local resume = effect.handle(
 )
 print("Manual cleanup required")
 -- Manual cleanup:
-effect.discontinue(resume)
+resume:discontinue()

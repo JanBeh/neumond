@@ -205,7 +205,7 @@ function fiber_methods.kill(self)
   if attrs.started then
     -- "resume" is a continuation.
     -- Discontinue the continuation:
-    effect.discontinue(resume)
+    resume:discontinue()
   end
   -- Ensure that fiber is not continued when woken or cleaned up:
   attrs.resume = nil
@@ -275,7 +275,7 @@ local open_fibers_metatbl = {
       if resume and attrs.started then
         -- "resume" is a continuation.
         -- Discontinue the continuation:
-        effect.discontinue(resume)
+        resume:discontinue()
         -- Note that it's not necessary to set attrs.resume to nil here,
         -- because when open_fibers is closed, there will be no scheduler
         -- anymore that would call the resume function. Moreover, the kill
@@ -329,14 +329,14 @@ local function schedule(nested, ...)
     -- Effect putting the currently running fiber to sleep:
     [sleep] = function(resume)
       -- Store continuation:
-      fiber_attrs[current_fiber].resume = effect.persist(resume)
+      fiber_attrs[current_fiber].resume = resume:persistent()
     end,
     -- Effect yielding execution to another (unspecified) fiber:
     [yield] = function(resume)
       -- Ensure that currently running fiber is woken again:
       woken_fibers:push(current_fiber)
       -- Store continuation:
-      fiber_attrs[current_fiber].resume = effect.persist(resume)
+      fiber_attrs[current_fiber].resume = resume:persistent()
     end,
     -- Effect invoked when fiber has terminated:
     [terminate] = function(resume)

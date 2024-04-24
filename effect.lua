@@ -33,7 +33,6 @@ local _M = {}
 local call = setmetatable({}, {
   __tostring = function() return "call marker" end,
 })
-_M.call = call
 
 -- Helper function for check_call function:
 local function do_call(dummy, func, ...)
@@ -89,10 +88,9 @@ local traces = setmetatable({}, {__mode = "k"})
 
 -- Function adding or storing stack trace to/for error objects:
 local function add_traceback(errmsg)
-  -- Check if error message is a string.
   if type(errmsg) == "string" then
     -- Error message is a string.
-    --
+    -- Append stack trace to string and return:
     return debug_traceback(errmsg, 2)
   end
   -- Error message is not a string.
@@ -108,17 +106,19 @@ local function pcall_traceback(func, ...)
   return xpcall(func, add_traceback, ...)
 end
 
--- Helper function for auto_traceback, acting like assert but appending stored
--- stack trace (if exists) to error messages:
+-- Helper function for auto_traceback, acting like assert_nopos but converting
+-- error messages to strings and appending stored stack traces (if existing) to
+-- error messages:
 local function assert_traceback(success, ...)
   if success then
     return ...
   end
+  local errmsg = tostring((...))
   local trace = traces[...]
   if trace then
-    error(tostring((...)) .. "\n" .. trace, 0)
+    error(errmsg .. "\n" .. trace, 0)
   else
-    error(..., 0)
+    error(errmsg, 0)
   end
 end
 
@@ -128,10 +128,11 @@ function _M.auto_traceback(...)
   return assert_traceback(pcall_traceback(...))
 end
 
--- Ephemeron holding a manager table for a continuation function:
+-- Ephemeron holding a manager table for a continuation:
 local managers = setmetatable({}, { __mode = "k" })
 
--- Metatable for continuation manager tables:
+-- Metatable for continuation manager tables, which hold private attributes and
+-- which ensure cleanup of the continuation:
 local manager_metatbl = {
   -- Invoked when handle function returns:
   __close = function(self)
@@ -145,129 +146,110 @@ local manager_metatbl = {
   end,
 }
 
+-- Metatable for continuation objects (implemented as tables):
+local continuation_metatbl = {
+  -- Calling a continuation object will resume the interrupted action:
+  __call = function(self, ...)
+    -- Call stored resume function with arguments:
+    return managers[self].resume_func(...)
+  end,
+  -- Methods of continuation objects:
+  __index = {
+    -- Calls a function in context of the performer:
+    call = function(self, ...)
+      -- Call stored resume function with special call marker as first
+      -- argument:
+      return managers[self].resume_func(call, ...)
+    end,
+    -- Avoids auto-discontinuation on handler return or error:
+    persistent = function(self)
+      -- Disable automatic discontinuation:
+      managers[self].autoclean = false
+      -- Return self for convenience:
+      return self
+    end,
+    -- Discontinues continuation:
+    discontinue = function(self)
+      -- Discontinue continuation, i.e. close all to-be-closed variables of
+      -- coroutine:
+      assert(coroutine_close(managers[self].action_thread))
+    end,
+  }
+}
+
 -- handle(handlers, action, ...) runs action(...) under the context of an
 -- effect handler and returns the return value of the action function (possibly
 -- modified by effect handlers).
 --
 -- handlers is a table mapping each to-be-handled effect to a function which
--- retrieves a resume function (continuation) as first argument and optionally
+-- retrieves a resume object (continuation) as first argument and optionally
 -- more arguments from the invocation of the effect.
 --
--- The resume function can only be called once and must not be called after the
--- effect handler has returned, unless effect.persist is used on the
--- continuation.
+-- The resume object can only be called once and must not be called after the
+-- effect handler has returned, unless resume:persistent() is called before the
+-- handler returns.
 --
 function _M.handle(handlers, action, ...)
-  -- The action function gets wrapped by the pcall_traceback function to ensure
-  -- that errors will contain a stack trace. The arguments to pcall_traceback
-  -- (including the action function) are passed on the first "resume".
+  -- Create coroutine with pcall_traceback as function:
   local action_thread = coroutine_create(pcall_traceback)
-  -- Create manager table, which allows automatic discontinuation:
+  -- Create continuation object:
+  local resume = setmetatable({}, continuation_metatbl)
+  -- Create manager table for continuation object:
   local manager <close> = setmetatable(
-    {action_thread = action_thread}, manager_metatbl
+    {
+      action_thread = action_thread,
+      resume = resume,
+    },
+    manager_metatbl
   )
-  -- Function to allow handling coroutine.resume's variable number of return
-  -- values:
+  -- Store manager table in ephemeron:
+  managers[resume] = manager
+  -- Forward declaration for helper function:
   local process_action_results
-  -- Function resuming the coroutine. On first invocation, the arguments to
-  -- pcall_traceback (including the action function) must be passed as first
-  -- argument.
-  local function resume(...)
-    -- Ensure that continuation is discontinued by default when effect handler
-    -- returns:
+  -- Function resuming the action:
+  local function resume_func(...)
+    -- Enable automatic discontinuation on handler return or error:
     manager.autoclean = true
-    -- Pass all arguments to coroutine.resume and pass all results to
-    -- process_action_results function as defined below:
+    -- Use helper function to process multiple arguments:
     return process_action_results(coroutine_resume(action_thread, ...))
   end
-  -- Memorize manager table for continuation function:
-  managers[resume] = manager
-  -- Implementation for local variable process_action_results defined above:
+  -- Store resume_func in manager table:
+  manager.resume_func = resume_func
+  -- Helper function to process return values of coroutine.resume:
   function process_action_results(coro_success, ...)
-    -- Check if the coroutine threw an exception (should never happen as it's
-    -- supposed to be caught by the pcall_traceback function that has been
-    -- passed to coroutine.create):
+    -- Check if coroutine.resume failed (should not happen):
     if coro_success then
-      -- There was no exception caught.
-      -- Check if coroutine finished exection:
+      -- coroutine.resume did not fail.
+      -- Check if coroutine terminated:
       if coroutine_status(action_thread) == "dead" then
-        -- Coroutine finished execution.
-        -- Return coroutine's return values on success or re-throw exception:
+        -- Coroutine terminated.
+        -- Process return values from pcall_traceback (return results on
+        -- success or throw error):
         return assert_nopos(...)
       end
-      -- Coroutine suspended execution.
-      -- Lookup possible handler:
+      -- Coroutine did not terminate yet, i.e. an effect has been performed.
+      -- Lookup matching handler:
       local handler = handlers[...]
       if handler then
-        -- A handler has been found.
-        --
-        -- The following would ensure that each resume function is only used
-        -- once, but the check is ommitted for performance reasons because it
-        -- would create a new closure that needs to be garbage collected:
-        --
-        --local resumed = false
-        --local function resume_once(...)
-        --  if resumed then
-        --    error("cannot resume twice", 2)
-        --  end
-        --  resumed = true
-        --  return resume(...)
-        --end
-        --return handler(resume_once, select(2, ...))
-        --
-        -- Instead, the already existing resume closure is returned and
-        -- passed to the handler function, followed by the arguments of the
-        -- effect invocation:
+        -- Handler has been found.
+        -- Call handler with continuation object:
         return handler(resume, select(2, ...))
       end
-      -- No suitable handler has been found.
-      -- Check if the current coroutine is the main coroutine:
+      -- No handler has been found.
+      -- Check if current coroutine is main coroutine:
       if coroutine_isyieldable() then
-        -- It is possible to yield again.
+        -- Current coroutine is not main coroutine, thus yielding is possible.
         -- Pass yield further down the stack and return its results back up:
-        return resume(coroutine_yield(...))
+        return resume_func(coroutine_yield(...))
       end
-      -- The current coroutine is the main coroutine, thus the effect or
-      -- yield cannot be handled and an exception is thrown:
+      -- Current coroutine is main coroutine and yielding is not possible.
       error("unhandled effect or yield: " .. tostring((...)), 0)
     else
-      -- Resuming the coroutine reported an error. This should normally not
-      -- happen unless a resume function was used twice.
+      -- coroutine.resume failed.
       error("unhandled error in coroutine: " .. tostring((...)))
     end
   end
-  -- Invoke the resume function for the first time, passing the arguments for
-  -- pcall_traceback:
-  return resume(action, ...)
-end
-
--- persist(resume) makes a resume function persistent, i.e. allows invocation
--- of resume(...) after the effect handler has returned:
-function _M.persist(resume)
-  -- Obtain manager table of continuation:
-  local manager = managers[resume]
-  -- Throw error if manager table was not found:
-  if not manager then
-    error("argument to persist is not a continuation", 2)
-  end
-  -- Disable automatic closing of coroutine:
-  manager.autoclean = false
-  -- Return argument for convenience:
-  return resume
-end
-
--- discontinue(resume) invalidates a resume function and closes all associated
--- to-be-closed variables:
-function _M.discontinue(resume)
-  -- Obtain manager table of continuation:
-  local manager = managers[resume]
-  -- Throw error if manager table was not found:
-  if not manager then
-    error("argument to discontinue is not a continuation", 2)
-  end
-  -- Discontinue continuation, i.e. close all to-be-closed variables of
-  -- coroutine:
-  assert(coroutine_close(manager.action_thread))
+  return resume_func(action, ...)
 end
 
 -- Return module table:
