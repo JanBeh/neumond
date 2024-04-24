@@ -323,31 +323,25 @@ local function schedule(nested, ...)
   handlers = {
     -- Effect resuming with a handle of the currently running fiber:
     [current] = function(resume)
-      -- Re-install handler on resuming with current fiber:
-      return effect.handle_once(handlers, resume, current_fiber)
+      -- Resume with handle of current fiber:
+      return resume(current_fiber)
     end,
     -- Effect putting the currently running fiber to sleep:
     [sleep] = function(resume)
       -- Store continuation:
-      fiber_attrs[current_fiber].resume = resume
-      -- Jump to main loop:
-      return resume_scheduled()
+      fiber_attrs[current_fiber].resume = effect.persist(resume)
     end,
     -- Effect yielding execution to another (unspecified) fiber:
     [yield] = function(resume)
       -- Ensure that currently running fiber is woken again:
       woken_fibers:push(current_fiber)
       -- Store continuation:
-      fiber_attrs[current_fiber].resume = resume
-      -- Jump to main loop:
-      return resume_scheduled()
+      fiber_attrs[current_fiber].resume = effect.persist(resume)
     end,
     -- Effect invoked when fiber has terminated:
     [terminate] = function(resume)
       -- Note that this effect must not be invoked unless a result (return
       -- values) has been stored or the fiber has been marked as being killed.
-      -- Discontinue continuation:
-      effect.discontinue(resume)
       -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
       open_fibers[current_fiber] = nil
       -- Wakeup all fibers that are waiting for this fiber's return values:
@@ -357,8 +351,6 @@ local function schedule(nested, ...)
           waiting_fiber:wake()
         end
       end
-      -- Jump to main loop:
-      return resume_scheduled()
     end
   }
   -- Implementation of spawn function for current scheduler:
@@ -381,12 +373,15 @@ local function schedule(nested, ...)
     local args = table.pack(...)
     -- Initialize resume function for first run:
     attrs.resume = function()
-      -- Mark fiber as started, such that cleanup may take place later:
-      attrs.started = true
-      -- Run fiber's function and store its return values:
-      attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
-      -- Terminate fiber through effect:
-      return terminate()
+      -- Handle effects while running fiber's action:
+      return effect.handle(handlers, function()
+        -- Mark fiber as started, such that cleanup may take place later:
+        attrs.started = true
+        -- Run fiber's function and store its return values:
+        attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
+        -- Terminate fiber through effect:
+        return terminate()
+      end)
     end
     -- Remember fiber as being open so it can be cleaned up later:
     open_fibers[fiber] = true
@@ -406,7 +401,7 @@ local function schedule(nested, ...)
     woken_fibers:push(false)
   end
   -- Main scheduling loop (using tail-recursion):
-  resume_scheduled = function()
+  local function resume_scheduled()
     -- Check if main fiber has terminated:
     local main_results = fiber_attrs[main].results
     if main_results then
@@ -455,8 +450,8 @@ local function schedule(nested, ...)
       attrs.resume = nil
       -- Set current_fiber:
       current_fiber = fiber
-      -- Run resume function with effect handling as tail-call:
-      return effect.handle_once(handlers, resume)
+      -- Run resume function:
+      resume()
     end
     -- Repeat main loop:
     return resume_scheduled()

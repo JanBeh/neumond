@@ -5,7 +5,7 @@ local exit = effect.new("exit")
 effect.handle(
   {
     [exit] = function(resume)
-      -- effect.handle does not require manual discontinuation
+      -- Exiting from effect handler does not require manual discontinuation.
     end,
   },
   function()
@@ -19,11 +19,13 @@ effect.handle(
   end
 )
 
-effect.handle_once(
+local resume = effect.handle(
   {
     [exit] = function(resume)
-      -- effect.handle_once requires manual discontinuation:
-      effect.discontinue(resume)
+      -- effect.persist will disable auto-discontinuation:
+      effect.persist(resume)
+      -- This allows us to return the continuation function:
+      return resume
     end,
   },
   function()
@@ -36,3 +38,6 @@ effect.handle_once(
     print("unreachable")
   end
 )
+print("Manual cleanup required")
+-- Manual cleanup:
+effect.discontinue(resume)

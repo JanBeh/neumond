@@ -128,11 +128,20 @@ function _M.auto_traceback(...)
   return assert_traceback(pcall_traceback(...))
 end
 
--- Metatable for to-be-closed variable that ensures closing of to-be-closed
--- variables of stored coroutine (value for "thread" key):
-local coro_cleaner_metatbl = {
+-- Ephemeron holding a manager table for a continuation function:
+local managers = setmetatable({}, { __mode = "k" })
+
+-- Metatable for continuation manager tables:
+local manager_metatbl = {
+  -- Invoked when handle function returns:
   __close = function(self)
-    assert(coroutine_close(self.thread))
+    -- Check if automatic discontinuation is enabled:
+    if self.autoclean then
+      -- Automatic discontinuation is enabled.
+      -- Discontinue continuation, i.e. close all to-be-closed variables of
+      -- coroutine:
+      assert(coroutine_close(self.action_thread))
+    end
   end,
 }
 
@@ -145,17 +154,17 @@ local coro_cleaner_metatbl = {
 -- more arguments from the invocation of the effect.
 --
 -- The resume function can only be called once and must not be called after the
--- effect handler has returned. To be able to use the resume function after the
--- handler has returned, use the handle_once function instead.
+-- effect handler has returned, unless effect.persist is used on the
+-- continuation.
 --
 function _M.handle(handlers, action, ...)
   -- The action function gets wrapped by the pcall_traceback function to ensure
   -- that errors will contain a stack trace. The arguments to pcall_traceback
   -- (including the action function) are passed on the first "resume".
   local action_thread = coroutine_create(pcall_traceback)
-  -- Ensure that coroutine's to-be-closed variables will be closed on return:
-  local coro_cleaner <close> = setmetatable(
-    {thread = action_thread}, coro_cleaner_metatbl
+  -- Create manager table, which allows automatic discontinuation:
+  local manager <close> = setmetatable(
+    {action_thread = action_thread}, manager_metatbl
   )
   -- Function to allow handling coroutine.resume's variable number of return
   -- values:
@@ -164,10 +173,15 @@ function _M.handle(handlers, action, ...)
   -- pcall_traceback (including the action function) must be passed as first
   -- argument.
   local function resume(...)
+    -- Ensure that continuation is discontinued by default when effect handler
+    -- returns:
+    manager.autoclean = true
     -- Pass all arguments to coroutine.resume and pass all results to
     -- process_action_results function as defined below:
     return process_action_results(coroutine_resume(action_thread, ...))
   end
+  -- Memorize manager table for continuation function:
+  managers[resume] = manager
   -- Implementation for local variable process_action_results defined above:
   function process_action_results(coro_success, ...)
     -- Check if the coroutine threw an exception (should never happen as it's
@@ -227,122 +241,33 @@ function _M.handle(handlers, action, ...)
   return resume(action, ...)
 end
 
--- Ephemeron that allows obtaining the coroutine behind a resume function that
--- has been passed to a handler (needed for tail-call elimination):
-local action_threads_cache = setmetatable({}, { __mode = "k" })
-
--- Function to allow handling coroutine.resume's variable number of return
--- values when invoked in function resume2 in handle_once function:
-local function pass_action_results(resume, coro_success, ...)
-  -- Same steps as in process_action_results implementations in handle and
-  -- handle_once, but do not execute any handler anymore.
-  if coro_success then
-    if coroutine_status(action_threads_cache[resume]) == "dead" then
-      return assert_nopos(...)
-    end
-    if coroutine_isyieldable() then
-      return resume(coroutine_yield(...))
-    end
-    error("unhandled effect or yield: " .. tostring((...)), 0)
-  else
-    error("unhandled error in coroutine: " .. tostring((...)))
+-- persist(resume) makes a resume function persistent, i.e. allows invocation
+-- of resume(...) after the effect handler has returned:
+function _M.persist(resume)
+  -- Obtain manager table of continuation:
+  local manager = managers[resume]
+  -- Throw error if manager table was not found:
+  if not manager then
+    error("argument to persist is not a continuation", 2)
   end
+  -- Disable automatic closing of coroutine:
+  manager.autoclean = false
+  -- Return argument for convenience:
+  return resume
 end
 
--- handle_once(handlers, action, ...) does the same as
--- handle(handlers, action, ...) but returns a resume function that does not
--- include further effect handling and which does not get invalidated when an
--- effect handler returns.
---
--- Tail-call optimization is done when invoking
--- handle_once(handlers, resume, ...) with a resume function that has been
--- previously returned by handle_once.
---
--- No cleanup work is done if an effect handler in the handlers table passed to
--- handle_once returns early or throws an exception. Manually calling
--- discontinue(resume) is necessary to properly unwind the stack and execute
--- finalizers.
---
-function _M.handle_once(handlers, action, ...)
-  -- Check if the action function is a resume function that has been previously
-  -- passed to an effect handler, and extract the corresponding coroutine in
-  -- that case:
-  local action_thread = action_threads_cache[action]
-  -- Modified resume function that does no longer perform effect handling:
-  local resume2
-  -- Same implementation as in handle function, but create, store, and pass
-  -- resume2 function to handler instead:
-  local process_action_results
-  local function resume(...)
-    return process_action_results(coroutine_resume(action_thread, ...))
-  end
-  function process_action_results(coro_success, ...)
-    if coro_success then
-      if coroutine_status(action_thread) == "dead" then
-        return assert_nopos(...)
-      end
-      local handler = handlers[...]
-      if handler then
-        -- Check if resume2 function does already exist:
-        if not resume2 then
-          -- Create resume2 function, which serves as a resume function that
-          -- does not perform further effect handling:
-          function resume2(...)
-            return pass_action_results(
-              resume2,
-              coroutine_resume(action_thread, ...)
-            )
-          end
-          -- Store coroutine associated to created resume2 function in
-          -- ephemeron to enable reusing the coroutine for tail-call
-          -- elimination:
-          action_threads_cache[resume2] = action_thread
-        end
-        -- resume2 function exists at this point.
-        -- Use resume2 function when invoking handler:
-        return handler(resume2, select(2, ...))
-      end
-      if coroutine_isyieldable() then
-        return resume(coroutine_yield(...))
-      end
-      error("unhandled effect or yield: " .. tostring((...)), 0)
-    else
-      error("unhandled error in coroutine: " .. tostring((...)))
-    end
-  end
-  -- Branch depending on whether action is a previously returned resume
-  -- function:
-  if action_thread then
-    -- action is a previously returned resume function.
-    -- Use action as resume2 function:
-    resume2 = action
-    -- Use resume function to resume coroutine, which performs effect handling
-    -- once:
-    return resume(...)
-  else
-    -- action is not a previously returned resume function.
-    -- Create new coroutine with pcall_traceback:
-    action_thread = coroutine_create(pcall_traceback)
-    -- Use resume function to start coroutine for the first time, in which case
-    -- the action needs to be passed as first argument:
-    return resume(action, ...)
-  end
-end
-
--- Function that invalidates a resume function previously returned by
--- handle_once, and which unwinds the stack and executes finalizers:
+-- discontinue(resume) invalidates a resume function and closes all associated
+-- to-be-closed variables:
 function _M.discontinue(resume)
-  -- Obtain coroutine from resume function (succeeds if it is a resume function
-  -- created by handle_once):
-  local action_thread = action_threads_cache[resume]
-  -- Check if coroutine could be obtained.
-  if not action_thread then
-    -- Argument is not a resume function created by handle_once.
-    -- Throw an error:
+  -- Obtain manager table of continuation:
+  local manager = managers[resume]
+  -- Throw error if manager table was not found:
+  if not manager then
     error("argument to discontinue is not a continuation", 2)
   end
-  -- Close to-be-closed variables of coroutine:
-  assert(coroutine_close(action_thread))
+  -- Discontinue continuation, i.e. close all to-be-closed variables of
+  -- coroutine:
+  assert(coroutine_close(manager.action_thread))
 end
 
 -- Return module table:
