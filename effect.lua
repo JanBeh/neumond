@@ -27,10 +27,10 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
--- Special marker indicating that a value passed from the effect handler to the
--- continuation should be called within the inner context, i.e. within the
--- context of the performer:
-local call = setmetatable({}, {
+-- Internally used marker, which indicates that a value passed from the effect
+-- handler to the continuation should be called within the inner context, i.e.
+-- within the context of the performer:
+local call_marker = setmetatable({}, {
   __tostring = function() return "call marker" end,
 })
 
@@ -43,7 +43,7 @@ end
 -- is the call marker, then automatically calling the second return value with
 -- the arguments starting at third position:
 local function check_call(...)
-  if ... == call then
+  if ... == call_marker then
     return do_call(...)
   else
     return ...
@@ -101,14 +101,14 @@ local function add_traceback(errmsg)
   return errmsg
 end
 
--- pcall function that modifies the error object to contain a stack trace:
+-- pcall function that modifies the error object to contain a stack trace (or
+-- stores the stack trace if error object is not a string):
 local function pcall_traceback(func, ...)
   return xpcall(func, add_traceback, ...)
 end
 
 -- Helper function for auto_traceback, acting like assert_nopos but converting
--- error messages to strings and appending stored stack traces (if existing) to
--- error messages:
+-- error messages to strings and appending stored stack traces (if existing):
 local function assert_traceback(success, ...)
   if success then
     return ...
@@ -146,7 +146,7 @@ local manager_metatbl = {
   end,
 }
 
--- Metatable for continuation objects (implemented as tables):
+-- Metatable for continuation objects:
 local continuation_metatbl = {
   -- Calling a continuation object will resume the interrupted action:
   __call = function(self, ...)
@@ -159,7 +159,7 @@ local continuation_metatbl = {
     call = function(self, ...)
       -- Call stored resume function with special call marker as first
       -- argument:
-      return managers[self].resume_func(call, ...)
+      return managers[self].resume_func(call_marker, ...)
     end,
     -- Avoids auto-discontinuation on handler return or error:
     persistent = function(self)
@@ -182,8 +182,8 @@ local continuation_metatbl = {
 -- modified by effect handlers).
 --
 -- handlers is a table mapping each to-be-handled effect to a function which
--- retrieves a resume object (continuation) as first argument and optionally
--- more arguments from the invocation of the effect.
+-- retrieves a continuation ("resume") as first argument and optionally more
+-- arguments from the invocation of the effect.
 --
 -- The resume object can only be called once and must not be called after the
 -- effect handler has returned, unless resume:persistent() is called before the
@@ -194,18 +194,8 @@ function _M.handle(handlers, action, ...)
   local action_thread = coroutine_create(pcall_traceback)
   -- Create continuation object:
   local resume = setmetatable({}, continuation_metatbl)
-  -- Create manager table for continuation object:
-  local manager <close> = setmetatable(
-    {
-      action_thread = action_thread,
-      resume = resume,
-    },
-    manager_metatbl
-  )
-  -- Store manager table in ephemeron:
-  managers[resume] = manager
-  -- Forward declaration for helper function:
-  local process_action_results
+  -- Forward declarations:
+  local manager, process_action_results
   -- Function resuming the action:
   local function resume_func(...)
     -- Enable automatic discontinuation on handler return or error:
@@ -213,8 +203,6 @@ function _M.handle(handlers, action, ...)
     -- Use helper function to process multiple arguments:
     return process_action_results(coroutine_resume(action_thread, ...))
   end
-  -- Store resume_func in manager table:
-  manager.resume_func = resume_func
   -- Helper function to process return values of coroutine.resume:
   function process_action_results(coro_success, ...)
     -- Check if coroutine.resume failed (should not happen):
@@ -249,6 +237,20 @@ function _M.handle(handlers, action, ...)
       error("unhandled error in coroutine: " .. tostring((...)))
     end
   end
+  -- Create manager table for continuation object (and store in previously
+  -- declared variable that is used as upvalue):
+  manager = setmetatable(
+    {
+      action_thread = action_thread,
+      resume_func = resume_func,
+    },
+    manager_metatbl
+  )
+  -- Store manager table in ephemeron:
+  managers[resume] = manager
+  -- Ensure that manager table is closed on return:
+  local manager <close> = manager
+  -- Call resume_func with arguments for pcall_traceback:
   return resume_func(action, ...)
 end
 
