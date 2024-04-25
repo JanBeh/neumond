@@ -30,15 +30,14 @@ local function fifoset()
     end,
     -- Method removing and returning the oldest value in the queue:
     pop = function(self)
-      if output_idx ~= input_idx then
-        local value = queue[output_idx]
-        queue[output_idx] = nil
-        set[value] = nil
-        output_idx = output_idx + 1
-        return value
-      else
+      if output_idx == input_idx then
         return nil
       end
+      local value = queue[output_idx]
+      queue[output_idx] = nil
+      set[value] = nil
+      output_idx = output_idx + 1
+      return value
     end,
     -- Method returning a value without removing it, skipping a certain count
     -- of values from the beginning (a skip_count of zero returns the very next
@@ -91,6 +90,7 @@ local fiber_methods = {
 function fiber_methods.wake(fiber)
   while fiber do
     local attrs = fiber_attrs[fiber]
+    -- Add fiber to woken_fibers FIFO set:
     attrs.woken_fibers:push(fiber)
     -- Repeat procedure for all parent fibers:
     fiber = attrs.parent_fiber
@@ -101,7 +101,7 @@ end
 -- return the given fiber's ("self"'s) results (prefixed by true as first
 -- return value) or until the fiber has been killed (in which case false is
 -- returned):
-local function try_await(self)
+function fiber_methods.try_await(self)
   local attrs = fiber_attrs[self]
   -- Check if result is already available:
   local results = attrs.results
@@ -138,7 +138,6 @@ local function try_await(self)
     end
   end
 end
-fiber_methods.try_await = try_await
 
 -- Same method as try_await but killing the current fiber if the awaited fiber
 -- was killed (implemented redundantly for performance reasons):
@@ -209,7 +208,7 @@ function fiber_methods.kill(self)
   end
   -- Ensure that fiber is not continued when woken or cleaned up:
   attrs.resume = nil
-  -- Wakeup all fibers that are waiting for this fiber's return values:
+  -- Wakeup all fibers that are waiting for that fiber's return values:
   local waiting_fibers = attrs.waiting_fibers
   if waiting_fibers then
     for i, waiting_fiber in ipairs(waiting_fibers) do
@@ -315,12 +314,8 @@ local function schedule(nested, ...)
   local woken_fibers = fifoset()
   -- Local variable (used as upvalue) for currently running fiber:
   local current_fiber
-  -- Function running main loop (with tail-recursion), defined later:
-  local resume_scheduled
-  -- Declare handlers table because entries need to refer to handlers table:
-  local handlers
-  -- Define handlers table:
-  handlers = {
+  -- Effect handlers:
+  local handlers = {
     -- Effect resuming with a handle of the currently running fiber:
     [current] = function(resume)
       -- Resume with handle of current fiber:
@@ -373,10 +368,10 @@ local function schedule(nested, ...)
     local args = table.pack(...)
     -- Initialize resume function for first run:
     attrs.resume = function()
-      -- Handle effects while running fiber's action:
+      -- Mark fiber as started, such that cleanup may take place later:
+      attrs.started = true
+      -- Run with effect handlers:
       return effect.handle(handlers, function()
-        -- Mark fiber as started, such that cleanup may take place later:
-        attrs.started = true
         -- Run fiber's function and store its return values:
         attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
         -- Terminate fiber through effect:
@@ -400,8 +395,8 @@ local function schedule(nested, ...)
   if nested then
     woken_fibers:push(false)
   end
-  -- Main scheduling loop (using tail-recursion):
-  local function resume_scheduled()
+  -- Main scheduling loop:
+  while true do
     -- Check if main fiber has terminated:
     local main_results = fiber_attrs[main].results
     if main_results then
@@ -428,37 +423,30 @@ local function schedule(nested, ...)
       -- Re-insert special marker to yield control to the parent next time
       -- again:
       woken_fibers:push(false)
-      -- Jump to beginning of main loop:
-      return resume_scheduled()
+    else
+      -- No special marker has been found or there are no fibers left.
+      -- Check if there is no fiber to be woken and no parent:
+      if not fiber then
+        -- There is no woken fiber and no parent.
+        -- Throw an exception:
+        error("fibers are deadlocked", 2)
+      end
+      -- Obtain resume function (if exists):
+      local attrs = fiber_attrs[fiber]
+      local resume = attrs.resume
+      -- Check if resume function exists to avoid resuming after termination:
+      if resume then
+        -- Resume function exists.
+        -- Remove resume function from fiber's attributes (avoids invocation when
+        -- fiber has already terminated):
+        attrs.resume = nil
+        -- Set current_fiber:
+        current_fiber = fiber
+        -- Run resume function:
+        resume()
+      end
     end
-    -- Check if there is no fiber to be woken and no parent:
-    if not fiber then
-      -- There is no woken fiber and no parent.
-      -- Throw an exception:
-      -- (Note: Use level 3 because of to-be-closed variable avoiding
-      -- tail-call.)
-      error("fibers are deadlocked", 3)
-    end
-    -- Obtain resume function (if exists):
-    local attrs = fiber_attrs[fiber]
-    local resume = attrs.resume
-    -- Check if resume function exists to avoid resuming after termination:
-    if resume then
-      -- Resume function exists.
-      -- Remove resume function from fiber's attributes (avoids invocation when
-      -- fiber has already terminated):
-      attrs.resume = nil
-      -- Set current_fiber:
-      current_fiber = fiber
-      -- Run resume function:
-      resume()
-    end
-    -- Repeat main loop:
-    return resume_scheduled()
   end
-  -- Start main loop:
-  -- (Note: This is not a tail-call due to to-be-closed variable.)
-  return resume_scheduled()
 end
 
 -- main(action, ...) runs the given "action" function with given arguments as
