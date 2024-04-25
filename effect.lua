@@ -134,8 +134,20 @@ local managers = setmetatable({}, { __mode = "k" })
 -- Metatable for continuation manager tables, which hold private attributes and
 -- which ensure cleanup of the continuation:
 local manager_metatbl = {
+  -- Calls the passed function while keeping the manager as to-be-closed
+  -- variable on stack unless it is already on the stack:
+  __call = function(self, func, ...)
+    if self.armed then
+      return func(...)
+    end
+    local guard <close> = self
+    self.armed = true
+    return func(...)
+  end,
   -- Invoked when handle function returns:
   __close = function(self)
+    -- Mark as disarmed:
+    self.armed = false
     -- Check if automatic discontinuation is enabled:
     if self.autoclean then
       -- Automatic discontinuation is enabled.
@@ -220,8 +232,8 @@ function _M.handle(handlers, action, ...)
       local handler = handlers[...]
       if handler then
         -- Handler has been found.
-        -- Call handler with continuation object:
-        return handler(resume, select(2, ...))
+        -- Call handler with continuation object via manager:
+        return manager(handler, resume, select(2, ...))
       end
       -- No handler has been found.
       -- Check if current coroutine is main coroutine:
@@ -248,10 +260,8 @@ function _M.handle(handlers, action, ...)
   )
   -- Store manager table in ephemeron:
   managers[resume] = manager
-  -- Ensure that manager table is closed on return:
-  local manager <close> = manager
-  -- Call resume_func with arguments for pcall_traceback:
-  return resume_func(action, ...)
+  -- Call resume_func with arguments for pcall_traceback via manager:
+  return manager(resume_func, action, ...)
 end
 
 -- Return module table:
