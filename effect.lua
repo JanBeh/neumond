@@ -127,32 +127,37 @@ function _M.auto_traceback(...)
   return assert_traceback(pcall_traceback(...))
 end
 
--- Ephemeron holding a manager table for a continuation:
-local managers = setmetatable({}, { __mode = "k" })
-
--- Metatable for continuation manager tables, which hold private attributes and
--- which ensure cleanup of the continuation:
-local manager_metatbl = {
-  -- Calls the passed function while keeping the manager as to-be-closed
-  -- variable on stack unless it is already on the stack:
+-- Metatable for guards, which can auto-discontinue a continuation:
+local guard_metatbl = {
+  -- Calls the passed function (as tail-call if possible) while ensuring that
+  -- the continuation is discontinued when function returns:
   __call = function(self, func, ...)
-    if self.armed then
+    -- Enable auto-discontinuation:
+    self.enabled = true
+    -- Check if guard is already on stack:
+    if self.onstack then
+      -- Guard is already on stack.
+      -- Simply call function with arguments as tail-call:
       return func(...)
     end
+    -- Put guard on stack as to-be-closed variable:
     local guard <close> = self
-    self.armed = true
+    -- Mark guard as being on stack:
+    self.onstack = true
+    -- Call function with arguments
+    -- (not a tail-call due to to-be-closed variable):
     return func(...)
   end,
-  -- Invoked when handle function returns:
+  -- Invoked when to-be-closed variable goes out of scope:
   __close = function(self)
-    -- Mark as disarmed:
-    self.armed = false
+    -- Mark as being no longer on stack:
+    self.onstack = false
     -- Check if automatic discontinuation is enabled:
-    if self.autoclean then
+    if self.enabled then
       -- Automatic discontinuation is enabled.
       -- Discontinue continuation, i.e. close all to-be-closed variables of
       -- coroutine:
-      assert(coroutine_close(self.action_thread))
+      assert(coroutine_close(self.thread))
     end
   end,
 }
@@ -162,7 +167,7 @@ local continuation_metatbl = {
   -- Calling a continuation object will resume the interrupted action:
   __call = function(self, ...)
     -- Call stored resume function with arguments:
-    return managers[self].resume_func(...)
+    return self._resume_func(...)
   end,
   -- Methods of continuation objects:
   __index = {
@@ -170,20 +175,20 @@ local continuation_metatbl = {
     call = function(self, ...)
       -- Call stored resume function with special call marker as first
       -- argument:
-      return managers[self].resume_func(call_marker, ...)
+      return self._resume_func(call_marker, ...)
     end,
     -- Avoids auto-discontinuation on handler return or error:
     persistent = function(self)
       -- Disable automatic discontinuation:
-      managers[self].autoclean = false
+      self._guard.enabled = false
       -- Return self for convenience:
       return self
     end,
     -- Discontinues continuation:
     discontinue = function(self)
       -- Discontinue continuation, i.e. close all to-be-closed variables of
-      -- coroutine:
-      assert(coroutine_close(managers[self].action_thread))
+      -- coroutine stored in guard:
+      assert(coroutine_close(self._guard.thread))
     end,
   }
 }
@@ -203,15 +208,14 @@ local continuation_metatbl = {
 function _M.handle(handlers, action, ...)
   -- Create coroutine with pcall_traceback as function:
   local action_thread = coroutine_create(pcall_traceback)
-  -- Create continuation object:
-  local resume = setmetatable({}, continuation_metatbl)
+  -- Create guard for auto-discontinuation on return:
+  local guard = setmetatable({ thread = action_thread }, guard_metatbl)
   -- Forward declarations:
-  local manager, process_action_results
+  local resume, process_action_results
   -- Function resuming the action:
   local function resume_func(...)
-    -- Enable automatic discontinuation on handler return or error:
-    manager.autoclean = true
-    -- Use helper function to process multiple arguments:
+    -- Resume coroutine and use helper function to process multiple return
+    -- values:
     return process_action_results(coroutine_resume(action_thread, ...))
   end
   -- Helper function to process return values of coroutine.resume:
@@ -231,8 +235,8 @@ function _M.handle(handlers, action, ...)
       local handler = handlers[...]
       if handler then
         -- Handler has been found.
-        -- Call handler with continuation object via manager:
-        return manager(handler, resume, select(2, ...))
+        -- Call handler with continuation object via guard:
+        return guard(handler, resume, select(2, ...))
       end
       -- No handler has been found.
       -- Check if current coroutine is main coroutine:
@@ -248,19 +252,16 @@ function _M.handle(handlers, action, ...)
       error("unhandled error in coroutine: " .. tostring((...)))
     end
   end
-  -- Create manager table for continuation object (and store in previously
-  -- declared variable that is used as upvalue):
-  manager = setmetatable(
+  -- Create continuation object:
+  resume = setmetatable(
     {
-      action_thread = action_thread,
-      resume_func = resume_func,
+      _guard = guard,
+      _resume_func = resume_func,
     },
-    manager_metatbl
+    continuation_metatbl
   )
-  -- Store manager table in ephemeron:
-  managers[resume] = manager
   -- Call resume_func with arguments for pcall_traceback via manager:
-  return manager(resume_func, action, ...)
+  return resume_func(action, ...)
 end
 
 -- Return module table:
