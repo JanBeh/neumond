@@ -45,9 +45,8 @@ end
 local function check_call(...)
   if ... == call_marker then
     return do_call(...)
-  else
-    return ...
   end
+  return ...
 end
 
 -- Performs an effect:
