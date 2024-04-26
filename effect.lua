@@ -210,8 +210,15 @@ local continuation_metatbl = {
 function _M.handle(handlers, action, ...)
   -- Create coroutine with pcall_traceback as function:
   local action_thread = coroutine_create(pcall_traceback)
-  -- Create guard for auto-discontinuation on return:
-  local guard = setmetatable({ thread = action_thread }, guard_metatbl)
+  -- Create and install guard for auto-discontinuation on return:
+  local guard <close> = setmetatable(
+    {
+      thread = action_thread,
+      onstack = true,
+      enabled = true,
+    },
+    guard_metatbl
+  )
   -- Forward declarations:
   local resume, process_action_results
   -- Function resuming the action:
@@ -262,8 +269,8 @@ function _M.handle(handlers, action, ...)
     },
     continuation_metatbl
   )
-  -- Use guard to call resume_func with arguments for pcall_traceback:
-  return with_guard(guard, resume_func, action, ...)
+  -- Call resume_func with arguments for pcall_traceback:
+  return resume_func(action, ...)
 end
 
 -- Return module table:
