@@ -196,16 +196,16 @@ local continuation_metatbl = {
 }
 
 -- handle(handlers, action, ...) runs action(...) under the context of an
--- effect handler and returns the return value of the action function (possibly
--- modified by effect handlers).
+-- effect handler and returns the return value of the action function or
+-- of a handler, if a handler was invoked.
 --
--- handlers is a table mapping each to-be-handled effect to a function which
--- retrieves a continuation ("resume") as first argument and optionally more
--- arguments from the invocation of the effect.
+-- The handlers argument is a table which maps each to-be-handled effect to a
+-- function which retrieves a continuation ("resume") as first argument and
+-- optionally more arguments from the invocation of the effect.
 --
--- The resume object can only be called once and must not be called after the
--- effect handler has returned, unless resume:persistent() is called before the
--- handler returns.
+-- The resume object passed to the handler can only be called once and must
+-- not be called after the effect handler has returned, unless
+-- resume:persistent() is called before the handler returns.
 --
 function _M.handle(handlers, action, ...)
   -- Create coroutine with pcall_traceback as function:

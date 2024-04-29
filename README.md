@@ -111,7 +111,10 @@ The module provides the following functions:
     continuation object needs to be called after an effect handler returned,
     it needs to be made persistent with the **`resume:persistent()`** method
     and can later be called or discontinued with **`resume:discontinue()`**
-    (which closes all to-be-closed variables of the action).
+    (which closes all to-be-closed variables of the action). `effect.handle`
+    returns the return values of the action function or the return values of
+    the first invoked handler; return values of later invoked handlers or of
+    the resumed action are returned by the corresponding `resume` calls.
 
   * **`effect.auto_traceback(action, ...)`** calls the `action` function with
     given arguments and ensures that thrown error objects are automatically
