@@ -421,8 +421,8 @@ local function schedule(nested, ...)
       -- Check if resume function exists to avoid resuming after termination:
       if resume then
         -- Resume function exists.
-        -- Remove resume function from fiber's attributes (avoids invocation when
-        -- fiber has already terminated):
+        -- Remove resume function from fiber's attributes (avoids invocation
+        -- when fiber has already terminated):
         attrs.resume = nil
         -- Set current_fiber:
         current_fiber = fiber
