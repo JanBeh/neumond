@@ -355,7 +355,6 @@ local function schedule(nested, ...)
     -- Create storage table for fiber's attributes:
     local attrs = {
       -- Store certain upvalues as private attributes:
-      open_fibers = open_fibers,
       woken_fibers = woken_fibers,
       spawn = spawn,
       parent_fiber = parent_fiber,
