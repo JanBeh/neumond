@@ -49,10 +49,11 @@ local function fifoset()
 end
 
 -- Internally used effects (which are not exported) for
--- "current", "sleep", and "yield" functions:
+-- "current", "sleep", "yield", and "suicide" functions:
 local current = effect.new("fiber.current")
 local sleep = effect.new("fiber.sleep")
 local yield = effect.new("fiber.yield")
+local suicide = effect.new("fiber.suicide")
 
 -- Function returning a handle of the currently running fiber:
 _M.current = function()
@@ -69,9 +70,10 @@ _M.yield = function()
   return yield()
 end
 
--- Internally used effect when fiber terminates due to returning or being
--- killed:
-local terminate = effect.new("fiber.terminate")
+-- Function killing the currently running fiber:
+_M.suicide = function()
+  return suicide()
+end
 
 -- Internal marker for attributes in the "fiber_methods" table:
 local getter_magic = {}
@@ -150,8 +152,7 @@ function fiber_methods.await(self)
   if attrs.killed then
     -- Awaited fiber has been killed.
     -- Kill current fiber as well:
-    fiber_attrs[current()].killed = true
-    return terminate()
+    return suicide()
   end
   -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
@@ -165,14 +166,20 @@ function fiber_methods.await(self)
       return table.unpack(results, 1, results.n)
     end
     if attrs.killed then
-      fiber_attrs[current()].killed = true
-      return terminate()
+      return suicide()
     end
   end
 end
 
 -- Method killing the fiber, i.e. stopping its further execution:
 function fiber_methods.kill(self)
+  -- Check if killed fiber is current fiber:
+  if self == current() then
+    -- Killed fiber is currently running.
+    -- Simply kill current fiber:
+    return suicide()
+  end
+  -- Obtain attributes of fiber to kill:
   local attrs = fiber_attrs[self]
   -- Check if fiber has already terminated (with return value or killed):
   if attrs.results or attrs.killed then
@@ -182,12 +189,6 @@ function fiber_methods.kill(self)
   end
   -- Mark fiber as killed:
   attrs.killed = true
-  -- Check if killed fiber is current fiber:
-  if self == current() then
-    -- Killed fiber is currently running.
-    -- Simply terminate currently running fiber (already marked as killed):
-    return terminate()
-  end
   -- Obtain resume function (which must exist at this point):
   local resume = attrs.resume
   -- Check if resume function is a continuation:
@@ -317,16 +318,15 @@ local function schedule(nested, ...)
       -- Store continuation:
       fiber_attrs[current_fiber].resume = resume:persistent()
     end,
-    -- Effect invoked when fiber has terminated:
-    [terminate] = function(resume)
-      -- Note that this effect must not be invoked unless a result (return
-      -- values) has been stored or the fiber has been marked as being killed.
+    -- Effect invoked when current fiber is killed:
+    [suicide] = function(resume)
+      local attrs = fiber_attrs[current_fiber]
+      -- Mark fiber as killed:
+      attrs.killed = true
       -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
       open_fibers[current_fiber] = nil
       -- Wakeup all fibers that are waiting for this fiber's return values:
-      for i, waiting_fiber in
-        ipairs(fiber_attrs[current_fiber].waiting_fibers)
-      do
+      for i, waiting_fiber in ipairs(attrs.waiting_fibers) do
         waiting_fiber:wake()
       end
     end
@@ -358,8 +358,12 @@ local function schedule(nested, ...)
       return effect.handle(handlers, function()
         -- Run fiber's function and store its return values:
         attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
-        -- Terminate fiber through effect:
-        return terminate()
+        -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
+        open_fibers[current_fiber] = nil
+        -- Wakeup all fibers that are waiting for this fiber's return values:
+        for i, waiting_fiber in ipairs(attrs.waiting_fibers) do
+          waiting_fiber:wake()
+        end
       end)
     end
     -- Remember fiber as being open so it can be cleaned up later:
@@ -413,7 +417,7 @@ local function schedule(nested, ...)
       if not fiber then
         -- There is no woken fiber and no parent.
         -- Throw an exception:
-        error("fibers are deadlocked", 2)
+        error("no running fiber remaining", 2)
       end
       -- Obtain resume function (if exists):
       local attrs = fiber_attrs[fiber]

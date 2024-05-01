@@ -164,6 +164,10 @@ The module provides the following functions:
 
   * **`fiber.yield()`** allows the main loop to execute a different fiber.
 
+  * **`fiber.suicide()`** kills the currently running fiber without providing a
+    return value. It is equivalent to `fiber.current():kill()` but slightly
+    faster.
+
   * **`fiber.spawn(action, ...)`** runs the `action` function with given
     arguments in a separate fiber and returns a handle for the spawned fiber.
 
