@@ -308,117 +308,115 @@ static int pgeff_deferred_await_cont(
         default: abort();
       }
     }
-    if (deferred->state == PGEFF_STATE_CONSUMING) {
-      while (!PQisBusy(dbconn->pgconn)) {
-        pgeff_result_t *result = NULL;
-        if (lua_type(L, 4) != LUA_TNIL) {
-        }
-        PGresult *pgres = PQgetResult(dbconn->pgconn);
-        if (!pgres) {
-          lua_getiuservalue(L, 1, PGEFF_DEFERRED_NEXT_USERVALIDX);
-          if (lua_isnil(L, -1)) {
-            lua_pushnil(L);
-            lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_LAST_USERVALIDX);
-          } else {
-            lua_getiuservalue(L, -1, PGEFF_DEFERRED_WAKER_USERVALIDX);
-            if (lua_isnil(L, -1)) lua_pop(L, 1);
-            else lua_callk(L,
-              0, 0, (lua_KContext)NULL, pgeff_deferred_await_finish
-            );
-          }
-          return pgeff_deferred_await_finish(L, LUA_OK, (lua_KContext)NULL);
-        }
-        if (lua_type(L, 4) == LUA_TNIL) {
-          PQclear(pgres);
-          goto pgeff_deferred_await_skip;
-        }
-        if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
-          return luaL_error(L, "too many results for Lua stack");
-        }
-        result = lua_newuserdatauv(L, sizeof(pgeff_result_t), 0);
-        result->pgres = pgres;
-        luaL_setmetatable(L, PGEFF_RESULT_MT_REGKEY);
-        char *errmsg = PQresultErrorMessage(pgres);
-        if (errmsg[0] || PQresultStatus(pgres) == PGRES_PIPELINE_ABORTED) {
-          lua_settop(L, 3);
+    while (!PQisBusy(dbconn->pgconn)) {
+      pgeff_result_t *result = NULL;
+      if (lua_type(L, 4) != LUA_TNIL) {
+      }
+      PGresult *pgres = PQgetResult(dbconn->pgconn);
+      if (!pgres) {
+        lua_getiuservalue(L, 1, PGEFF_DEFERRED_NEXT_USERVALIDX);
+        if (lua_isnil(L, -1)) {
           lua_pushnil(L);
-          lua_newtable(L);
-          if (errmsg[0]) pgeff_push_string_trim(L, errmsg);
-          else lua_pushliteral(L, "pipeline aborted");
-          lua_setfield(L, -2, "message");
-          char *sqlstate = PQresultErrorField(pgres, PG_DIAG_SQLSTATE);
-          if (!sqlstate) sqlstate = "";
-          pgeff_push_string_trim(L, sqlstate);
-          lua_setfield(L, -2, "code");
-          luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
-          result->pgres = NULL;
-          PQclear(pgres);
-          goto pgeff_deferred_await_skip;
+          lua_setiuservalue(L, 2, PGEFF_DBCONN_DEFERRED_LAST_USERVALIDX);
+        } else {
+          lua_getiuservalue(L, -1, PGEFF_DEFERRED_WAKER_USERVALIDX);
+          if (lua_isnil(L, -1)) lua_pop(L, 1);
+          else lua_callk(L,
+            0, 0, (lua_KContext)NULL, pgeff_deferred_await_finish
+          );
         }
-        int rows = PQntuples(pgres);
-        int cols = PQnfields(pgres);
+        return pgeff_deferred_await_finish(L, LUA_OK, (lua_KContext)NULL);
+      }
+      if (lua_type(L, 4) == LUA_TNIL) {
+        PQclear(pgres);
+        goto pgeff_deferred_await_skip;
+      }
+      if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
+        return luaL_error(L, "too many results for Lua stack");
+      }
+      result = lua_newuserdatauv(L, sizeof(pgeff_result_t), 0);
+      result->pgres = pgres;
+      luaL_setmetatable(L, PGEFF_RESULT_MT_REGKEY);
+      char *errmsg = PQresultErrorMessage(pgres);
+      if (errmsg[0] || PQresultStatus(pgres) == PGRES_PIPELINE_ABORTED) {
+        lua_settop(L, 3);
+        lua_pushnil(L);
         lua_newtable(L);
-        lua_newtable(L);
-        for (int col=0; col<cols; col++) {
-          Oid type_oid = PQftype(pgres, col);
-          lua_pushinteger(L, col+1);
-          lua_pushinteger(L, type_oid);
-          lua_settable(L, -3);
-          lua_pushstring(L, PQfname(pgres, col));
-          lua_pushinteger(L, type_oid);
-          lua_settable(L, -3);
-        }
-        lua_setfield(L, -2, "type_oid");
-        for (int row=0; row<rows; row++) {
-          lua_pushinteger(L, row+1);
-          lua_newtable(L);
-          for (int col=0; col<cols; col++) {
-            const char *value =
-              PQgetisnull(pgres, row, col) ? NULL :
-              PQgetvalue(pgres, row, col);
-            if (value) {
-              lua_pushinteger(L, col+1);
-              Oid type_oid = PQftype(pgres, col);
-              lua_geti(L, 3, type_oid);
-              if (lua_isnil(L, -1)) {
-                lua_pop(L, 1);
-                switch (pgeff_sqltype(type_oid)) {
-                  case PGEFF_SQLTYPE_BOOL:
-                    lua_pushboolean(L, value[0] == 't');
-                    break;
-                  case PGEFF_SQLTYPE_INT:
-                    if (!lua_stringtonumber(L, value)) {
-                      lua_pushstring(L, value);
-                    } else {
-                      lua_pushinteger(L, lua_tointeger(L, -1));
-                      lua_remove(L, -2);
-                    }
-                    break;
-                  case PGEFF_SQLTYPE_FLOAT:
-                    if (!lua_stringtonumber(L, value)) {
-                      lua_pushstring(L, value);
-                    }
-                    break;
-                  default:
-                    lua_pushstring(L, value);
-                }
-              } else {
-                lua_pushstring(L, value);
-                lua_call(L, 1, 1);
-              }
-              lua_pushstring(L, PQfname(pgres, col));
-              lua_pushvalue(L, -2);
-              lua_settable(L, -5);
-              lua_settable(L, -3);
-            }
-          }
-          lua_settable(L, -3);
-        }
+        if (errmsg[0]) pgeff_push_string_trim(L, errmsg);
+        else lua_pushliteral(L, "pipeline aborted");
+        lua_setfield(L, -2, "message");
+        char *sqlstate = PQresultErrorField(pgres, PG_DIAG_SQLSTATE);
+        if (!sqlstate) sqlstate = "";
+        pgeff_push_string_trim(L, sqlstate);
+        lua_setfield(L, -2, "code");
+        luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
         result->pgres = NULL;
         PQclear(pgres);
-        lua_remove(L, -2);
-        pgeff_deferred_await_skip:;
+        goto pgeff_deferred_await_skip;
       }
+      int rows = PQntuples(pgres);
+      int cols = PQnfields(pgres);
+      lua_newtable(L);
+      lua_newtable(L);
+      for (int col=0; col<cols; col++) {
+        Oid type_oid = PQftype(pgres, col);
+        lua_pushinteger(L, col+1);
+        lua_pushinteger(L, type_oid);
+        lua_settable(L, -3);
+        lua_pushstring(L, PQfname(pgres, col));
+        lua_pushinteger(L, type_oid);
+        lua_settable(L, -3);
+      }
+      lua_setfield(L, -2, "type_oid");
+      for (int row=0; row<rows; row++) {
+        lua_pushinteger(L, row+1);
+        lua_newtable(L);
+        for (int col=0; col<cols; col++) {
+          const char *value =
+            PQgetisnull(pgres, row, col) ? NULL :
+            PQgetvalue(pgres, row, col);
+          if (value) {
+            lua_pushinteger(L, col+1);
+            Oid type_oid = PQftype(pgres, col);
+            lua_geti(L, 3, type_oid);
+            if (lua_isnil(L, -1)) {
+              lua_pop(L, 1);
+              switch (pgeff_sqltype(type_oid)) {
+                case PGEFF_SQLTYPE_BOOL:
+                  lua_pushboolean(L, value[0] == 't');
+                  break;
+                case PGEFF_SQLTYPE_INT:
+                  if (!lua_stringtonumber(L, value)) {
+                    lua_pushstring(L, value);
+                  } else {
+                    lua_pushinteger(L, lua_tointeger(L, -1));
+                    lua_remove(L, -2);
+                  }
+                  break;
+                case PGEFF_SQLTYPE_FLOAT:
+                  if (!lua_stringtonumber(L, value)) {
+                    lua_pushstring(L, value);
+                  }
+                  break;
+                default:
+                  lua_pushstring(L, value);
+              }
+            } else {
+              lua_pushstring(L, value);
+              lua_call(L, 1, 1);
+            }
+            lua_pushstring(L, PQfname(pgres, col));
+            lua_pushvalue(L, -2);
+            lua_settable(L, -5);
+            lua_settable(L, -3);
+          }
+        }
+        lua_settable(L, -3);
+      }
+      result->pgres = NULL;
+      PQclear(pgres);
+      lua_remove(L, -2);
+      pgeff_deferred_await_skip:;
     }
     dbconn->fd = PQsocket(dbconn->pgconn);
     if (deferred->state == PGEFF_STATE_FLUSHING) {
