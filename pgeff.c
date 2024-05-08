@@ -188,8 +188,7 @@ static int pgeff_connect(lua_State *L) {
   if (!dbconn->pgconn) return luaL_error(L,
     "could not allocate memory for PGconn structure"
   );
-  pgeff_connect_cont(L, LUA_OK, (lua_KContext)dbconn);
-  return 0;
+  return pgeff_connect_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
 static int pgeff_query(lua_State *L) {
