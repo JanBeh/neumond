@@ -62,8 +62,6 @@ static int pgeff_sqltype(Oid oid) {
 
 typedef struct {
   PGconn *pgconn;
-  int fd1; // for await
-  int fd2; // for flush
   int needflush;
 } pgeff_dbconn_t;
 
@@ -81,11 +79,10 @@ static void pgeff_push_string_trim(lua_State *L, const char *s) {
   lua_pushlstring(L, s, len);
 }
 
-static int pgeff_dbconn_close_cont2(
+static int pgeff_dbconn_close_cont(
   lua_State *L, int status, lua_KContext ctx
 ) {
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
-  dbconn->fd2 = -1;
   if (dbconn->pgconn) {
     PQfinish(dbconn->pgconn);
     dbconn->pgconn = NULL;
@@ -93,27 +90,15 @@ static int pgeff_dbconn_close_cont2(
   return 0;
 }
 
-static int pgeff_dbconn_close_cont1(
-  lua_State *L, int status, lua_KContext ctx
-) {
-  pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
-  dbconn->fd1 = -1;
-  if (dbconn->fd2) {
-    lua_pushvalue(L, lua_upvalueindex(PGEFF_DEREGISTER_FD_UPVALIDX));
-    lua_pushinteger(L, dbconn->fd2);
-    lua_callk(L, 1, 0, (lua_KContext)dbconn, pgeff_dbconn_close_cont2);
-  }
-  return pgeff_dbconn_close_cont2(L, LUA_OK, (lua_KContext)dbconn);
-}
-
 static int pgeff_dbconn_close(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
-  if (dbconn->fd1 != -1) {
+  int fd = PQsocket(dbconn->pgconn);
+  if (fd != -1) {
     lua_pushvalue(L, lua_upvalueindex(PGEFF_DEREGISTER_FD_UPVALIDX));
-    lua_pushinteger(L, dbconn->fd1);
-    lua_callk(L, 1, 0, (lua_KContext)dbconn, pgeff_dbconn_close_cont1);
+    lua_pushinteger(L, fd);
+    lua_callk(L, 1, 0, (lua_KContext)dbconn, pgeff_dbconn_close_cont);
   }
-  return pgeff_dbconn_close_cont1(L, LUA_OK, (lua_KContext)dbconn);
+  return pgeff_dbconn_close_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
 static int pgeff_result_gc(lua_State *L) {
@@ -158,7 +143,6 @@ static int pgeff_connect_cont2(lua_State *L, int status, lua_KContext ctx) {
 static int pgeff_connect_cont1(lua_State *L, int status, lua_KContext ctx) {
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   while (1) {
-    dbconn->fd1 = -1;
     switch (PQconnectPoll(dbconn->pgconn)) {
       case PGRES_POLLING_OK:
         if (PQsetnonblocking(dbconn->pgconn, 1)) {
@@ -175,17 +159,15 @@ static int pgeff_connect_cont1(lua_State *L, int status, lua_KContext ctx) {
         lua_callk(L, 0, 2, (lua_KContext)dbconn, pgeff_connect_cont2);
         return pgeff_connect_cont2(L, LUA_OK, (lua_KContext)dbconn);
       case PGRES_POLLING_READING:
-        dbconn->fd1 = PQsocket(dbconn->pgconn);
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
         lua_pushliteral(L, "fd_read");
-        lua_pushinteger(L, dbconn->fd1);
+        lua_pushinteger(L, PQsocket(dbconn->pgconn));
         lua_callk(L, 2, 0, ctx, pgeff_connect_cont1);
         break;
       case PGRES_POLLING_WRITING:
-        dbconn->fd1 = PQsocket(dbconn->pgconn);
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
         lua_pushliteral(L, "fd_write");
-        lua_pushinteger(L, dbconn->fd1);
+        lua_pushinteger(L, PQsocket(dbconn->pgconn));
         lua_callk(L, 2, 0, ctx, pgeff_connect_cont1);
         break;
       case PGRES_POLLING_FAILED:
@@ -205,8 +187,6 @@ static int pgeff_connect(lua_State *L) {
   );
   lua_newtable(L);
   lua_setiuservalue(L, -2, PGEFF_DBCONN_ATTR_USERVALIDX);
-  dbconn->fd1 = -1;
-  dbconn->fd2 = -1;
   dbconn->pgconn = PQconnectStart(conninfo);
   luaL_setmetatable(L, PGEFF_DBCONN_MT_REGKEY);
   if (!dbconn->pgconn) return luaL_error(L,
@@ -220,7 +200,6 @@ static int pgeff_flush_cont(
 ) {
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   while (1) {
-    dbconn->fd2 = -1;
     if (!dbconn->pgconn) {
       lua_pushboolean(L, 1);
       return 1;
@@ -253,12 +232,10 @@ static int pgeff_flush_cont(
       }
     }
     if (dbconn->needflush) {
-      dbconn->fd2 = PQsocket(dbconn->pgconn);
       lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
       lua_pushliteral(L, "fd_write");
-      lua_pushinteger(L, dbconn->fd2);
+      lua_pushinteger(L, PQsocket(dbconn->pgconn));
       lua_callk(L, 4, 0, ctx, pgeff_flush_cont);
-      // TODO: cleanup dbconn->fd2 in case of killed fiber?
     } else {
       lua_getiuservalue(L, 1, PGEFF_DBCONN_FLUSH_SLEEPER_USERVALIDX);
       lua_callk(L, 0, 0, ctx, pgeff_flush_cont);
@@ -366,7 +343,6 @@ static int pgeff_deferred_await_cont(
   //pgeff_deferred_t *deferred = lua_touserdata(L, 1);
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   while (1) {
-    dbconn->fd1 = -1;
     if (!dbconn->pgconn) {
       return luaL_error(L, "database handle has been closed during query");
     }
@@ -507,21 +483,20 @@ static int pgeff_deferred_await_cont(
       lua_remove(L, -2);
       pgeff_deferred_await_skip:;
     }
-    dbconn->fd1 = PQsocket(dbconn->pgconn);
     if (dbconn->needflush) {
       lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
+      int fd = PQsocket(dbconn->pgconn);
       lua_pushliteral(L, "fd_read");
-      lua_pushinteger(L, dbconn->fd1);
+      lua_pushinteger(L, fd);
       lua_pushliteral(L, "fd_write");
-      lua_pushinteger(L, dbconn->fd1);
+      lua_pushinteger(L, fd);
       lua_callk(L, 4, 0, ctx, pgeff_deferred_await_cont);
     } else {
       lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
       lua_pushliteral(L, "fd_read");
-      lua_pushinteger(L, dbconn->fd1);
+      lua_pushinteger(L, PQsocket(dbconn->pgconn));
       lua_callk(L, 2, 0, ctx, pgeff_deferred_await_cont);
     }
-    // TODO: cleanup dbconn->fd1 in case of killed fiber?
   }
 }
 
