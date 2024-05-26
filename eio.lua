@@ -249,7 +249,7 @@ local function wrap_child(child)
   return setmetatable(
     {
       nbio_child = child,
-      stdio = wrap_handle(child.stdio),
+      stdin = wrap_handle(child.stdin),
       stdout = wrap_handle(child.stdout),
       stderr = wrap_handle(child.stderr),
     },
