@@ -1191,26 +1191,30 @@ static int nbio_execute(lua_State *L) {
     return 2;
   }
   if (!child->pid) {
+    int ipcfd = sockipc[1];
     if (dup2(sockin[1], 0) == -1) goto nbio_execute_stdio_error;
     if (dup2(sockout[1], 1) == -1) goto nbio_execute_stdio_error;
     if (dup2(sockerr[1], 2) == -1) goto nbio_execute_stdio_error;
     if (dup2(sockipc[1], 3) == -1) goto nbio_execute_stdio_error;
+    ipcfd = 3;
     closefrom(4);
     if (fcntl(0, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
     if (fcntl(1, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
     if (fcntl(2, F_SETFD, 0) == -1) goto nbio_execute_stdio_error;
+    // NOTE: dup2() messes with CLOEXEC, thus re-set CLOEXEC for sockipc.
+    if (fcntl(3, F_SETFD, FD_CLOEXEC) == -1) goto nbio_execute_stdio_error;
     execvp(argv[0], (char *const *)argv);
     char ipcmsg[1 + sizeof(int)];
     int err = errno;
     ipcmsg[0] = 'A';
     memcpy(ipcmsg + 1, &err, sizeof(err));
-    send(3, ipcmsg, 1 + sizeof(int), 0);
+    send(ipcfd, ipcmsg, 1 + sizeof(int), 0);
     _exit(1);
     nbio_execute_stdio_error:
     err = errno;
     ipcmsg[0] = 'B';
     memcpy(ipcmsg + 1, &err, sizeof(err));
-    send(3, ipcmsg, 1 + sizeof(int), 0);
+    send(ipcfd, ipcmsg, 1 + sizeof(int), 0);
     _exit(1);
   }
   close(sockin[1]);
