@@ -38,8 +38,8 @@ return effect.auto_traceback(waitio_fiber.main, function()
   assert(result[1][1] == nil)
 
   -- expect syntax error (error class "42"):
-  --local result, err = dbconn:query("SELEEEECT")()
-  --assert(err.code and string.sub(err.code, 1, 2) == "42")
+  local result, err = dbconn:query("SELEEEECT")
+  assert(err.code and string.sub(err.code, 1, 2) == "42")
 
   pgeff.input_converter = input_converter
   dbconn.output_converters = {
