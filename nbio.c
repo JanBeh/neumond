@@ -1113,6 +1113,24 @@ static int nbio_child_wait(lua_State *L) {
   return 1;
 }
 
+// Helper function for nbio_execute:
+static void nbio_execute_set_nonblock(lua_State *L, int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1) {
+    nbio_prepare_errmsg(errno);
+    lua_toclose(L, -1);
+    luaL_error(L, "error in fcntl call: %s", errmsg);
+    return;
+  }
+  flags |= O_NONBLOCK;
+  if (fcntl(fd, F_SETFL, flags) == -1) {
+    nbio_prepare_errmsg(errno);
+    lua_toclose(L, -1);
+    luaL_error(L, "error in fcntl call: %s", errmsg);
+    return;
+  }
+}
+
 // Execute child process and return child handle:
 static int nbio_execute(lua_State *L) {
   int argc = lua_gettop(L);
@@ -1221,6 +1239,9 @@ static int nbio_execute(lua_State *L) {
   close(sockout[1]);
   close(sockerr[1]);
   close(sockipc[1]);
+  nbio_execute_set_nonblock(L, sockin[0]);
+  nbio_execute_set_nonblock(L, sockout[0]);
+  nbio_execute_set_nonblock(L, sockerr[0]);
   while (1) {
     char ipcmsg[1 + sizeof(int)];
     ssize_t bytes = recv(sockipc[0], ipcmsg, 1 + sizeof(int), 0);
