@@ -14,38 +14,36 @@ Some basic asynchronous I/O support is given for:
     (including TCP server support)
   * subprocesses with stdin, stdout, and stderr
 
-Moreover, a small example for integration with a third party C library [libpq]
-is included, allowing asynchronous communication with a PostgreSQL server.
+Moreover, a small example for integration with a third party C library [libpq] is included (Lua module `pgeff`, written in C), allowing asynchronous communication with a [PostgreSQL] server.
 
-Web applications can be built using the `scgi` module, which builds on top of
-fibers and asynchronous I/O.
+Web applications can be built using the `scgi` module, which allows creating an [SCGI] application server using fibers and asynchronous I/O.
 
 [libpq]: https://www.postgresql.org/docs/current/libpq.html
+[PostgreSQL]: https://www.postgresql.org/
+[SCGI]: https://en.wikipedia.org/wiki/Simple_Common_Gateway_Interface
 
-## Module overview (dependency tree)
+## Overview of core modules (dependency tree)
 
   * **`effect`** (effect handling)
       * **`fiber`** (lightweight threads)
           * `waitio_fiber`
-          * `scgi`
       * **`waitio`** (waiting for I/O)
           * **`waitio_blocking`** (waiting for I/O through blocking)
           * **`waitio_fiber`** (waiting for I/O utilizing fibers)
           * **`eio`** (basic I/O)
-              * **`scgi`** (SCGI server)
-          * ***`pgeff`*** (PostgreSQL interface)
   * ***`lkq`*** ([kqueue] interface)
       * `waitio_blocking`
       * `waitio_fiber`
   * ***`nbio`*** (basic non-blocking I/O interface written in C)
       * `eio`
-  * **`web`** (functions for web application development)
-      * `scgi`
 
 [kqueue]: https://man.freebsd.org/cgi/man.cgi?kqueue
 
 Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
+
+Further modules are `web`, `scgi`, and `pgeff`. Those are not documented in this documentation file; see source code instead.
+
 
 ## Module `effect`
 
@@ -474,21 +472,6 @@ An I/O handle `h` provides the following attributes and methods:
 
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.
-
-## Module `scgi`
-
-Lua module providing SCGI ([Simple Common Gateway Interface]) server
-capabilities based on `eio` and `fiber`. Undocumented yet, see source code and
-example in `examples/io/scgi.lua`.
-
-[Simple Common Gateway Interface]: https://en.wikipedia.org/wiki/Simple_Common_Gateway_Interface
-
-## Module `pgeff`
-
-Module written in C that provides an asynchronous interface to [PostgreSQL].
-Undocumented yet, see source code and example in `examples/io/postgresql.lua`.
-
-[PostgreSQL]: https://www.postgresql.org/
 
 ## Caveats
 
