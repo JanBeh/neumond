@@ -84,8 +84,8 @@ local fiber_attrs = setmetatable({}, { __mode = "k" })
 -- Table containing all methods of fibers, plus public attributes where the
 -- value in this table must be set to "getter_magic":
 local fiber_methods = {
-  results = getter_magic, -- table with return values of fiber's function
-  killed = getter_magic, -- true if fiber has been killed, e.g. by an effect
+  -- table with return values of fiber's function or false if fiber was killed:
+  results = getter_magic,
 }
 
 -- Method waking up the fiber (note that "self" is named "fiber" below):
@@ -105,19 +105,18 @@ end
 -- returned):
 function fiber_methods.try_await(self)
   local attrs = fiber_attrs[self]
-  -- Check if result is already available:
   local results = attrs.results
+  -- Check if awaited fiber has been killed:
+  if results == false then
+    -- Awaited fiber has been killed.
+    -- Return false to indicate fiber has been killed and there are no results:
+    return false
+  end
+  -- Check if result is already available:
   if results then
     -- Result is already available.
     -- Return true with available results:
     return true, table.unpack(results, 1, results.n)
-  end
-  -- Result is not yet available.
-  -- Check if awaited fiber has been killed:
-  if attrs.killed then
-    -- Awaited fiber has been killed.
-    -- Return false to indicate fiber has been killed and there are no results:
-    return false
   end
   -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
@@ -127,11 +126,11 @@ function fiber_methods.try_await(self)
   while true do
     sleep()
     local results = attrs.results
+    if results == false then
+      return false
+    end
     if results then
       return true, table.unpack(results, 1, results.n)
-    end
-    if attrs.killed then
-      return false
     end
   end
 end
@@ -140,19 +139,18 @@ end
 -- was killed (implemented redundantly for performance reasons):
 function fiber_methods.await(self)
   local attrs = fiber_attrs[self]
-  -- Check if result is already available:
   local results = attrs.results
+  -- Check if awaited fiber has been killed:
+  if results == false then
+    -- Awaited fiber has been killed.
+    -- Kill current fiber as well:
+    return suicide()
+  end
+  -- Check if result is already available:
   if results then
     -- Result is already available.
     -- Return available results:
     return table.unpack(results, 1, results.n)
-  end
-  -- Result is not yet available.
-  -- Check if awaited fiber has been killed:
-  if attrs.killed then
-    -- Awaited fiber has been killed.
-    -- Kill current fiber as well:
-    return suicide()
   end
   -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
@@ -162,11 +160,11 @@ function fiber_methods.await(self)
   while true do
     sleep()
     local results = attrs.results
+    if results == false then
+      return suicide()
+    end
     if results then
       return table.unpack(results, 1, results.n)
-    end
-    if attrs.killed then
-      return suicide()
     end
   end
 end
@@ -182,13 +180,12 @@ function fiber_methods.kill(self)
   -- Obtain attributes of fiber to kill:
   local attrs = fiber_attrs[self]
   -- Check if fiber has already terminated (with return value or killed):
-  if attrs.results or attrs.killed then
-    -- Fiber is already killed.
-    -- Do nothing.
+  if attrs.results ~= nil then
+    -- Fiber has already terminated; do nothing.
     return
   end
   -- Mark fiber as killed:
-  attrs.killed = true
+  attrs.results = false
   -- Obtain resume function (which must exist at this point):
   local resume = attrs.resume
   -- Check if resume function is a continuation:
@@ -266,15 +263,15 @@ local open_fibers_metatbl = {
         -- Note that it's not necessary to set attrs.resume to nil here,
         -- because when open_fibers is closed, there will be no scheduler
         -- anymore that would call the resume function. Moreover, the kill
-        -- method will short-circuit when the killed attribute is true and thus
-        -- also not call the resume function.
+        -- method will short-circuit if the fiber has already been killed and
+        -- thus will also not use the resume function.
         --attrs.resume = nil
       end
       -- Check if results are missing:
-      if not attrs.results then
-        -- Fiber did not generate a return value.
+      if attrs.results == nil then
+        -- Fiber did not generate a return value and was not killed.
         -- Mark fiber as killed:
-        attrs.killed = true
+        attrs.results = false
       end
       -- Wakeup all fibers that are waiting for this fiber's return values:
       for i, waiting_fiber in ipairs(attrs.waiting_fibers) do
@@ -322,7 +319,7 @@ local function schedule(nested, ...)
     [suicide] = function(resume)
       local attrs = fiber_attrs[current_fiber]
       -- Mark fiber as killed:
-      attrs.killed = true
+      attrs.results = false
       -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
       open_fibers[current_fiber] = nil
       -- Wakeup all fibers that are waiting for this fiber's return values:
@@ -343,8 +340,6 @@ local function schedule(nested, ...)
       parent_fiber = parent_fiber,
       -- Sequence of other fibers waiting on the newly spawned fiber:
       waiting_fibers = {},
-      -- Initialize "killed" attribute to false:
-      killed = false,
     }
     -- Store attribute table in ephemeron:
     fiber_attrs[fiber] = attrs
