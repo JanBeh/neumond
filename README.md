@@ -124,7 +124,7 @@ Sometimes an effect hander may wish to execute code in the context of the
 performer of the effect (e.g. to perform other effects in *that* context). To
 achieve this, it is possible to use the method **`resume:call(func, ...)`**.
 In that case, `effect.perform` will call the function `func` (with given
-arguments) and return `f`'s return values.
+arguments) and return `func`'s return values.
 
 ## Module `fiber`
 
