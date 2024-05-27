@@ -200,6 +200,9 @@ function fiber_methods.kill(self)
   for i, waiting_fiber in ipairs(attrs.waiting_fibers) do
     waiting_fiber:wake()
   end
+  -- Remove fiber from open_fibers table to immediately free resources (may
+  -- still require yielding to remove fiber from woken_fibers):
+  attrs.open_fibers[self] = nil
 end
 
 -- Metatable for fiber handles:
@@ -335,6 +338,7 @@ local function schedule(nested, ...)
     -- Create storage table for fiber's attributes:
     local attrs = {
       -- Store certain upvalues as private attributes:
+      open_fibers = open_fibers,
       woken_fibers = woken_fibers,
       spawn = spawn,
       parent_fiber = parent_fiber,
