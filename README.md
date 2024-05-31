@@ -441,12 +441,14 @@ An I/O handle `h` provides the following attributes and methods:
     `maxlen` bytes. The return value may be shorter than `maxlen` even if there
     was no EOF. However, the empty string (`""`) is only returned on EOF and if
     no bytes could be read before the EOF occured. Returns `nil` and an error
-    message in case of an I/O error.
+    message in case of an I/O error. If `maxlen` is absent or `nil`, some
+    (finite) default value will be used.
 
   * **`h:read_nonblocking(maxlen)`** acts like `h:read_unbuffered(maxlen)` but
     returns immediately with an empty string if no data is available. To avoid
     ambiguities, EOF is indicated by returning `false` (and an error message).
-    I/O errors are indicated by `nil` and an error message.
+    I/O errors are indicated by `nil` and an error message. If `maxlen` is
+    absent or `nil`, some (finite) default value will be used.
 
   * **`h:write(data, ...)`** waits repeatedly until all `data` could be stored
     in a buffer and/or written out. Returns `true` on success, `false` and an
