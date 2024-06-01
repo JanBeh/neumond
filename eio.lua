@@ -140,13 +140,7 @@ function handle_methods:flush(data, ...)
 end
 
 local function wrap_handle(handle)
-  return setmetatable(
-    {
-      nbio_handle = handle,
-      read_buffer = "",
-    },
-    _M.handle_metatbl
-  )
+  return setmetatable({ nbio_handle = handle }, _M.handle_metatbl)
 end
 
 function _M.open(...)
