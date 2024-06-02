@@ -1,8 +1,8 @@
+local sync = require "sync"
 local fiber = require "fiber"
-local waitio = require "waitio"
 local waitio_fiber = require "waitio_fiber"
 
-local lock = waitio.mutex()
+local lock = sync.mutex()
 
 return waitio_fiber.main(function()
   local f1 = fiber.spawn(function()

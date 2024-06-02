@@ -11,6 +11,7 @@ _ENV = setmetatable({}, {
 local _M = {}
 
 local fiber = require "fiber"
+local sync = require "sync"
 local waitio = require "waitio"
 local lkq = require "lkq"
 
@@ -235,7 +236,7 @@ function _M.run(...)
     )
     return handle
   end
-  local function sync()
+  local function notify()
     local sleeper = setmetatable(
       { ready = false, _waiting = false },
       handle_reset_metatbl
@@ -275,8 +276,8 @@ function _M.run(...)
       [waitio.interval] = function(resume, seconds)
         return resume:call(interval, seconds)
       end,
-      [waitio.sync] = function(resume)
-        return resume:call(sync)
+      [sync.notify] = function(resume)
+        return resume:call(notify)
       end,
     },
     function(body, ...)

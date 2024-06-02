@@ -1,9 +1,5 @@
 -- Module for lightweight threads (fibers)
 
--- Import "effect" module and "yield" module (which is used as "yield" effect):
-local effect = require "effect"
-local yield = require "yield"
-
 -- Disallow setting global variables in the implementation of this module:
 _ENV = setmetatable({}, {
   __index = _G,
@@ -12,6 +8,10 @@ _ENV = setmetatable({}, {
 
 -- Table containing all public items of this module:
 local _M = {}
+
+-- Import "effect" module and "yield" module (which is used as "yield" effect):
+local effect = require "effect"
+local yield = require "yield"
 
 -- Function creating a FIFO-like data structure where there can be no
 -- duplicates (i.e. pushing an already existing element is a no-op):

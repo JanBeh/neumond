@@ -28,10 +28,11 @@ Web applications can be built using the `scgi` module, which allows creating an 
       * **`yield`** (abstract yield effect)
           * **`fiber`** (lightweight threads)
               * `waitio_fiber`
-      * **`waitio`** (waiting for I/O)
-          * **`waitio_blocking`** (waiting for I/O through blocking)
-          * **`waitio_fiber`** (waiting for I/O utilizing fibers)
-          * **`eio`** (basic I/O)
+      * **`sync`** (synchronization primitives)
+          * **`waitio`** (waiting for I/O)
+              * **`waitio_blocking`** (waiting for I/O through blocking)
+              * **`waitio_fiber`** (waiting for I/O utilizing fibers)
+              * **`eio`** (basic I/O)
   * ***`lkq`*** ([kqueue] interface)
       * `waitio_blocking`
       * `waitio_fiber`
@@ -42,6 +43,8 @@ Web applications can be built using the `scgi` module, which allows creating an 
 
 Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
+Note that the `waitio` module is only dependent on the `sync` module regarding
+handling (but not performing) `waitio`'s effects.
 
 Further modules are `web`, `scgi`, and `pgeff`. Those are not documented in this documentation file; see source code instead.
 
@@ -222,6 +225,34 @@ A fiber handle `f` provides the following attributes and methods:
     `f` has terminated. If `f` was killed, this method returns `false`,
     otherwise returns `true` followed by `f`'s return values.
 
+## Module `sync`
+
+Module providing synchronization primitives.
+
+The module provides the following effect:
+
+  * **`sync.notify()`** creates and returns a handle `sleeper` and a function
+    `waker`. Calling `sleeper` will wait until `waker` has been called. The
+    `waker` function may be called first, in which case the next call to
+    `sleper` will return immediately. The `sleeper` handle may also be passed
+    to the `waitio.select` effect (after the string `"handle"`).
+
+The module additionally provides the following function:
+
+  * **`waitio.mutex()`** returns a mutex `m`. Calling `m` locks the mutex and
+    returns a guard that should be stored in a `<close>` variable which will
+    unlock the mutex when closed.
+
+A mutex protected section looks as follows:
+
+```
+local mutex = sync.mutex()
+local func()
+  local guard <close> = mutex()
+  -- do stuff here
+end
+```
+
 ## Module `waitio`
 
 Module using effects to wait for I/O.
@@ -237,7 +268,8 @@ The module provides several effects only (no handlers):
       * `"fd_write"` followed by an integer file descriptor
       * `"pid"` followed by an integer process ID
       * `"handle"` followed by a handle returned by some other functions in
-        this module (see below)
+        this module (see below) or followed by the first return value of
+        `sync.notify()`
 
   * **`waitio.catch_signal(sig)`** starts listening for signal `sig` and
     returns a callable handle, which, upon calling, waits until a signal has
@@ -256,13 +288,6 @@ The module provides several effects only (no handlers):
     that eventually goes out of scope to ensure cleanup (otherwise resource
     cleanup may be delayed until garbage collection is performed).
 
-  * **`waitio.sync()`** creates and returns a handle `sleeper` and a function
-    `waker` (as two return values). Calling `sleeper` will wait until `waker`
-    has been called. The `waker` function may be called first, in which case
-    the next call to `sleper` will return immediately. The `sleeper` handle may
-    also be passed to the `waitio.select` function (after the string
-    `"handle"`).
-
   * **`waitio.deregister_fd(fd)`** must be performed before closing a file
     descriptor `fd` that is currently waited on. The effect resumes immediately
     with no value and can be safely performed multiple times on the same file
@@ -270,12 +295,12 @@ The module provides several effects only (no handlers):
     environment, a fiber waiting for reading from or writing to that file
     desciptor will be woken up.
 
-A handle `h` returned by some functions of this module may also be passed to
-`waitio.select` by calling `waitio.select(..., "handle", h, ...)`. When this
-call returns, `h.ready` indicates if the corresponding event occurred, and
-`h.ready` must also be reset to `false` when wanting to reuse the handle to
-wait for the next event (e.g. another occurrence of the same signal or the next
-interval tick).
+A handle `h` returned by some functions of this module (as well as the first
+return value of `sync.notify`) may also be passed to `waitio.select` by calling
+`waitio.select(..., "handle", h, ...)`. When this call returns, `h.ready`
+indicates if the corresponding event occurred, and `h.ready` must also be reset
+to `false` when wanting to reuse the handle to wait for the next event (e.g.
+another occurrence of the same signal or the next interval tick).
 
 The following convenience functions are provided:
 
@@ -294,23 +319,6 @@ writing are considered as two different resources in that matter. Where handles
 are created for waiting, each handle must not be used more than once in
 parallel. Violating these rules may result in an error or unspecified behavior,
 e.g. deadlocks.
-
-The `waitio` module also provides a simple synchronization mechanism which is
-independent of the `fiber` module:
-
-  * **`waitio.mutex()`** returns a mutex `m`. Calling `m` locks the mutex and
-  returns a guard that should be stored in a `<close>` variable which will
-  unlock the mutex when closed.
-
-A mutex protected section looks as follows:
-
-```
-local mutex = waitio.mutex()
-local func()
-  local guard <close> = mutex()
-  -- do stuff here
-end
-```
 
 ## Module `waitio_fiber`
 
