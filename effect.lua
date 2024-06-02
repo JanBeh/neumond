@@ -27,6 +27,12 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
+-- Default handlers, where each key is an effect and each value is a function
+-- that does not get a continuation handle but simply returns the arguments for
+-- resuming:
+local default_handlers = {}
+_M.default_handlers = default_handlers
+
 -- Internally used marker, which indicates that a value passed from the effect
 -- handler to the continuation should be called within the inner context, i.e.
 -- within the context of the performer:
@@ -51,11 +57,25 @@ end
 
 -- Performs an effect:
 local function perform(...)
+  -- Check if current coroutine is main coroutine:
   if coroutine_isyieldable() then
+    -- Current coroutine is NOT the main coroutine, thus yielding is possible.
+    -- Yield from coroutine and process results using check_call function:
     return check_call(coroutine_yield(...))
   end
+  -- Current coroutine is the main coroutine and thus yielding is NOT possible.
+  -- Check if a default handler is available for the given effect:
+  local default_handler = default_handlers[...]
+  if default_handler then
+    -- A default handler is available.
+    -- Call default handler and return its values:
+    return default_handler()
+  end
+  -- No default handler has been found.
+  -- Report error:
   error(
-    "no effect handler installed while performing effect: " .. tostring((...)),
+    "no effect handler installed while performing effect: " ..
+    tostring((...)),
     2
   )
 end
@@ -254,6 +274,15 @@ function _M.handle(handlers, action, ...)
         -- Pass yield further down the stack and return its results back up:
         return resume_func(coroutine_yield(...))
       end
+      -- Check if a default handler is available for the given effect:
+      local default_handler = default_handlers[...]
+      if default_handler then
+        -- A default handler is available.
+        -- Call resume with return values of default handler:
+        -- Call default handler and resume with its return values:
+        return resume_func(default_handler())
+      end
+      -- No default handler has been found.
       -- Current coroutine is main coroutine and yielding is not possible.
       error("unhandled effect or yield: " .. tostring((...)), 0)
     else

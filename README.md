@@ -25,8 +25,9 @@ Web applications can be built using the `scgi` module, which allows creating an 
 ## Overview of core modules (dependency tree)
 
   * **`effect`** (effect handling)
-      * **`fiber`** (lightweight threads)
-          * `waitio_fiber`
+      * **`yield`** (abstract yield effect)
+          * **`fiber`** (lightweight threads)
+              * `waitio_fiber`
       * **`waitio`** (waiting for I/O)
           * **`waitio_blocking`** (waiting for I/O through blocking)
           * **`waitio_fiber`** (waiting for I/O utilizing fibers)
@@ -85,7 +86,7 @@ local retval = effect.handle(
 assert(retval == 6)
 ```
 
-The module provides the following functions:
+The module provides the following functions and tables:
 
   * **`effect.new(name)`** returns an object that is suitable to be used as an
     effect. Note that any other object can be used as an effect as well, but an
@@ -114,6 +115,13 @@ The module provides the following functions:
     the first invoked handler; return values of later invoked handlers or of
     the resumed action are returned by the corresponding `resume` calls.
 
+  * **`effect.default_handlers`** is a table that maps an effect to a default
+    handler function. If no effect handler but only a default handler is found,
+    then the respective default handler function will be called with the
+    arguments that have been passed to `effect.perform` (without a continuation
+    object) and the return values of the default handler function are passed
+    back to the caller of `effect.perform`.
+
   * **`effect.auto_traceback(action, ...)`** calls the `action` function with
     given arguments and ensures that thrown error objects are automatically
     stringified and get a stack trace appended. This function should be used
@@ -125,6 +133,22 @@ performer of the effect (e.g. to perform other effects in *that* context). To
 achieve this, it is possible to use the method **`resume:call(func, ...)`**.
 In that case, `effect.perform` will call the function `func` (with given
 arguments) and return `func`'s return values.
+
+## Module `yield`
+
+Module for yielding. The module also serves as an effect, thus it is possible
+to write:
+
+```
+local yield = require "yield"
+yield()
+```
+
+The module's only effect (itself) is:
+
+  * **`yield()`** allows an environment to yield and allow other program code
+    to be executed. It is a no-op if no effect handler for `yield` is
+    installed.
 
 ## Module `fiber`
 
@@ -161,6 +185,7 @@ The module provides the following functions:
   * **`fiber.sleep()`** puts the currently running fiber to sleep.
 
   * **`fiber.yield()`** allows the main loop to execute a different fiber.
+    `fiber.yield` is simply an alias for module `yield` (which is an effect).
 
   * **`fiber.suicide()`** kills the currently running fiber without providing a
     return value. It is equivalent to `fiber.current():kill()` but slightly

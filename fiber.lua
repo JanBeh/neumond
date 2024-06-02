@@ -1,7 +1,8 @@
 -- Module for lightweight threads (fibers)
 
--- Import "effect" module:
+-- Import "effect" module and "yield" module (which is used as "yield" effect):
 local effect = require "effect"
+local yield = require "yield"
 
 -- Disallow setting global variables in the implementation of this module:
 _ENV = setmetatable({}, {
@@ -48,11 +49,14 @@ local function fifoset()
   }
 end
 
+-- fiber.yield is an alias for the yield effect represented by the "yield"
+-- module:
+_M.yield = yield
+
 -- Internally used effects (which are not exported) for
--- "current", "sleep", "yield", and "suicide" functions:
+-- "current", "sleep", and "suicide" functions:
 local current = effect.new("fiber.current")
 local sleep = effect.new("fiber.sleep")
-local yield = effect.new("fiber.yield")
 local suicide = effect.new("fiber.suicide")
 
 -- Function returning a handle of the currently running fiber:
@@ -63,11 +67,6 @@ end
 -- Function putting the currently running fiber to sleep:
 _M.sleep = function()
   return sleep()
-end
-
--- Function yielding execution to another (unspecified) fiber:
-_M.yield = function()
-  return yield()
 end
 
 -- Function killing the currently running fiber:
