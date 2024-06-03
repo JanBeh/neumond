@@ -1,7 +1,7 @@
-local waitio_fiber = require "waitio_fiber"
+local wait_posix_fiber = require "wait_posix_fiber"
 local eio = require "eio"
 
-waitio_fiber.main(
+wait_posix_fiber.main(
   function()
     eio.stdout:flush("Hello World!\n")
   end

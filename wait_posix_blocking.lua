@@ -1,4 +1,4 @@
--- Module for handling waitio effects through blocking
+-- Module for handling wait and wait_posix effects through blocking
 
 -- Disallow setting global variables in the implementation of this module:
 _ENV = setmetatable({}, {
@@ -10,8 +10,8 @@ _ENV = setmetatable({}, {
 local _M = {}
 
 local effect = require "effect"
-local sync = require "sync"
-local waitio = require "waitio"
+local wait = require "wait"
+local wait_posix = require "wait_posix"
 local lkq = require "lkq"
 
 local function wake(self)
@@ -21,11 +21,11 @@ end
 local weak_mt = { __mode = "k" }
 
 local function handle_call_noreset(self)
-  waitio.select("handle", self)
+  wait.select("handle", self)
 end
 
 local function handle_call_reset(self)
-  waitio.select("handle", self)
+  wait.select("handle", self)
   self.ready = false
 end
 
@@ -204,32 +204,32 @@ function _M.run(...)
   end
   return effect.handle(
     {
-      [waitio.deregister_fd] = function(resume, ...)
-        return resume()
-      end,
-      [waitio.select] = function(resume, ...)
+      [wait.select] = function(resume, ...)
         return resume:call(wait_select, ...)
       end,
-      [waitio.wait_fd_read] = function(resume, fd)
-        return resume:call(wait_fd_read, fd)
-      end,
-      [waitio.wait_fd_write] = function(resume, fd)
-        return resume:call(wait_fd_write, fd)
-      end,
-      [waitio.wait_pid] = function(resume, pid)
-        return resume:call(wait_pid, pid)
-      end,
-      [waitio.catch_signal] = function(resume, sig)
-        return resume:call(catch_signal, sig)
-      end,
-      [waitio.timeout] = function(resume, seconds)
+      [wait.timeout] = function(resume, seconds)
         return resume:call(timeout, seconds)
       end,
-      [waitio.interval] = function(resume, seconds)
+      [wait.interval] = function(resume, seconds)
         return resume:call(interval, seconds)
       end,
-      [sync.notify] = function(resume)
+      [wait.notify] = function(resume)
         return resume:call(notify)
+      end,
+      [wait_posix.deregister_fd] = function(resume, ...)
+        return resume()
+      end,
+      [wait_posix.wait_fd_read] = function(resume, fd)
+        return resume:call(wait_fd_read, fd)
+      end,
+      [wait_posix.wait_fd_write] = function(resume, fd)
+        return resume:call(wait_fd_write, fd)
+      end,
+      [wait_posix.wait_pid] = function(resume, pid)
+        return resume:call(wait_pid, pid)
+      end,
+      [wait_posix.catch_signal] = function(resume, sig)
+        return resume:call(catch_signal, sig)
       end,
     },
     ...

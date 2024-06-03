@@ -1,8 +1,8 @@
-local waitio_fiber = require "waitio_fiber"
 local fiber = require "fiber"
+local wait_posix_fiber = require "wait_posix_fiber"
 local pgeff = require "pgeff"
 
-return waitio_fiber.main(function()
+return wait_posix_fiber.main(function()
   local dbconn = assert(pgeff.connect(""))
 
   local f1 = fiber.spawn(function()

@@ -4,7 +4,7 @@ _ENV = setmetatable({}, { __index = _G })
 local _M = {}
 
 local fiber = require "fiber"
-local sync = require "sync"
+local wait = require "wait"
 local eio = require "eio"
 local web = require "web"
 
@@ -53,7 +53,7 @@ function request_methods:process_request_body()
     error("request body has already been read", 2)
   end
   self._request_body_processing = true
-  local mutex = sync.mutex()
+  local mutex = wait.mutex()
   self._request_body_mutex = mutex
   local guard = mutex()
   fiber.spawn(function()

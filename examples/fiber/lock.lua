@@ -1,10 +1,10 @@
-local sync = require "sync"
 local fiber = require "fiber"
-local waitio_fiber = require "waitio_fiber"
+local wait = require "wait"
+local wait_posix_fiber = require "wait_posix_fiber"
 
-local lock = sync.mutex()
+local lock = wait.mutex()
 
-return waitio_fiber.main(function()
+return wait_posix_fiber.main(function()
   local f1 = fiber.spawn(function()
     for i = 1, 2 do
       print("Fiber A", i)

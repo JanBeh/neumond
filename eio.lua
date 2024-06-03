@@ -10,7 +10,7 @@ _ENV = setmetatable({}, {
 local _M = {}
 
 local nbio = require "nbio"
-local waitio = require "waitio"
+local wait_posix = require "wait_posix"
 
 local handle_methods = {}
 
@@ -18,7 +18,7 @@ function handle_methods:close()
   local nbio_handle = self.nbio_handle
   local fd = nbio_handle.fd
   if fd then
-    waitio.deregister_fd(nbio_handle.fd)
+    wait_posix.deregister_fd(nbio_handle.fd)
   end
   nbio_handle:close()
 end
@@ -57,7 +57,7 @@ function handle_methods:read_unbuffered(maxlen)
     if i == 2 then
       break
     end
-    waitio.wait_fd_read(self.nbio_handle.fd)
+    wait_posix.wait_fd_read(self.nbio_handle.fd)
   end
   error("no data available for reading after waiting")
 end
@@ -75,7 +75,7 @@ function handle_methods:read(maxlen, terminator)
     elseif result ~= "" then
       return result
     end
-    waitio.wait_fd_read(self.nbio_handle.fd)
+    wait_posix.wait_fd_read(self.nbio_handle.fd)
   end
 end
 
@@ -99,7 +99,7 @@ function handle_methods:write(data, ...)
     if not (start <= total) then
       break
     end
-    waitio.wait_fd_write(self.nbio_handle.fd)
+    wait_posix.wait_fd_write(self.nbio_handle.fd)
   end
   return true
 end
@@ -123,7 +123,7 @@ function handle_methods:flush(data, ...)
       if not (start <= total) then
         break
       end
-      waitio.wait_fd_write(self.nbio_handle.fd)
+      wait_posix.wait_fd_write(self.nbio_handle.fd)
     end
   else
     while true do
@@ -133,7 +133,7 @@ function handle_methods:flush(data, ...)
       elseif not result then
         return result, errmsg
       end
-      waitio.wait_fd_write(self.nbio_handle.fd)
+      wait_posix.wait_fd_write(self.nbio_handle.fd)
     end
   end
   return true
@@ -173,7 +173,7 @@ function listener_methods:close()
   local nbio_listener = self.nbio_listener
   local fd = nbio_listener.fd
   if fd then
-    waitio.deregister_fd(fd)
+    wait_posix.deregister_fd(fd)
   end
   nbio_listener:close()
 end
@@ -185,7 +185,7 @@ _M.listener_metatbl = {
 }
 
 function listener_methods:accept()
-  waitio.wait_fd_read(self.nbio_listener.fd)
+  wait_posix.wait_fd_read(self.nbio_listener.fd)
   return wrap_handle(self.nbio_listener:accept())
 end
 
@@ -235,7 +235,7 @@ function child_methods:wait()
     if result == nil then
       error(errmsg)
     end
-    waitio.wait_pid(pid)
+    wait_posix.wait_pid(pid)
   end
 end
 
@@ -259,9 +259,7 @@ function _M.execute(...)
   return wrap_child(child)
 end
 
-_M.catch_signal = waitio.catch_signal
-_M.timeout = waitio.timeout
-_M.interval = waitio.interval
+_M.catch_signal = wait_posix.catch_signal
 
 _M.stdin = wrap_handle(nbio.stdin)
 _M.stdout = wrap_handle(nbio.stdout)

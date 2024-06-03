@@ -1,11 +1,11 @@
 local effect = require "effect"
 local fiber = require "fiber"
-local waitio_fiber = require "waitio_fiber"
+local wait_posix_fiber = require "wait_posix_fiber"
 local eio = require "eio"
 
 local terminate = effect.new("terminate")
 
-waitio_fiber.main(
+wait_posix_fiber.main(
   function()
     fiber.handle(
       {

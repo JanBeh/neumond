@@ -27,15 +27,15 @@ Web applications can be built using the `scgi` module, which allows creating an 
   * **`effect`** (effect handling)
       * **`yield`** (abstract yield effect)
           * **`fiber`** (lightweight threads)
-              * `waitio_fiber`
-      * **`sync`** (synchronization primitives)
-          * **`waitio`** (waiting for I/O)
-              * **`waitio_blocking`** (waiting for I/O through blocking)
-              * **`waitio_fiber`** (waiting for I/O utilizing fibers)
+              * `wait_posix_fiber`
+      * **`wait`** (platform independent waiting and synchronization)
+          * **`wait_posix`** (waiting for I/O on POSIX platforms)
+              * **`wait_posix_blocking`** (waiting through blocking)
+              * **`wait_posix_fiber`** (waiting in a fiber environment)
               * **`eio`** (basic I/O)
   * ***`lkq`*** ([kqueue] interface)
-      * `waitio_blocking`
-      * `waitio_fiber`
+      * `wait_posix_blocking`
+      * `wait_posix_fiber`
   * ***`nbio`*** (basic non-blocking I/O interface written in C)
       * `eio`
 
@@ -43,8 +43,6 @@ Web applications can be built using the `scgi` module, which allows creating an 
 
 Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
-Note that the `waitio` module is only dependent on the `sync` module regarding
-handling (but not performing) `waitio`'s effects.
 
 Further modules are `web`, `scgi`, and `pgeff`. Those are not documented in this documentation file; see source code instead.
 
@@ -225,93 +223,101 @@ A fiber handle `f` provides the following attributes and methods:
     `f` has terminated. If `f` was killed, this method returns `false`,
     otherwise returns `true` followed by `f`'s return values.
 
-## Module `sync`
+## Module `wait`
 
-Module providing synchronization primitives.
+Module for waiting and synchronization.
 
-The module provides the following effect:
+The module provides the following effects:
 
-  * **`sync.notify()`** creates and returns a handle `sleeper` and a function
+  * **`wait.select(...)`** waits until one of several listed events occurred.
+    Each event is denoted by two arguments, i.e. the number of arguments passed
+    to the select effect must be a multiple of two. This module only defines
+    the following arguments:
+
+      * `"handle"` followed by a handle returned by some other functions in
+        this module
+
+    But in a POSIX environment (see `wait_posix` module), other modules are
+    expected to additionally support:
+
+      * `"fd_read"` followed by an integer file descriptor
+      * `"fd_write"` followed by an integer file descriptor
+      * `"pid"` followed by an integer process ID
+
+    When passing a handle `h` to `wait.select` by calling
+    `wait.select(..., "handle", h, ...)`, then, after `wait.select` returns,
+    `h.ready` indicates if the corresponding event occurred. `h.ready` must be
+    reset to `false` when wanting to reuse the handle to wait for the next
+    event (e.g. another occurrence of the next interval tick).
+
+  * **`wait.timeout(seconds)`** starts a timer that elapses after given
+    `seconds` and returns a callable handle that, when called, waits until the
+    time has elapsed. The handle can be closed by storing it in a `<close>`
+    variable that eventually goes out of scope to ensure cleanup (otherwise
+    resource cleanup may be delayed until the time has elapsed or garbage
+    collection happens). The callable handle may also be passed to the
+    `wait.select` effect (after the string `"handle"`).
+
+  * **`wait.interval(seconds)`** creates an interval with given `seconds` and
+    returns a callable handle that, when called, waits until the next interval
+    has elapsed. The handle can be closed by storing it in a `<close>` variable
+    that eventually goes out of scope to ensure cleanup (otherwise resource
+    cleanup may be delayed until garbage collection is performed). The callable
+    handle may also be passed to the `wait.select` effect (after the string
+    `"handle"`).
+
+  * **`wait.notify()`** creates and returns a handle `sleeper` and a function
     `waker`. Calling `sleeper` will wait until `waker` has been called. The
     `waker` function may be called first, in which case the next call to
     `sleper` will return immediately. The `sleeper` handle may also be passed
-    to the `waitio.select` effect (after the string `"handle"`).
+    to the `wait.select` effect (after the string `"handle"`).
 
 The module additionally provides the following function:
 
-  * **`waitio.mutex()`** returns a mutex `m`. Calling `m` locks the mutex and
+  * **`wait.mutex()`** returns a mutex `m`. Calling `m` locks the mutex and
     returns a guard that should be stored in a `<close>` variable which will
     unlock the mutex when closed.
 
 A mutex protected section looks as follows:
 
 ```
-local mutex = sync.mutex()
+local mutex = wait.mutex()
 local func()
   local guard <close> = mutex()
   -- do stuff here
 end
 ```
 
-## Module `waitio`
+## Module `wait_posix`
 
-Module using effects to wait for I/O.
+Module providing additional effects and functions for waiting on POSIX
+platforms.
 
-The module provides several effects only (no handlers):
+The module provides the following effects:
 
-  * **`waitio.select(...)`** waits until one of several listed events occurred.
-    Each event is denoted by two arguments, i.e. the number of arguments passed
-    to the select effect should be a multiple of two. The following arguments
-    are permitted:
-
-      * `"fd_read"` followed by an integer file descriptor
-      * `"fd_write"` followed by an integer file descriptor
-      * `"pid"` followed by an integer process ID
-      * `"handle"` followed by a handle returned by some other functions in
-        this module (see below) or followed by the first return value of
-        `sync.notify()`
-
-  * **`waitio.catch_signal(sig)`** starts listening for signal `sig` and
+  * **`wait_posix.catch_signal(sig)`** starts listening for signal `sig` and
     returns a callable handle, which, upon calling, waits until a signal has
-    been delivered.
+    been delivered. The callable handle may also be passed to the `wait.select`
+    effect (after the string `"handle"`).
 
-  * **`waitio.timeout(seconds)`** starts a timer that elapses after given
-    `seconds` and returns a callable handle that, when called, waits until the
-    time has elapsed. The handle can be closed by storing it in a `<close>`
-    variable that eventually goes out of scope to ensure cleanup (otherwise
-    resource cleanup may be delayed until the time has elapsed or garbage
-    collection happens).
-
-  * **`waitio.interval(seconds)`** creates an interval with given `seconds` and
-    returns a callable handle that, when called, waits until the next interval
-    has elapsed. The handle can be closed by storing it in a `<close>` variable
-    that eventually goes out of scope to ensure cleanup (otherwise resource
-    cleanup may be delayed until garbage collection is performed).
-
-  * **`waitio.deregister_fd(fd)`** must be performed before closing a file
+  * **`wait_posix.deregister_fd(fd)`** must be performed before closing a file
     descriptor `fd` that is currently waited on. The effect resumes immediately
     with no value and can be safely performed multiple times on the same file
     descriptor and does not raise any error in that case. In a multi-fiber
     environment, a fiber waiting for reading from or writing to that file
     desciptor will be woken up.
 
-A handle `h` returned by some functions of this module (as well as the first
-return value of `sync.notify`) may also be passed to `waitio.select` by calling
-`waitio.select(..., "handle", h, ...)`. When this call returns, `h.ready`
-indicates if the corresponding event occurred, and `h.ready` must also be reset
-to `false` when wanting to reuse the handle to wait for the next event (e.g.
-another occurrence of the same signal or the next interval tick).
+Since, in a POSIX environment, `wait.select` is also expected to wait for file
+descriptors and process IDs, the following convenience functions are provided:
 
-The following convenience functions are provided:
+  * **`wait_posix.wait_fd_read(fd)`** waits until file descriptor `fd` is ready
+    for reading.
 
-  * **`waitio.wait_fd_read(fd)`** waits until file descriptor `fd` is ready for
-    reading.
+  * **`wait_posix.wait_fd_write(fd)`** waits until file descriptor `fd` is
+    ready for writing.
 
-  * **`waitio.wait_fd_write(fd)`** waits until file descriptor `fd` is ready
-    for writing.
-
-  * **`waitio.wait_pid(pid)`** waits until process with process ID `pid` has
-    terminated.
+  * **`wait_posix.wait_pid(pid)`** waits until process with process ID `pid`
+    has terminated.
 
 It is not allowed to wait for the same resource more than once in parallel
 except for those resources where a handle for waiting is created. Reading and
@@ -320,32 +326,34 @@ are created for waiting, each handle must not be used more than once in
 parallel. Violating these rules may result in an error or unspecified behavior,
 e.g. deadlocks.
 
-## Module `waitio_fiber`
+## Module `wait_posix_fiber`
 
-Module providing handling of the effects defined in the `waitio` module using
-`kqueue` system/library calls (through the `lkq` Lua module written in C) and
-fibers to avoid blocking.
+Module providing handling of the effects defined in the `wait` and `wait_posix`
+modules in a POSIX environment using `kqueue` system/library calls (through the
+`lkq` Lua module written in C) and fibers to avoid blocking.
 
 The module provides the following functions:
 
-  * **`waitio_fiber.run(action, ...)`** runs the `action` function while the
-    effects of the `waitio` module are handled with the help of fibers provided
-    by the `fiber` module. This function does not install a fiber scheduler and
-    thus must be called within the context of `fiber.main`.
+  * **`wait_posix_fiber.run(action, ...)`** runs the `action` function while
+    the effects of the `wait` and `wait_posix` modules are handled with the
+    help of fibers provided by the `fiber` module. This function does not
+    install a fiber scheduler and thus must be called within the context of
+    `fiber.main`.
 
-  * **`waitio_fiber.main(action, ...)`** is equivalent to
-    `fiber.main(waitio_fiber.run, action, ...)`.
+  * **`wait_posix_fiber.main(action, ...)`** is equivalent to
+    `fiber.main(wait_posix_fiber.run, action, ...)`.
 
 Example use:
 
 ```
 local fiber = require "fiber"
-local waitio_fiber = require "waitio_fiber"
+local wait_posix_fiber = require "wait_posix_fiber"
 
 fiber.main(
-  waitio_fiber.run,
+  wait_posix_fiber.run,
   function()
-    -- code here may perform "waitio" effects (e.g. through "eio" module)
+    -- code here may perform "wait" or "wait_posix" effects (e.g. through "eio"
+       module)
   end
 )
 ```
@@ -353,11 +361,12 @@ fiber.main(
 Or:
 
 ```
-local waitio_fiber = require "waitio_fiber"
+local wait_posix_fiber = require "wait_posix_fiber"
 
-waitio_fiber.main(
+wait_posix_fiber.main(
   function()
-    -- code here may perform "waitio" effects (e.g. through "eio" module)
+    -- code here may perform "wait" or "wait_posix" effects (e.g. through "eio"
+       module)
   end
 )
 ```
@@ -365,19 +374,20 @@ waitio_fiber.main(
 ## Module `eio`
 
 Module for basic I/O, using non-blocking I/O (through the `nbio` Lua module
-written in C) and the `waitio` module to wait for I/O.
+written in C) and the `wait_posix` module to wait for I/O.
 
-This module generic in regard to how "waiting" is implemented. In particular,
-`eio` does not depend on the `fiber` module, and whenever there is a need to
-wait for I/O, the effects of the `waitio` module are performed. In order to use
-`eio`, appropriate handlers have to be installed. One way to achieve this is to
-use `waitio_fiber.main(action, ...)` as in the following example:
+With the exception of depending on POSIX file descriptors, this module generic
+in regard to how "waiting" is implemented. In particular, `eio` does not depend
+on the `fiber` module, and whenever there is a need to wait for I/O, the
+effects of the `wait_posix` module are performed. In order to use `eio`,
+appropriate handlers have to be installed. One way to achieve this is to use
+`wait_posix_fiber.main(action, ...)` as in the following example:
 
 ```
-local waitio_fiber = require "waitio_fiber"
+local wait_posix_fiber = require "wait_posix_fiber"
 local eio = require "eio"
 
-waitio_fiber.main(
+wait_posix_fiber.main(
   function()
     eio.stdout:flush("Hello World!\n")
   end

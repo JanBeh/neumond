@@ -1,11 +1,11 @@
 local fiber = require "fiber"
-local waitio = require "waitio"
-local waitio_fiber = require "waitio_fiber"
+local wait = require "wait"
+local wait_posix_fiber = require "wait_posix_fiber"
 
-waitio_fiber.main(function()
-  local a = waitio.interval(1)
-  local b = waitio.interval(1.1)
-  local c = waitio.timeout(10)
+wait_posix_fiber.main(function()
+  local a = wait.interval(1)
+  local b = wait.interval(1.1)
+  local c = wait.timeout(10)
   local f1 = fiber.spawn(function()
     while true do
       a()

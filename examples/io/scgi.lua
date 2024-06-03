@@ -1,6 +1,6 @@
 local effect = require "effect"
 local fiber = require "fiber"
-local waitio_fiber = require "waitio_fiber"
+local wait_posix_fiber = require "wait_posix_fiber"
 local eio = require "eio"
 local scgi = require "scgi"
 local web = require "web"
@@ -52,7 +52,7 @@ effect.handle(
       print("Terminating SCGI server due to " .. sig .. ".")
     end
   },
-  waitio_fiber.main,
+  wait_posix_fiber.main,
   function()
     fiber.spawn(function() eio.catch_signal(2)(); terminate("SIGINT") end)
     fiber.spawn(function() eio.catch_signal(15)(); terminate("SIGTERM") end)

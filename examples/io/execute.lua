@@ -1,5 +1,5 @@
 local fiber = require "fiber"
-local waitio_fiber = require "waitio_fiber"
+local wait_posix_fiber = require "wait_posix_fiber"
 local eio = require "eio"
 
 local function read_background(stream, maxlen)
@@ -35,7 +35,7 @@ local function shell_add(a, b)
 end
 
 
-waitio_fiber.main(
+wait_posix_fiber.main(
   function()
     local a = 17
     local b = 4
