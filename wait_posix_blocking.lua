@@ -219,15 +219,6 @@ function _M.run(...)
       [wait_posix.deregister_fd] = function(resume, ...)
         return resume()
       end,
-      [wait_posix.wait_fd_read] = function(resume, fd)
-        return resume:call(wait_fd_read, fd)
-      end,
-      [wait_posix.wait_fd_write] = function(resume, fd)
-        return resume:call(wait_fd_write, fd)
-      end,
-      [wait_posix.wait_pid] = function(resume, pid)
-        return resume:call(wait_pid, pid)
-      end,
       [wait_posix.catch_signal] = function(resume, sig)
         return resume:call(catch_signal, sig)
       end,
