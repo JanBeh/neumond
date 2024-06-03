@@ -523,8 +523,8 @@ On Linux, [`libkqueue`] is needed. Some older versions of this library do not
 properly support waiting for either reading or writing on the same file
 descriptor at the same time. See the [release notes] for `libkqueue`
 version 2.4.0. Unfortunately, some Linux distributions ship with old versions
-of that library. For example, Ubuntu 22.04 LTS ships with version 2.3.1, which
-is subject to this bug.
+of that library. For example, Ubuntu 22.04 LTS as well as Ubuntu 24.04 LTS ship
+with version 2.3.1, which is subject to this bug.
 
 [`libkqueue`]: https://github.com/mheily/libkqueue
 [release notes]: https://github.com/mheily/libkqueue/releases/tag/v2.4.0
