@@ -53,16 +53,30 @@ end
 -- module:
 _M.yield = yield
 
--- Internally used effects (which are not exported) for
--- "current", "sleep", and "suicide" functions:
-local current = effect.new("fiber.current")
+-- Internally used effects (which are not exported) for "try_current",
+-- "current", sleep", and "suicide" functions:
+local try_current = effect.new("fiber.try_current")
 local sleep = effect.new("fiber.sleep")
 local suicide = effect.new("fiber.suicide")
 
--- Function returning a handle of the currently running fiber:
-_M.current = function()
-  return current()
+-- Default handler for "try_current" effect:
+effect.default_handlers[try_current] = function() return nil end
+
+-- Function returning a handle of the currently running fiber, or nil if called
+-- outside a scheduling environment:
+function _M.try_current()
+  return try_current()
 end
+
+-- Function returning a handle of the currently running fiber:
+local function current()
+  local x = try_current()
+  if x then
+    return x
+  end
+  error("not running in fiber environment", 0)
+end
+_M.current = current
 
 -- Function putting the currently running fiber to sleep:
 _M.sleep = function()
@@ -171,7 +185,7 @@ end
 -- Method killing the fiber, i.e. stopping its further execution:
 function fiber_methods.kill(self)
   -- Check if killed fiber is current fiber:
-  if self == current() then
+  if self == try_current() then
     -- Killed fiber is currently running.
     -- Simply kill current fiber:
     return suicide()
@@ -230,7 +244,7 @@ end
 
 -- Function checking if there is any woken fiber:
 function _M.pending()
-  local fiber = current()
+  local fiber = try_current()
   while fiber do
     local attrs = fiber_attrs[fiber]
     local woken_fibers = attrs.woken_fibers
@@ -283,15 +297,11 @@ local open_fibers_metatbl = {
   end,
 }
 
--- Implementation for top-level scheduling (used by module's "main" function,
--- with argument "nested" set to false) and sub-level scheduling (used by
--- module's "scope" function, with argument "nested" set to true):
-local function schedule(nested, ...)
+-- scope(action, ...) runs the given "action" function with given arguments and
+-- permits yielding/sleeping/spawning while it runs.
+local function scope(...)
   -- Obtain parent fiber unless running as top-level scheduler:
-  local parent_fiber
-  if nested then
-    parent_fiber = current()
-  end
+  local parent_fiber = try_current()
   -- Remember all open fibers in a set with a cleanup handler:
   local open_fibers <close> = setmetatable({}, open_fibers_metatbl)
   -- FIFO set of woken fibers:
@@ -301,7 +311,7 @@ local function schedule(nested, ...)
   -- Effect handlers:
   local handlers = {
     -- Effect resuming with a handle of the currently running fiber:
-    [current] = function(resume)
+    [try_current] = function(resume)
       -- Resume with handle of current fiber:
       return resume(current_fiber)
     end,
@@ -378,7 +388,7 @@ local function schedule(nested, ...)
   -- Unless running as top-level scheduler, include special marker (false) in
   -- "woken_fiber" FIFO to indicate that control has to be yielded to the
   -- parent scheduler:
-  if nested then
+  if parent_fiber then
     woken_fibers:push(false)
   end
   -- Main scheduling loop:
@@ -394,7 +404,7 @@ local function schedule(nested, ...)
     local fiber = woken_fibers:pop()
     -- Check if entry in "woken_fibers" was special marker (false) and if there
     -- are still fibers left:
-    if fiber == false and next(open_fibers) then
+      if fiber == false and next(open_fibers) then
       -- Special marker has been found and there are fibers left.
       -- Check if there is any other fiber to-be-woken without removing it from
       -- the FIFO:
@@ -434,24 +444,12 @@ local function schedule(nested, ...)
     end
   end
 end
-
--- main(action, ...) runs the given "action" function with given arguments as
--- main fiber and permits yielding/sleeping/spawning while it runs.
-function _M.main(...)
-  return schedule(false, ...)
-end
-
--- scope(action, ...) runs the given "action" function with given arguments and
--- handles spawning. It does not return until all spawned fibers have
--- terminated.
-function _M.scope(...)
-  return schedule(true, ...)
-end
+_M.scope = scope
 
 -- handle(handlers, action, ...) acts like effect.handle(action, ...) but also
 -- applies to spawned fibers within the action.
 function _M.handle(handlers, ...)
-  return effect.handle(handlers, schedule, true, ...)
+  return effect.handle(handlers, scope, ...)
 end
 
 return _M

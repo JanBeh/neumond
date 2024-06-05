@@ -1,6 +1,6 @@
 local fiber = require "fiber"
 
-fiber.main(function()
+fiber.schedule(function()
   local a, b
   a = fiber.spawn(function()
     for i = 1, 10 do

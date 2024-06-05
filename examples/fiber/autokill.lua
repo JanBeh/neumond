@@ -1,6 +1,6 @@
 local fiber = require "fiber"
 
-fiber.main(function()
+fiber.scope(function()
   fiber.spawn(function()
     -- endless loop:
     while true do

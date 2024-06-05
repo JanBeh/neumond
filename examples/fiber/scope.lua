@@ -1,4 +1,4 @@
--- This program demonstrates the use of function fiber.scope.
+-- This program demonstrates the use of nested scopes.
 
 local effect = require "effect"
 local fiber = require "fiber"
@@ -66,7 +66,7 @@ local function task2()
   end
 end
 
-fiber.main(function()
+fiber.scope(function()
   logging(function()
     fiber.scope(function()
       local f1 = fiber.spawn(task1)

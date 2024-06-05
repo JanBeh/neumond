@@ -6,7 +6,7 @@ local user_exception = setmetatable({}, {
 
 local success, message = pcall(function()
 
-  return fiber.main(function()
+  return fiber.scope(function()
     fiber.spawn(function()
       local guard <close> = setmetatable({}, {
         __close = function()

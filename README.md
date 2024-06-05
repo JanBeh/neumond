@@ -156,48 +156,44 @@ The module's only effect (itself) is:
 Module for lightweight threads implemented in pure Lua by using the `effect`
 module.
 
-Any usage of this module must be wrapped within the `action` function passed to
-`fiber.main(action, ...)`.
-
 The module provides the following functions:
 
-  * **`fiber.main(action, ...)`** runs the `action` function with given
-    arguments as main fiber which may spawn additional fibers. `fiber.main`
-    returns as soon as `action` returns. All spawned fibers that have not
-    terminated are automatically killed. Note that effect handlers installed
-    from within the `action` function do not affect spawned fibers unless
-    spawning the fibers is further wrapped within another action passed to
-    `fiber.scope` (see below).
+  * **`fiber.scope(action, ...)`** runs the `action` function with given
+    arguments as a fiber and allows spawning additional fibers from within that
+    fiber. `fiber.scope` returns as soon as `action` returns, in which case any
+    spawned fibers within `action` (that have not terminated yet) are
+    automatically killed. Note that effect handlers installed from within the
+    `action` function do not affect spawned fibers unless spawning the fibers
+    is further wrapped within another invocation of `fiber.scope`.
 
-  * **`fiber.scope(action, ...)`** runs an `action` function with given
-    arguments and ensures that:
-
-      * All fibers that were spawned within the action (and have not terminated
-        yet) are killed when `action` returns.
-
-      * The execution context of spawned fibers within the `action` function is
-        altered such that any effect handlers that have been installed outside
-        `fiber.scope` will be respected. (Otherwise, spawned fibers can only
-        perform effects that are handled outside of `fiber.main`, which is
-        often undesired.)
+  * **`fiber.try_current()`** obtains a handle for the currently running fiber
+    or returns `nil` if there is no fiber running (e.g. when called from
+    outside `fiber.scope`'s `action` function).
 
   * **`fiber.current()`** obtains a handle for the currently running fiber.
+    This function raises an error if there is no fiber running.
 
-  * **`fiber.sleep()`** puts the currently running fiber to sleep.
+  * **`fiber.sleep()`** puts the currently running fiber to sleep. This
+    function raises an error if there is no fiber running.
 
   * **`fiber.yield()`** allows the main loop to execute a different fiber.
-    `fiber.yield` is simply an alias for module `yield` (which is an effect).
+    `fiber.yield` is simply an alias for module `yield` (which is an effect)
+    and is a no-op if there is no fiber running.
 
   * **`fiber.suicide()`** kills the currently running fiber without providing a
     return value. It is equivalent to `fiber.current():kill()` but slightly
-    faster.
+    faster. This function raises an error if there is no fiber running.
 
   * **`fiber.spawn(action, ...)`** runs the `action` function with given
     arguments in a separate fiber and returns a handle for the spawned fiber.
+    This function raises an error if there is no fiber running, i.e. it must be
+    called from within an `action` passed to `fiber.scope(action, ...)` or a
+    previous `fiber.spawn(action, ...)` call.
 
-  * **`fiber.pending()`** returns `true` if there is any woken fiber. This
-    function can be used to check if it's okay to make a main event loop wait
-    for I/O (e.g. by using an OS call that blocks execution).
+  * **`fiber.pending()`** returns `true` if there is any woken fiber and
+    `false` if no other fiber is woken (or if there is no fiber running at
+    all). This function can be used to check if it's okay to make a main event
+    loop wait for I/O (e.g. by using an OS call that blocks execution).
 
   * **`fiber.handle(handlers, action, ...)`** is equivalent to
     `effect.handle(handlers, fiber.scope, action, ...)` and acts like
@@ -332,33 +328,13 @@ Module providing handling of the effects defined in the `wait` and `wait_posix`
 modules in a POSIX environment using `kqueue` system/library calls (through the
 `lkq` Lua module written in C) and fibers to avoid blocking.
 
-The module provides the following functions:
+The module provides the following function:
 
-  * **`wait_posix_fiber.run(action, ...)`** runs the `action` function while
+  * **`wait_posix_fiber.main(action, ...)`** runs the `action` function while
     the effects of the `wait` and `wait_posix` modules are handled with the
-    help of fibers provided by the `fiber` module. This function does not
-    install a fiber scheduler and thus must be called within the context of
-    `fiber.main`.
-
-  * **`wait_posix_fiber.main(action, ...)`** is equivalent to
-    `fiber.main(wait_posix_fiber.run, action, ...)`.
+    help of fibers provided by the `fiber` module.
 
 Example use:
-
-```
-local fiber = require "fiber"
-local wait_posix_fiber = require "wait_posix_fiber"
-
-fiber.main(
-  wait_posix_fiber.run,
-  function()
-    -- code here may perform "wait" or "wait_posix" effects (e.g. through "eio"
-       module)
-  end
-)
-```
-
-Or:
 
 ```
 local wait_posix_fiber = require "wait_posix_fiber"
@@ -366,7 +342,7 @@ local wait_posix_fiber = require "wait_posix_fiber"
 wait_posix_fiber.main(
   function()
     -- code here may perform "wait" or "wait_posix" effects (e.g. through "eio"
-       module)
+       module), or spawn fibers that use these effects
   end
 )
 ```

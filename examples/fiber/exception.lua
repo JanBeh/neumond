@@ -3,7 +3,7 @@ local fiber = require "fiber"
 
 local exception = effect.new("exception")
 
-local retval = fiber.main(function()
+local retval = fiber.scope(function()
   local v
   local producer, consumer
   local retval = fiber.handle(
