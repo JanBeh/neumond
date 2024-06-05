@@ -284,7 +284,8 @@ function _M.handle(handlers, action, ...)
       end
       -- No default handler has been found.
       -- Current coroutine is main coroutine and yielding is not possible.
-      error("unhandled effect or yield: " .. tostring((...)), 0)
+      -- Throw error in context of performer:
+      resume:call(error, "unhandled effect or yield: " .. tostring((...)), 0)
     else
       -- coroutine.resume failed.
       error("unhandled error in coroutine: " .. tostring((...)))
