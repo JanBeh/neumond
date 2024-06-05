@@ -105,16 +105,16 @@ The module provides the following functions and tables:
     handlers table is the corresponding handler, which is is a function that
     retrieves a continuation object (usually named "`resume`") as first
     argument followed by optional arguments that have been passed to the
-    `effect.perform` function. Handlers in the `handlers` table passed to the
-    `effect.handle` function may resume the action by calling the continuation,
-    where optional arguments are returned by `effect.perform` then. If a
-    continuation object needs to be called after an effect handler returned,
-    it needs to be made persistent with the **`resume:persistent()`** method
-    and can later be called or discontinued with **`resume:discontinue()`**
-    (which closes all to-be-closed variables of the action). `effect.handle`
-    returns the return values of the action function or the return values of
-    the first invoked handler; return values of later invoked handlers or of
-    the resumed action are returned by the corresponding `resume` calls.
+    `effect.perform` function. Handlers may resume the action by calling the
+    continuation, where optional arguments are returned by `effect.perform`
+    then. If a continuation object needs to be called after an effect handler
+    returned, it needs to be made persistent with the **`resume:persistent()`**
+    method and can later be called or discontinued with
+    **`resume:discontinue()`** (which closes all to-be-closed variables of the
+    action). `effect.handle` returns the return values of the action function
+    or the return values of the first invoked handler; return values of later
+    invoked handlers or of the resumed action are returned by the corresponding
+    `resume` calls.
 
   * **`effect.default_handlers`** is a table that maps an effect to a default
     handler function. If no effect handler but only a default handler is found,
