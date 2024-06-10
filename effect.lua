@@ -107,15 +107,21 @@ local traces = setmetatable({}, {__mode = "k"})
 
 -- Function adding or storing stack trace to/for error objects:
 local function add_traceback(errmsg)
-  if type(errmsg) == "string" then
+  local errtype = type(errmsg)
+  -- Check if error message is a string:
+  if errtype == "string" then
     -- Error message is a string.
     -- Append stack trace to string and return:
     return debug_traceback(errmsg, 2)
   end
   -- Error message is not a string.
-  -- Store stack trace in ephemeron, prepending an existing stack trace if one
-  -- exists:
-  traces[errmsg] = debug_traceback(traces[errmsg], 2)
+  -- Check if error message is not nil and not a number:
+  if errmsg ~= nil and errtype ~= "number" then
+    -- Error message is a table, userdata, function, thread, or boolean.
+    -- Store stack trace in ephemeron, prepending an existing stack trace if
+    -- one exists:
+    traces[errmsg] = debug_traceback(traces[errmsg], 2)
+  end
   -- Return original error object:
   return errmsg
 end
