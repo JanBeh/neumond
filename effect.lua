@@ -27,6 +27,14 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
+-- Assert function that does not prepend position information to the error:
+local function assert_nopos(success, ...)
+  if success then
+    return ...
+  end
+  error(..., 0)
+end
+
 -- Default handlers, where each key is an effect and each value is a function
 -- that does not get a continuation handle but simply returns the arguments for
 -- resuming:
@@ -92,14 +100,6 @@ function _M.new(name)
     __call = perform,
     __tostring = function() return str end,
   })
-end
-
--- Assert function that does not prepend position information to the error:
-local function assert_nopos(success, ...)
-  if success then
-    return ...
-  end
-  error(..., 0)
 end
 
 -- Ephemeron holding stack trace information for non-string error objects:
