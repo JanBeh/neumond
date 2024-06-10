@@ -169,17 +169,17 @@ local guard_metatbl = {
   end,
 }
 
--- with_guard(guard, func, ...) calls the passed function func (as tail-call if
--- possible) while ensuring that the continuation guarded by the guard is
--- discontinued when func returns:
-local function with_guard(guard, func, ...)
+-- resume_with_guard(guard, ...) calls guard.resume_func (as tail-call if
+-- possible) while ensuring that the continuation is discontinued when
+-- resume_func returns:
+local function resume_with_guard(guard, ...)
   -- Enable auto-discontinuation:
   guard.enabled = true
   -- Check if guard is already on stack:
   if guard.onstack then
     -- Guard is already on stack.
     -- Simply call function with arguments as tail-call:
-    return func(...)
+    return guard.resume_func(...)
   end
   -- Put guard on stack as to-be-closed variable:
   local guard <close> = guard
@@ -187,23 +187,23 @@ local function with_guard(guard, func, ...)
   guard.onstack = true
   -- Call function with arguments
   -- (not a tail-call due to to-be-closed variable):
-  return func(...)
+  return guard.resume_func(...)
 end
 
 -- Metatable for continuation objects:
 local continuation_metatbl = {
   -- Calling a continuation object will resume the interrupted action:
   __call = function(self, ...)
-    -- Use guard to call stored resume function with arguments:
-    return with_guard(self._guard, self._resume_func, ...)
+    -- Enable guard on stack and call stored resume function with arguments:
+    return resume_with_guard(self._guard, ...)
   end,
   -- Methods of continuation objects:
   __index = {
     -- Calls a function in context of the performer:
     call = function(self, ...)
-      -- Use guard to call stored resume function with special call marker as
-      -- first argument:
-      return with_guard(self._guard, self._resume_func, call_marker, ...)
+      -- Enable guard on stack and call stored resume function with special
+      -- call marker as first argument:
+      return resume_with_guard(self._guard, call_marker, ...)
     end,
     -- Avoids auto-discontinuation on handler return or error:
     persistent = function(self)
@@ -236,15 +236,6 @@ local continuation_metatbl = {
 function _M.handle(handlers, action, ...)
   -- Create coroutine with pcall_traceback as function:
   local action_thread = coroutine_create(pcall_traceback)
-  -- Create and install guard for auto-discontinuation on return:
-  local guard <close> = setmetatable(
-    {
-      thread = action_thread,
-      onstack = true,
-      enabled = true,
-    },
-    guard_metatbl
-  )
   -- Forward declarations:
   local resume, process_action_results
   -- Function resuming the action:
@@ -297,14 +288,18 @@ function _M.handle(handlers, action, ...)
       error("unhandled error in coroutine: " .. tostring((...)))
     end
   end
-  -- Create continuation object:
-  resume = setmetatable(
+  -- Create and install guard for auto-discontinuation on return:
+  local guard <close> = setmetatable(
     {
-      _guard = guard,
-      _resume_func = resume_func,
+      resume_func = resume_func,
+      thread = action_thread,
+      onstack = true,
+      enabled = true,
     },
-    continuation_metatbl
+    guard_metatbl
   )
+  -- Create continuation object:
+  resume = setmetatable({ _guard = guard }, continuation_metatbl)
   -- Call resume_func with arguments for pcall_traceback:
   return resume_func(action, ...)
 end
