@@ -67,11 +67,11 @@ end
 local function perform(...)
   -- Check if current coroutine is main coroutine:
   if coroutine_isyieldable() then
-    -- Current coroutine is NOT the main coroutine, thus yielding is possible.
+    -- Current coroutine is not main coroutine, thus yielding is possible.
     -- Yield from coroutine and process results using check_call function:
     return check_call(coroutine_yield(...))
   end
-  -- Current coroutine is the main coroutine and thus yielding is NOT possible.
+  -- Current coroutine is main coroutine, thus yielding is not possible.
   -- Check if a default handler is available for the given effect:
   local default_handler = default_handlers[...]
   if default_handler then
@@ -264,7 +264,7 @@ function _M.handle(handlers, action, ...)
       local handler = handlers[...]
       if handler then
         -- Handler has been found.
-        -- Call handler with continuation object via guard:
+        -- Call handler with continuation object:
         return handler(resume, select(2, ...))
       end
       -- No handler has been found.
@@ -274,11 +274,11 @@ function _M.handle(handlers, action, ...)
         -- Pass yield further down the stack and return its results back up:
         return resume_func(coroutine_yield(...))
       end
+      -- Current coroutine is main coroutine, thus yielding is not possible.
       -- Check if a default handler is available for the given effect:
       local default_handler = default_handlers[...]
       if default_handler then
         -- A default handler is available.
-        -- Call resume with return values of default handler:
         -- Call default handler and resume with its return values:
         return resume_func(default_handler())
       end
