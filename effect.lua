@@ -164,7 +164,7 @@ local guard_metatbl = {
       -- Automatic discontinuation is enabled.
       -- Discontinue continuation, i.e. close all to-be-closed variables of
       -- coroutine:
-      assert(coroutine_close(self.thread))
+      assert_nopos(coroutine_close(self.thread))
     end
   end,
 }
@@ -216,7 +216,7 @@ local continuation_metatbl = {
     discontinue = function(self)
       -- Discontinue continuation, i.e. close all to-be-closed variables of
       -- coroutine stored in guard:
-      assert(coroutine_close(self._guard.thread))
+      assert_nopos(coroutine_close(self._guard.thread))
     end,
   }
 }
