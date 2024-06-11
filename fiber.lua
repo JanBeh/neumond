@@ -53,20 +53,16 @@ end
 -- module:
 _M.yield = yield
 
--- Internally used effects (which are not exported) for "try_current",
--- "current", sleep", and "suicide" functions:
-local try_current = effect.new("fiber.try_current")
-local sleep = effect.new("fiber.sleep")
-local suicide = effect.new("fiber.suicide")
-
--- Default handler for "try_current" effect:
-effect.default_handlers[try_current] = function() return nil end
-
--- Function returning a handle of the currently running fiber, or nil if called
--- outside a scheduling environment:
-function _M.try_current()
-  return try_current()
+-- Helper function that throws an error due to missing fiber environment:
+local function scope_error()
+  return error("not running in fiber environment", 0)
 end
+
+-- Effect resuming with a handle of the currently running fiber, or nil if
+-- called outside a scheduling environment:
+local try_current = effect.new("fiber.try_current")
+_M.try_current = try_current
+effect.default_handlers[try_current] = function() return nil end
 
 -- Function returning a handle of the currently running fiber:
 local function current()
@@ -74,19 +70,25 @@ local function current()
   if x then
     return x
   end
-  error("not running in fiber environment", 0)
+  scope_error()
 end
 _M.current = current
 
--- Function putting the currently running fiber to sleep:
-_M.sleep = function()
-  return sleep()
-end
+-- Effect putting the currently running fiber to sleep:
+local sleep = effect.new("fiber.sleep")
+_M.sleep = sleep
+effect.default_handlers[sleep] = scope_error
 
--- Function killing the currently running fiber:
-_M.suicide = function()
-  return suicide()
-end
+-- Effect killing the currently running fiber:
+local suicide = effect.new("fiber.suicide")
+_M.suicide = suicide
+effect.default_handlers[suicide] = scope_error
+
+-- spawn(action, ...) spawns a new fiber with the given action function and
+-- arguments to the action function:
+local spawn = effect.new("fiber.spawn")
+_M.spawn = spawn
+effect.default_handlers[spawn] = scope_error
 
 -- Internal marker for attributes in the "fiber_methods" table:
 local getter_magic = {}
@@ -235,13 +237,6 @@ _M.fiber_metatbl = {
   end,
 }
 
--- spawn(action, ...) spawns a new fiber with the given action function and
--- arguments to the action function:
-function _M.spawn(...)
-  -- Use spawn function of current fiber:
-  return fiber_attrs[current()].spawn(...)
-end
-
 -- Function checking if there is any woken fiber:
 function _M.pending()
   local fiber = try_current()
@@ -308,6 +303,8 @@ local function scope(...)
   local woken_fibers = fifoset()
   -- Local variable (used as upvalue) for currently running fiber:
   local current_fiber
+  -- Forward declaration of spawn_impl function:
+  local spawn_impl
   -- Effect handlers:
   local handlers = {
     -- Effect resuming with a handle of the currently running fiber:
@@ -338,10 +335,14 @@ local function scope(...)
       for i, waiting_fiber in ipairs(attrs.waiting_fibers) do
         waiting_fiber:wake()
       end
-    end
+    end,
+    -- Effect spawning a new fiber:
+    [spawn] = function(resume, ...)
+      resume:call(spawn_impl, ...)
+    end,
   }
   -- Implementation of spawn function for current scheduler:
-  local function spawn(func, ...)
+  function spawn_impl(func, ...)
     -- Create new fiber handle:
     local fiber = setmetatable({}, _M.fiber_metatbl)
     -- Create storage table for fiber's attributes:
@@ -349,7 +350,6 @@ local function scope(...)
       -- Store certain upvalues as private attributes:
       open_fibers = open_fibers,
       woken_fibers = woken_fibers,
-      spawn = spawn,
       parent_fiber = parent_fiber,
       -- Sequence of other fibers waiting on the newly spawned fiber:
       waiting_fibers = {},
@@ -384,7 +384,7 @@ local function scope(...)
     return fiber
   end
   -- Spawn main fiber:
-  local main = spawn(...)
+  local main = spawn_impl(...)
   -- Unless running as top-level scheduler, include special marker (false) in
   -- "woken_fiber" FIFO to indicate that control has to be yielded to the
   -- parent scheduler:

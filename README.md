@@ -156,7 +156,8 @@ The module's only effect (itself) is:
 Module for lightweight threads implemented in pure Lua by using the `effect`
 module.
 
-The module provides the following functions:
+The module provides the following functions (of which some are implemented as
+effects, but usually shouldn't be handled manually):
 
   * **`fiber.scope(action, ...)`** runs the `action` function with given
     arguments as a fiber and allows spawning additional fibers from within that
