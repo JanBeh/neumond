@@ -45,7 +45,7 @@ function handle_methods:read_unbuffered(maxlen)
   if maxlen == 0 then
     return ""
   end
-  for i = 1, 2 do
+  while true do
     local result, errmsg = self.nbio_handle:read_unbuffered(maxlen)
     if result == nil then
       return nil, errmsg
@@ -54,12 +54,8 @@ function handle_methods:read_unbuffered(maxlen)
     elseif result ~= "" then
       return result
     end
-    if i == 2 then
-      break
-    end
     wait_posix.wait_fd_read(self.nbio_handle.fd)
   end
-  error("no data available for reading after waiting")
 end
 
 function handle_methods:read(maxlen, terminator)
