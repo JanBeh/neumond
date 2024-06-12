@@ -24,7 +24,14 @@ function handle_methods:close()
 end
 
 function handle_methods:shutdown()
-  return self.nbio_handle:shutdown()
+  -- NOTE: For some sockets, shutdown may close the file descriptor; thus it is
+  -- necessary to call deregister_fd here.
+  local nbio_handle = self.nbio_handle
+  local fd = nbio_handle.fd
+  if fd then
+    wait_posix.deregister_fd(nbio_handle.fd)
+  end
+  nbio_handle:shutdown()
 end
 
 _M.handle_metatbl = {
