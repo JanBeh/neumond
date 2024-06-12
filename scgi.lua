@@ -24,7 +24,7 @@ function request_methods:read(...)
   if self._request_body_processing then
     error("request body has already been processed", 2)
   end
-    return request_methods:_read(...)
+  return request_methods:_read(...)
 end
 
 function request_methods:_read(maxlen, terminator)
