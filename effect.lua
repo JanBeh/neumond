@@ -27,6 +27,9 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
+-- Metatable for ephemerons:
+local weak_mt = {__mode = "k"}
+
 -- Assert function that does not prepend position information to the error:
 local function assert_nopos(success, ...)
   if success then
@@ -103,7 +106,7 @@ function _M.new(name)
 end
 
 -- Ephemeron holding stack trace information for non-string error objects:
-local traces = setmetatable({}, {__mode = "k"})
+local traces = setmetatable({}, weak_mt)
 
 -- Function adding or storing stack trace to/for error objects:
 local function add_traceback(errmsg)
@@ -153,7 +156,11 @@ function _M.auto_traceback(...)
   return assert_traceback(pcall_traceback(...))
 end
 
--- Metatable for guards, which can auto-discontinue a continuation:
+-- Ephemeron mapping continuations to guards, which are helper objects to
+-- auto-discontinue a continuation:
+local guards = setmetatable({}, weak_mt)
+
+-- Metatable for guards:
 local guard_metatbl = {
   -- Invoked when to-be-closed variable goes out of scope:
   __close = function(self)
@@ -195,7 +202,7 @@ local continuation_metatbl = {
   -- Calling a continuation object will resume the interrupted action:
   __call = function(self, ...)
     -- Enable guard on stack and call stored resume function with arguments:
-    return resume_with_guard(self._guard, ...)
+    return resume_with_guard(guards[self], ...)
   end,
   -- Methods of continuation objects:
   __index = {
@@ -203,12 +210,12 @@ local continuation_metatbl = {
     call = function(self, ...)
       -- Enable guard on stack and call stored resume function with special
       -- call marker as first argument:
-      return resume_with_guard(self._guard, call_marker, ...)
+      return resume_with_guard(guards[self], call_marker, ...)
     end,
     -- Avoids auto-discontinuation on handler return or error:
     persistent = function(self)
       -- Disable automatic discontinuation:
-      self._guard.enabled = false
+      guards[self].enabled = false
       -- Return self for convenience:
       return self
     end,
@@ -216,7 +223,7 @@ local continuation_metatbl = {
     discontinue = function(self)
       -- Discontinue continuation, i.e. close all to-be-closed variables of
       -- coroutine stored in guard:
-      assert_nopos(coroutine_close(self._guard.thread))
+      assert_nopos(coroutine_close(guards[self].thread))
     end,
   }
 }
@@ -298,8 +305,9 @@ function _M.handle(handlers, action, ...)
     },
     guard_metatbl
   )
-  -- Create continuation object:
-  resume = setmetatable({ _guard = guard }, continuation_metatbl)
+  -- Create continuation object and associate guard:
+  resume = setmetatable({}, continuation_metatbl)
+  guards[resume] = guard
   -- Call resume_func with arguments for pcall_traceback:
   return resume_func(action, ...)
 end
