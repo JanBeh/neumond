@@ -27,7 +27,7 @@ local function request_handler(req)
     req:write('</ul>\n')
   else
   end
-  if req.cgi_params.CONTENT_TYPE == "application/x-www-form-urlencoded" then
+  if next(req.post_params) then
     req:write('<p>The following POST parameters have been received:</p>\n')
     req:write('<ul>\n')
     for key, value in pairs(req.post_params) do
