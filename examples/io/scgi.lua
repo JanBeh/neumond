@@ -15,7 +15,7 @@ local function request_handler(req)
   end
   print("------------")
   req:write('Content-type: text/html\n\n')
-  req:write('<html><head><title>FastCGI demo</title></head><body>\n')
+  req:write('<html><head><title>SCGI demo</title></head><body>\n')
   if next(req.get_params) then
     req:write('<p>The following GET parameters have been received:</p>\n')
     req:write('<ul>\n')
