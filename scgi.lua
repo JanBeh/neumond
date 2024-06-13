@@ -24,25 +24,31 @@ function request_methods:read(...)
   if self._request_body_processing then
     error("request body has already been processed", 2)
   end
-  return request_methods:_read(...)
+  return self:_read(...)
 end
 
 function request_methods:_read(maxlen, terminator)
-  self._request_body_fresh = false
-  local remaining = self._request_body_remaining
-  if maxlen == nil or maxlen > remaining then
-    maxlen = remaining
+  if not self._request_body_unexpected_eof then
+    self._request_body_fresh = false
+    local remaining = self._request_body_remaining
+    if maxlen == nil or maxlen > remaining then
+      maxlen = remaining
+    end
+    local result, errmsg = self._conn:read(maxlen, terminator)
+    if not result then
+      return result, errmsg
+    end
+    local resultlen = #result
+    self._request_body_remaining = remaining - resultlen
+    if
+      resultlen >= maxlen or
+      terminator == string.sub(result, resultlen, resultlen)
+    then
+      return result
+    end
+    self._request_body_unexpected_eof = true
   end
-  local result, errmsg = self._conn:read(maxlen, terminator)
-  if not result then
-    return result, errmsg
-  end
-  remaining = remaining - #result
-  self._request_body_remaining = remaining
-  if maxlen == nil and terminator == nil and remaining > 0 then
-    error("unexpected EOF in request body")
-  end
-  return result
+  return nil, "unexpected EOF in request body"
 end
 
 function request_methods:process_request_body()
