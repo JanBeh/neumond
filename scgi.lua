@@ -113,8 +113,8 @@ local function connection_handler(conn, request_handler)
     },
     request_metatbl
   )
-  local success, errmsg = xpcall(
-    request_handler, debug.traceback, request
+  local success, errmsg = fiber.scope(
+    xpcall, request_handler, debug.traceback, request
   )
   if not success then
     eio.stderr:flush(
