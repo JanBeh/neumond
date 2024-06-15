@@ -657,7 +657,7 @@ static int nbio_handle_read_unbuffered(lua_State *L) {
 // Buffered reads from I/O handle:
 static int nbio_handle_read(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
-  lua_Integer maxlen = luaL_optinteger(L, 2, NBIO_CHUNKSIZE);
+  lua_Integer maxlen = luaL_optinteger(L, 2, LUA_MAXINTEGER);
   size_t terminator_len;
   const char *terminator = lua_tolstring(L, 3, &terminator_len);
   if (maxlen <= 0) {
@@ -691,6 +691,9 @@ static int nbio_handle_read(lua_State *L) {
         handle->readbuf_read = 0;
       }
     } else {
+      if (uselen >= LUA_MAXINTEGER) {
+        return luaL_error(L, "data reached maximum allocation size");
+      }
       lua_pushlstring(L, start, uselen);
       if (uselen == available) {
         handle->readbuf_written = 0;
@@ -746,6 +749,9 @@ static int nbio_handle_read(lua_State *L) {
         handle->readbuf_checked_terminator = -1;
       }
       if (handle->readbuf_written >= uselen) {
+        if (uselen >= LUA_MAXINTEGER) {
+          return luaL_error(L, "data reached maximum allocation size");
+        }
         lua_pushlstring(L, handle->readbuf, uselen);
         if (handle->readbuf_written > uselen) {
           handle->readbuf_read = uselen;

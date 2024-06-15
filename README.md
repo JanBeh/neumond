@@ -449,12 +449,13 @@ An I/O handle `h` provides the following attributes and methods:
     occurred (whichever happens first). If all bytes or some bytes followed by
     EOF could be read, it returns a string containing the read data. If EOF
     occurred before any bytes could be read, returns the empty string (`""`).
-    Returns `nil` and an error message in case of an I/O error. If `maxlen` is
-    absent or `nil`, some (finite) default value will be used. If `terminator`
-    is absent or `nil`, then it is always attempted to read `maxlen` bytes.
-    This method may read more bytes than requested and/or read beyond the
-    terminator byte and will then buffer that data for the next invocation of
-    the `read` method. 
+    Returns `nil` and an error message in case of an I/O error. Be aware that
+    if `maxlen` is absent or `nil`, there is no boundary on the number of bytes
+    read and input data may cause unbounded memory allocation. If `terminator`
+    is absent or `nil`, then it is always attempted to read `maxlen` bytes or
+    until EOF if `maxlen` is `nil`. This method may read more bytes than
+    requested and/or read beyond the terminator byte and will then buffer that
+    data for the next invocation of the `read` method.
 
   * **`h:read_unbuffered(maxlen)`** waits until some data is available for
     reading or an I/O error occurred. It then reads a maximum number of
