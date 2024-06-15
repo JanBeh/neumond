@@ -1,13 +1,8 @@
-local effect = require "effect"
-local fiber = require "fiber"
 local wait_posix = require "wait_posix"
-local wait_posix_fiber = require "wait_posix_fiber"
+local wait_posix_blocking = require "wait_posix_blocking"
 
-fiber.main(
-  wait_posix_fiber.main,
+wait_posix_blocking.main(
   function()
-    print("reader started")
-    fiber.yield()
     while true do
       print("reader waiting")
       wait_posix.wait_fd_read(0)
