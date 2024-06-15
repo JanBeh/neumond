@@ -10,6 +10,23 @@ local web = require "web"
 
 _M.max_header_length = 1024 * 256
 
+local function parse_header_params(s)
+  local params = {}
+  s = string.gsub(s, '\\"', '\0')
+  s = string.gsub(s, '\\(.)', '%1')
+  s = string.gsub(s, '([^=\0 \t;]+)[ \t]*=[ \t]*"([^"]*)"', function(k, v)
+    v = string.gsub(v, '\0', '"')
+    params[string.lower(k)] = string.gsub(v, '\0', '"')
+    return ""
+  end)
+  for k, v in string.gmatch(s, '([^=\0 \t;]+)[ \t]*=[ \t]*([^ \t;]*)') do
+    if not string.find(v, "[\0\\=]") then
+      params[string.lower(k)] = v
+    end
+  end
+  return params
+end
+
 local request_methods = {}
 
 function request_methods:write(...)
@@ -65,11 +82,18 @@ function request_methods:process_request_body()
   fiber.spawn(function()
     local guard <close> = guard
     local body = self:_read()
-    local content_type = self.cgi_params.CONTENT_TYPE
-    if content_type == "application/x-www-form-urlencoded" then
+    local content_type = self.cgi_params.CONTENT_TYPE or ""
+    local ct_base, ct_ext = string.match(content_type, "^([^; \t]*)(.*)")
+    ct_base = string.lower(ct_base)
+    if ct_base == "application/x-www-form-urlencoded" then
       self.post_params = web.decode_urlencoded_form(body)
-    else
-      self.post_params = {}
+    elseif ct_base == "multipart/form-data" then
+      local boundary = "--" .. assert(
+        parse_header_params(ct_ext).boundary,
+        "no multipart/form-data boundary set"
+      )
+      self.post_params = {} -- TODO
+      error("multipart/form-data not implemented")
     end
   end)
 end
