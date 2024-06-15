@@ -676,10 +676,9 @@ static int nbio_handle_read(lua_State *L) {
     if (terminator != NULL) {
       if ((unsigned char)*terminator != handle->readbuf_checked_terminator) {
         handle->readbuf_checked_terminator = (unsigned char)*terminator;
-        for (size_t i=0; i<available; i++) {
+        for (size_t i=0; i<available && i<maxlen; i++) {
           if (((char *)start)[i] == *terminator) {
             uselen = i + 1;
-            handle->readbuf_checked_terminator = -1;
             break;
           }
         }
@@ -738,7 +737,7 @@ static int nbio_handle_read(lua_State *L) {
         handle->readbuf_checked_terminator = (unsigned char)*terminator;
         for (size_t i=old_written; i<handle->readbuf_written; i++) {
           if (((char *)handle->readbuf)[i] == *terminator) {
-            uselen = i + 1;
+            if (i < maxlen) uselen = i + 1;
             handle->readbuf_checked_terminator = -1;
             break;
           }
