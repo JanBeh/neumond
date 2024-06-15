@@ -87,7 +87,7 @@ local request_metatbl = {
   end,
 }
 
-local function connection_handler(conn, request_handler)
+function _M.connection_handler(conn, request_handler)
   local header_len = assert(
     tonumber(string.match(assert(conn:read(16, ":")), "^([0-9]+):")),
     "could not parse SCGI header length"
@@ -140,7 +140,7 @@ function _M.run(fcgi_path, request_handler)
       local conn <close> = conn
       -- Execute connection handler and catch errors:
       local success, errmsg = xpcall(
-        connection_handler, debug.traceback, conn, request_handler
+        _M.connection_handler, debug.traceback, conn, request_handler
       )
       -- Check if there was an error in the connection handler:
       if not success then
