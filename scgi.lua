@@ -102,10 +102,14 @@ local function connection_handler(conn, request_handler)
   for key, value in string.gmatch(header, "([^\0]+)\0([^\0]+)\0") do
     params[key] = value
   end
+  assert(params.SCGI == "1", "missing or unexpected SCGI version")
   local request = setmetatable(
     {
       _conn = conn,
-      _request_body_remaining = assert(tonumber(params.CONTENT_LENGTH or 0)),
+      _request_body_remaining = assert(
+        tonumber(params.CONTENT_LENGTH),
+        "missing or invalid CONTENT_LENGTH in SCGI header"
+      ),
       _request_body_fresh = true,
       _request_body_processing = false,
       cgi_params = params,
