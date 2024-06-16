@@ -471,6 +471,10 @@ An I/O handle `h` provides the following attributes and methods:
     I/O errors are indicated by `nil` and an error message. If `maxlen` is
     absent or `nil`, some (finite) default value will be used.
 
+  * **`h:unread(data, ...)`** puts `data` at beginning of read buffer, which
+    can be used to "undo" reading, similar to the `ungetc` C function but
+    allowing to put back more than one byte at a time.
+
   * **`h:write(data, ...)`** waits repeatedly until all `data` could be stored
     in a buffer and/or written out. Returns `true` on success, `false` and an
     error message in case of a disconnected receiver (broken pipe), and `nil`

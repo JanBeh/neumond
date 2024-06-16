@@ -781,6 +781,36 @@ static int nbio_handle_read(lua_State *L) {
   }
 }
 
+// Putting data back into buffer:
+static int nbio_handle_unread(lua_State *L) {
+  nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
+  size_t bytes;
+  const char *data = luaL_checklstring(L, 2, &bytes);
+  size_t needed_capacity =
+    handle->readbuf_written - handle->readbuf_read + bytes;
+  if (handle->readbuf_capacity < needed_capacity) {
+    if (handle->readbuf_capacity > SIZE_MAX / 2) {
+      return luaL_error(L, "buffer allocation failed");
+    }
+    size_t newcap = 2 * handle->readbuf_capacity;
+    if (newcap < needed_capacity) newcap = needed_capacity;
+    void *newbuf = realloc(handle->readbuf, newcap);
+    if (!newbuf) return luaL_error(L, "buffer allocation failed");
+    handle->readbuf = newbuf;
+    handle->readbuf_capacity = newcap;
+  }
+  memmove(
+    handle->readbuf + bytes,
+    handle->readbuf + handle->readbuf_read,
+    handle->readbuf_written - handle->readbuf_read
+  );
+  memcpy(handle->readbuf, data, bytes);
+  handle->readbuf_written =
+    handle->readbuf_written - handle->readbuf_read + bytes;
+  handle->readbuf_read = 0;
+  return 0;
+}
+
 // Unbuffered writes to I/O handle (implicitly flushes buffered data):
 static int nbio_handle_write_unbuffered(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
@@ -1309,6 +1339,7 @@ static const struct luaL_Reg nbio_handle_methods[] = {
   {"shutdown", nbio_handle_shutdown},
   {"read_unbuffered", nbio_handle_read_unbuffered},
   {"read", nbio_handle_read},
+  {"unread", nbio_handle_unread},
   {"write_unbuffered", nbio_handle_write_unbuffered},
   {"write", nbio_handle_write},
   {"flush", nbio_handle_flush},

@@ -1,6 +1,9 @@
 local wait_posix_fiber = require "wait_posix_fiber"
 local eio = require "eio"
 
+eio.stdin:unread("Some more...")
+eio.stdin:unread("Hello World!\n")
+
 wait_posix_fiber.main(
   function()
     while true do

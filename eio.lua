@@ -82,6 +82,14 @@ function handle_methods:read(maxlen, terminator)
   end
 end
 
+function handle_methods:unread(data, ...)
+  local arg_count = select("#", data, ...)
+  if arg_count > 1 then
+    data = table.concat({data, ...}, nil, 1, arg_count)
+  end
+  return self.nbio_handle:unread(data)
+end
+
 function handle_methods:write(data, ...)
   local arg_count = select("#", data, ...)
   if arg_count > 1 then
