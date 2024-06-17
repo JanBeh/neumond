@@ -38,6 +38,7 @@ local function request_handler(req)
     req:write('</ul>\n')
   end
   req:write('<form method="POST">\n')
+  --req:write('<form method="POST" enctype="multipart/form-data">\n')
   req:write('<input type="text" name="demokey">\n')
   req:write('<input type="submit" value="Submit POST request">\n')
   req:write('</form>\n')

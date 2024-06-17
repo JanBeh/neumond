@@ -17,6 +17,8 @@ local string_lower  = string.lower
 local string_match  = string.match
 local string_sub    = string.sub
 
+-- Function parsing parameters of a header value, which must not contain any
+-- NULL byte:
 local function parse_header_params(s)
   local params = {}
   s = string_gsub(s, '\\"', '\0')
@@ -26,11 +28,36 @@ local function parse_header_params(s)
     return ""
   end)
   for k, v in string_gmatch(s, '([^=\0 \t;]+)[ \t]*=[ \t]*([^ \t;]*)') do
-    if not string_find(v, "[\0\\=]") then
+    if not string_find(v, "[=\0\\]") then
       params[string_lower(k)] = v
     end
   end
   return params
+end
+
+local chunk_size = 4096
+
+local function noop()
+end
+
+local function stream_until_boundary(handle, boundary, callback)
+  local rlen = chunk_size + #boundary - 1
+  while true do
+    local chunk = handle:_read(rlen)
+    if chunk == "" then
+      return false
+    end
+    local pos1, pos2 = string_find(chunk, boundary, 1, true)
+    if pos1 then
+      handle:_unread(string_sub(chunk, pos2 + 1))
+      if pos1 > 1 then
+        callback(string_sub(chunk, 1, pos1 - 1))
+      end
+      return true
+    end
+    handle:_unread(string_sub(chunk, chunk_size + 1))
+    callback(string_sub(chunk, 1, chunk_size))
+  end
 end
 
 local request_methods = {}
@@ -48,6 +75,21 @@ function request_methods:read(...)
     error("request body has already been processed", 2)
   end
   return self:_read(...)
+end
+
+function request_methods:unread(...)
+  if self._request_body_processing then
+    error("request body has already been processed", 2)
+  end
+  if not self._request_body_unexpected_eof then
+    return self._conn:unread(...)
+  end
+end
+
+function request_methods:_unread(data)
+  self._request_body_remaining = self._request_body_remaining + #data
+  -- TODO: handle errors?
+  return self._conn:unread(data)
 end
 
 function request_methods:_read(maxlen, terminator)
@@ -87,19 +129,70 @@ function request_methods:process_request_body()
   local guard = mutex()
   fiber.spawn(function()
     local guard <close> = guard
-    local body = self:_read()
     local content_type = self.cgi_params.CONTENT_TYPE or ""
     local ct_base, ct_ext = string_match(content_type, "^([^; \t]*)(.*)")
     ct_base = string_lower(ct_base)
     if ct_base == "application/x-www-form-urlencoded" then
-      self.post_params = web.decode_urlencoded_form(body)
+      -- TODO: check maximum request body size
+      self.post_params = web.decode_urlencoded_form(self:_read())
     elseif ct_base == "multipart/form-data" then
       local boundary = "--" .. assert(
         parse_header_params(ct_ext).boundary,
         "no multipart/form-data boundary set"
       )
-      self.post_params = {} -- TODO
-      error("multipart/form-data not implemented")
+      assert(
+        stream_until_boundary(self, boundary, noop),
+        "boundary not found in request body"
+      )
+      local eol = self:_read(1024, "\n")
+      assert(
+        string_find(eol, "\r\n$"),
+        "no linebreak after boundary in multipart form-data request body"
+      )
+      local boundary = "\r\n" .. boundary
+      local post_params = {}
+      while true do
+        local name
+        while true do
+          local line = self:_read(nil, "\n")
+          if line == "\r\n" or line == "\n" or line == "" then
+            break
+          end
+          local key, value_base, value_ext = string_match(
+            line,
+            "^([^:]+)[ \t]*:[ \t]*([^; \t]*)([^\0]*)"
+          )
+          if key then
+            key = string_lower(key)
+            value_base = string_lower(value_base)
+            if key == "content-disposition" and value_base == "form-data" then
+              local value_params = parse_header_params(value_ext)
+              name = value_params.name
+            end
+          end
+        end
+        if name then
+          local chunks = {}
+          assert(
+            stream_until_boundary(self, boundary, function(chunk)
+              chunks[#chunks+1] = chunk
+            end),
+            "unexpected EOF in multipart form-data"
+          )
+          post_params[name] = table.concat(chunks)
+        else
+          stream_until_boundary(self, boundary, noop)
+        end
+        local eol = self:_read(1024, "\n")
+        if string.find(eol, "^-%-") then
+          break
+        end
+        assert(
+          string_find(eol, "\r\n$"),
+          "no linebreak after boundary in multipart form-data request body"
+        )
+      end
+      self.post_params = post_params
     end
   end)
 end
