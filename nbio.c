@@ -786,28 +786,33 @@ static int nbio_handle_unread(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   size_t bytes;
   const char *data = luaL_checklstring(L, 2, &bytes);
-  size_t needed_capacity =
-    handle->readbuf_written - handle->readbuf_read + bytes;
-  if (handle->readbuf_capacity < needed_capacity) {
-    if (handle->readbuf_capacity > SIZE_MAX / 2) {
-      return luaL_error(L, "buffer allocation failed");
+  if handle->readbuf_read >= bytes {
+    handle->readbuf_read -= bytes;
+    memcpy(handle->readbuf + handle->readbuf_read, data, bytes);
+  } else {
+    size_t needed_capacity =
+      handle->readbuf_written - handle->readbuf_read + bytes;
+    if (handle->readbuf_capacity < needed_capacity) {
+      if (handle->readbuf_capacity > SIZE_MAX / 2) {
+        return luaL_error(L, "buffer allocation failed");
+      }
+      size_t newcap = 2 * handle->readbuf_capacity;
+      if (newcap < needed_capacity) newcap = needed_capacity;
+      void *newbuf = realloc(handle->readbuf, newcap);
+      if (!newbuf) return luaL_error(L, "buffer allocation failed");
+      handle->readbuf = newbuf;
+      handle->readbuf_capacity = newcap;
     }
-    size_t newcap = 2 * handle->readbuf_capacity;
-    if (newcap < needed_capacity) newcap = needed_capacity;
-    void *newbuf = realloc(handle->readbuf, newcap);
-    if (!newbuf) return luaL_error(L, "buffer allocation failed");
-    handle->readbuf = newbuf;
-    handle->readbuf_capacity = newcap;
+    memmove(
+      handle->readbuf + bytes,
+      handle->readbuf + handle->readbuf_read,
+      handle->readbuf_written - handle->readbuf_read
+    );
+    memcpy(handle->readbuf, data, bytes);
+    handle->readbuf_written =
+      handle->readbuf_written - handle->readbuf_read + bytes;
+    handle->readbuf_read = 0;
   }
-  memmove(
-    handle->readbuf + bytes,
-    handle->readbuf + handle->readbuf_read,
-    handle->readbuf_written - handle->readbuf_read
-  );
-  memcpy(handle->readbuf, data, bytes);
-  handle->readbuf_written =
-    handle->readbuf_written - handle->readbuf_read + bytes;
-  handle->readbuf_read = 0;
   return 0;
 }
 
