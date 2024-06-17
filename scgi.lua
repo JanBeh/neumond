@@ -15,7 +15,6 @@ local function parse_header_params(s)
   s = string.gsub(s, '\\"', '\0')
   s = string.gsub(s, '\\(.)', '%1')
   s = string.gsub(s, '([^=\0 \t;]+)[ \t]*=[ \t]*"([^"]*)"', function(k, v)
-    v = string.gsub(v, '\0', '"')
     params[string.lower(k)] = string.gsub(v, '\0', '"')
     return ""
   end)
