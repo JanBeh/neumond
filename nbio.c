@@ -786,7 +786,7 @@ static int nbio_handle_unread(lua_State *L) {
   nbio_handle_t *handle = luaL_checkudata(L, 1, NBIO_HANDLE_MT_REGKEY);
   size_t bytes;
   const char *data = luaL_checklstring(L, 2, &bytes);
-  if handle->readbuf_read >= bytes {
+  if (handle->readbuf_read >= bytes) {
     handle->readbuf_read -= bytes;
     memcpy(handle->readbuf + handle->readbuf_read, data, bytes);
   } else {
