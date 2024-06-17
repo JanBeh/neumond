@@ -10,17 +10,24 @@ local web = require "web"
 
 _M.max_header_length = 1024 * 256
 
+local string_find   = string.find
+local string_gmatch = string.gmatch
+local string_gsub   = string.gsub
+local string_lower  = string.lower
+local string_match  = string.match
+local string_sub    = string.sub
+
 local function parse_header_params(s)
   local params = {}
-  s = string.gsub(s, '\\"', '\0')
-  s = string.gsub(s, '\\(.)', '%1')
-  s = string.gsub(s, '([^=\0 \t;]+)[ \t]*=[ \t]*"([^"]*)"', function(k, v)
-    params[string.lower(k)] = string.gsub(v, '\0', '"')
+  s = string_gsub(s, '\\"', '\0')
+  s = string_gsub(s, '\\(.)', '%1')
+  s = string_gsub(s, '([^=\0 \t;]+)[ \t]*=[ \t]*"([^"]*)"', function(k, v)
+    params[string_lower(k)] = string_gsub(v, '\0', '"')
     return ""
   end)
-  for k, v in string.gmatch(s, '([^=\0 \t;]+)[ \t]*=[ \t]*([^ \t;]*)') do
-    if not string.find(v, "[\0\\=]") then
-      params[string.lower(k)] = v
+  for k, v in string_gmatch(s, '([^=\0 \t;]+)[ \t]*=[ \t]*([^ \t;]*)') do
+    if not string_find(v, "[\0\\=]") then
+      params[string_lower(k)] = v
     end
   end
   return params
@@ -58,7 +65,7 @@ function request_methods:_read(maxlen, terminator)
     self._request_body_remaining = remaining - resultlen
     if
       resultlen >= maxlen or
-      terminator == string.sub(result, resultlen, resultlen)
+      terminator == string_sub(result, resultlen, resultlen)
     then
       return result
     end
@@ -82,8 +89,8 @@ function request_methods:process_request_body()
     local guard <close> = guard
     local body = self:_read()
     local content_type = self.cgi_params.CONTENT_TYPE or ""
-    local ct_base, ct_ext = string.match(content_type, "^([^; \t]*)(.*)")
-    ct_base = string.lower(ct_base)
+    local ct_base, ct_ext = string_match(content_type, "^([^; \t]*)(.*)")
+    ct_base = string_lower(ct_base)
     if ct_base == "application/x-www-form-urlencoded" then
       self.post_params = web.decode_urlencoded_form(body)
     elseif ct_base == "multipart/form-data" then
@@ -112,7 +119,7 @@ local request_metatbl = {
 
 function _M.connection_handler(conn, request_handler)
   local header_len = assert(
-    tonumber(string.match(assert(conn:read(16, ":")), "^([0-9]+):")),
+    tonumber(string_match(assert(conn:read(16, ":")), "^([0-9]+):")),
     "could not parse SCGI header length"
   )
   assert(header_len <= _M.max_header_length, "SCGI header too long")
@@ -122,7 +129,7 @@ function _M.connection_handler(conn, request_handler)
   assert(#separator == 1, "unexpected EOF after SCGI header")
   assert(separator == ",", "unexpected byte after SCGI header")
   local params = {}
-  for key, value in string.gmatch(header, "([^\0]+)\0([^\0]+)\0") do
+  for key, value in string_gmatch(header, "([^\0]+)\0([^\0]+)\0") do
     params[key] = value
   end
   assert(params.SCGI == "1", "missing or unexpected SCGI version")
