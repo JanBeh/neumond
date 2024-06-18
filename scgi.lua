@@ -161,10 +161,36 @@ function request_methods:process_request_body()
       local post_params = {}
       while true do
         local name
+        local header_line_count = 0
         while true do
-          local line = assert(self:_read(nil, "\n"))
+          local line = assert(self:_read(16384, "\n"))
           if line == "\r\n" or line == "\n" or line == "" then
             break
+          end
+          if not string_find(line, "\n$") then
+            error("too long line in header in multipart form-data part")
+          end
+          header_line_count = header_line_count + 1
+          if header_line_count > 64 then
+            error("too many header lines in multipart form-data part")
+          end
+          line = string_gsub(line, "\r?\n$", "")
+          while true do
+            local nextline = assert(self:_read(16384, "\n"))
+            if not string_find(nextline, "^[\t ]") then
+              self:_unread(nextline)
+              break
+            end
+            if not string_find(nextline, "\n$") then
+              error("too long line in header in multipart form-data part")
+            end
+            header_line_count = header_line_count + 1
+            if header_line_count > 64 then
+              error("too many header lines in multipart form-data part")
+            end
+            nextline = string_gsub(nextline, "^[\t ]+", "")
+            nextline = string_gsub(nextline, "\r?\n$", "")
+            line = line .. " " .. nextline
           end
           local key, value_base, value_ext = string_match(
             line,
