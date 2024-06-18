@@ -69,30 +69,25 @@ function request_methods:flush(...)
 end
 
 function request_methods:read(...)
-  if self._request_body_processing then
+  if self._request_body_mode == "auto" then
     error("request body has already been processed", 2)
   end
+  self.request_body_state = "manual"
   return self:_read(...)
 end
 
 function request_methods:unread(...)
-  if self._request_body_processing then
+  if self._request_body_mode == "auto" then
     error("request body has already been processed", 2)
   end
   if not self._request_body_unexpected_eof then
+    self._request_body_mode = "manual"
     return self._conn:unread(...)
   end
 end
 
-function request_methods:_unread(data)
-  self._request_body_remaining = self._request_body_remaining + #data
-  -- TODO: handle errors?
-  return self._conn:unread(data)
-end
-
 function request_methods:_read(maxlen, terminator)
   if not self._request_body_unexpected_eof then
-    self._request_body_fresh = false
     local remaining = self._request_body_remaining
     if maxlen == nil or maxlen > remaining then
       maxlen = remaining
@@ -114,14 +109,20 @@ function request_methods:_read(maxlen, terminator)
   return nil, "unexpected EOF in request body"
 end
 
+function request_methods:_unread(data)
+  self._request_body_remaining = self._request_body_remaining + #data
+  return self._conn:unread(data)
+end
+
 function request_methods:process_request_body()
-  if self._request_body_processing then
+  local previous_state = self._request_body_mode
+  if previous_state == "auto" then
     return
   end
-  if not self._request_body_fresh then
+  if previous_state == "manual" then
     error("request body has already been read", 2)
   end
-  self._request_body_processing = true
+  self._request_body_mode = "auto"
   local mutex = wait.mutex()
   self._request_body_mutex = mutex
   local guard = mutex()
@@ -233,8 +234,6 @@ function _M.connection_handler(conn, request_handler)
         tonumber(params.CONTENT_LENGTH),
         "missing or invalid CONTENT_LENGTH in SCGI header"
       ),
-      _request_body_fresh = true,
-      _request_body_processing = false,
       cgi_params = params,
       get_params = web.decode_urlencoded_form(params.QUERY_STRING or ""),
     },
