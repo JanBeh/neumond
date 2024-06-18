@@ -23,14 +23,12 @@ local function parse_header_params(s)
   local params = {}
   s = string_gsub(s, '\\"', '\0')
   s = string_gsub(s, '\\(.)', '%1')
-  s = string_gsub(s, '([^=\0 \t;]+)[ \t]*=[ \t]*"([^"]*)"', function(k, v)
+  s = string_gsub(s, '([^\0\t ;=]+)[\t ]*=[\t ]*"([^"]*)"', function(k, v)
     params[string_lower(k)] = string_gsub(v, '\0', '"')
     return ""
   end)
-  for k, v in string_gmatch(s, '([^=\0 \t;]+)[ \t]*=[ \t]*([^ \t;]*)') do
-    if not string_find(v, "[=\0\\]") then
-      params[string_lower(k)] = v
-    end
+  for k, v in string_gmatch(s, '([^\0\t ;=]+)[\t ]*=[\t ]*([^\t ;]*)') do
+    params[string_lower(k)] = string_gsub(v, '\0', '"')
   end
   return params
 end
