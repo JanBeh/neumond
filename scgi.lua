@@ -191,6 +191,8 @@ function request_methods:process_request_body()
         )
       end
       self.post_params = post_params
+    else
+      self.post_params = {}
     end
   end)
 end
