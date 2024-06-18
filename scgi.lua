@@ -39,7 +39,7 @@ local function noop()
 end
 
 local function stream_until_boundary(handle, boundary, callback)
-  local rlen = chunk_size + #boundary - 1
+  local rlen = chunk_size + #boundary
   while true do
     local chunk = handle:_read(rlen)
     if chunk == "" then
