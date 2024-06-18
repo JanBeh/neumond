@@ -41,7 +41,7 @@ end
 local function stream_until_boundary(handle, boundary, callback)
   local rlen = chunk_size + #boundary
   while true do
-    local chunk = handle:_read(rlen)
+    local chunk = assert(handle:_read(rlen))
     if chunk == "" then
       return false
     end
@@ -132,7 +132,7 @@ function request_methods:process_request_body()
     ct_base = string_lower(ct_base)
     if ct_base == "application/x-www-form-urlencoded" then
       -- TODO: check maximum request body size
-      self.post_params = web.decode_urlencoded_form(self:_read())
+      self.post_params = web.decode_urlencoded_form(assert(self:_read()))
     elseif ct_base == "multipart/form-data" then
       local boundary = "--" .. assert(
         parse_header_params(ct_ext).boundary,
@@ -142,7 +142,7 @@ function request_methods:process_request_body()
         stream_until_boundary(self, boundary, noop),
         "boundary not found in request body"
       )
-      local eol = self:_read(1024, "\n")
+      local eol = assert(self:_read(1024, "\n"))
       assert(
         string_find(eol, "\r\n$"),
         "no linebreak after boundary in multipart form-data request body"
@@ -152,7 +152,7 @@ function request_methods:process_request_body()
       while true do
         local name
         while true do
-          local line = self:_read(nil, "\n")
+          local line = assert(self:_read(nil, "\n"))
           if line == "\r\n" or line == "\n" or line == "" then
             break
           end
@@ -181,7 +181,7 @@ function request_methods:process_request_body()
         else
           stream_until_boundary(self, boundary, noop)
         end
-        local eol = self:_read(1024, "\n")
+        local eol = assert(self:_read(1024, "\n"))
         if string.find(eol, "^-%-") then
           break
         end
