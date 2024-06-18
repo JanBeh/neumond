@@ -33,12 +33,17 @@ local function parse_header_params(s)
   return params
 end
 
-local chunk_size = 4096
+-- Chunk size when streaming request body parts:
+_M.streaming_chunk_size = 4096
+
+-- Maximum total size for non-streamed request body parts:
+_M.max_non_streamed_size = 1024*1024
 
 local function noop()
 end
 
 local function stream_until_boundary(handle, boundary, callback)
+  local chunk_size = _M.streaming_chunk_size
   local rlen = chunk_size + #boundary
   while true do
     local chunk = assert(handle:_read(rlen))
@@ -132,9 +137,13 @@ function request_methods:process_request_body()
     local ct_base, ct_ext = string_match(content_type, "^([^; \t]*)(.*)")
     ct_base = string_lower(ct_base)
     if ct_base == "application/x-www-form-urlencoded" then
-      -- TODO: check maximum request body size
+      assert(
+        self._request_body_remaining < _M.max_non_streamed_size,
+        "request body exceeded maximum length"
+      )
       self.post_params = web.decode_urlencoded_form(assert(self:_read()))
     elseif ct_base == "multipart/form-data" then
+      local non_streamed_size = 0
       local boundary = "--" .. assert(
         parse_header_params(ct_ext).boundary,
         "no multipart/form-data boundary set"
@@ -174,6 +183,12 @@ function request_methods:process_request_body()
           local chunks = {}
           assert(
             stream_until_boundary(self, boundary, function(chunk)
+              non_streamed_size = non_streamed_size + #chunk
+              if non_streamed_size > _M.max_non_streamed_size then
+                error(
+                  "non-streamed request body parts exceeded maximum length"
+                )
+              end
               chunks[#chunks+1] = chunk
             end),
             "unexpected EOF in multipart form-data"
