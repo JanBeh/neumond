@@ -10,7 +10,7 @@ _ENV = setmetatable({}, {
 local _M = {}
 
 function _M.encode_html(text)
-  return (string.gsub(text, '[<>&"]', function(char)
+  return (string.gsub(tostring(text), '[<>&"]', function(char)
     if char == '"' then return "&quot;"
     elseif char == '<' then return "&lt;"
     elseif char == '>' then return "&gt;"
