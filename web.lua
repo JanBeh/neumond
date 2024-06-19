@@ -46,12 +46,4 @@ do
 end
 _M.decode_uri = decode_uri
 
-function _M.decode_urlencoded_form(str)
-  local tbl = {}
-  for key, value in string.gmatch(str, "([^&=]+)=([^&=]*)") do
-    tbl[decode_uri(key)] = decode_uri(value)
-  end
-  return tbl
-end
-
 return _M

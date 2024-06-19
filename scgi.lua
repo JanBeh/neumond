@@ -17,6 +17,8 @@ local string_lower  = string.lower
 local string_match  = string.match
 local string_sub    = string.sub
 
+local decode_uri = web.decode_uri
+
 -- Function parsing parameters of a header value, which must not contain any
 -- NULL byte:
 local function parse_header_params(s)
@@ -125,6 +127,14 @@ function request_methods:_unread(data)
   return self._conn:unread(data)
 end
 
+local empty_post_params_array_mt = {
+  __index = function(self, key)
+    local value = {}
+    self[key] = value
+    return value
+  end,
+}
+
 function request_methods:process_request_body()
   local previous_state = self._request_body_mode
   if previous_state == "auto" then
@@ -139,6 +149,22 @@ function request_methods:process_request_body()
   local guard = mutex()
   fiber.spawn(function()
     local guard <close> = guard
+    local post_params = {}
+    local post_params_array = setmetatable({}, {
+      __index = function(self, key)
+        local value = { post_params[key] }
+        self[key] = value
+        return value
+      end,
+    })
+    local post_params_filename = {}
+    local post_params_content_type = {}
+    local post_params_content_type_params = {}
+    self.post_params = post_params
+    self.post_params_array = post_params_array
+    self.post_params_filename = post_params_filename
+    self.post_params_content_type = post_params_content_type
+    self.post_params_content_type_params = post_params_content_type_params
     local content_type = self.cgi_params.CONTENT_TYPE or ""
     local ct_base, ct_ext = string_match(content_type, "^([^; \t]*)(.*)")
     ct_base = string_lower(ct_base)
@@ -147,7 +173,19 @@ function request_methods:process_request_body()
         self._request_body_remaining < _M.max_non_streamed_size,
         "request body exceeded maximum length"
       )
-      self.post_params = web.decode_urlencoded_form(assert(self:_read()))
+      for key, value in
+        string.gmatch(assert(self:_read()), "([^&=]+)=([^&=]*)")
+      do
+        key = decode_uri(key)
+        value = decode_uri(value)
+        local old_value = post_params[key]
+        if old_value then
+          local array = post_params_array[key]
+          array[#array+1] = value
+        else
+          post_params[key] = value
+        end
+      end
     elseif ct_base == "multipart/form-data" then
       local non_streamed_size = 0
       local boundary = "--" .. assert(
@@ -164,11 +202,6 @@ function request_methods:process_request_body()
         "no linebreak after boundary in multipart form-data request body"
       )
       local boundary = "\r\n" .. boundary
-      -- TODO: duplicate names?
-      local post_params = {}
-      local post_params_filename = {}
-      local post_params_content_type = {}
-      local post_params_content_type_params = {}
       while true do
         local name, content_type, content_type_params
         local header_line_count = 0
@@ -221,17 +254,27 @@ function request_methods:process_request_body()
           end
         end
         if name then
-          post_params_content_type[name] = content_type
-          post_params_content_type_params[name] = content_type_params
+          local old_value = post_params[name]
+          if not old_value then
+            post_params_content_type[name] = content_type
+            post_params_content_type_params[name] = content_type_params
+          end
           local stream_funcs = self._stream_funcs[name]
           -- TODO: avoid duplicate streaming?
           if stream_funcs then
-            stream_funcs.init_func(name)
-            assert(
-              stream_until_boundary(self, boundary, stream_funcs.chunk_func),
-              "unexpected EOF in multipart form-data"
-            )
-            stream_funcs.done_func()
+            if old_value then
+              assert(
+                stream_until_boundary(self, boundary, noop),
+                "unexpected EOF in multipart form-data"
+              )
+            else
+              stream_funcs.init_func(name)
+              assert(
+                stream_until_boundary(self, boundary, stream_funcs.chunk_func),
+                "unexpected EOF in multipart form-data"
+              )
+              stream_funcs.done_func()
+            end
           else
             local chunks = {}
             assert(
@@ -246,7 +289,13 @@ function request_methods:process_request_body()
               end),
               "unexpected EOF in multipart form-data"
             )
-            post_params[name] = table.concat(chunks)
+            local value = table.concat(chunks)
+            if old_value then
+              local array = post_params_array[name]
+              array[#array+1] = value
+            else
+              post_params[name] = value
+            end
           end
         else
           stream_until_boundary(self, boundary, noop)
@@ -260,15 +309,6 @@ function request_methods:process_request_body()
           "no linebreak after boundary in multipart form-data request body"
         )
       end
-      self.post_params = post_params
-      self.post_params_filename = post_params_filename
-      self.post_params_content_type = post_params_content_type
-      self.post_params_content_type_params = post_params_content_type_params
-    else
-      self.post_params = {}
-      self.post_params_filename = {}
-      self.post_params_content_type = {}
-      self.post_params_content_type_params = {}
     end
   end)
 end
@@ -295,6 +335,7 @@ end
 
 local body_keys = {
   post_params = true,
+  post_params_array = true,
   post_params_filename = true,
   post_params_content_type = true,
   post_params_content_type_params = true,
@@ -335,6 +376,28 @@ function _M.connection_handler(conn, request_handler)
     params[key] = value
   end
   assert(params.SCGI == "1", "missing or unexpected SCGI version")
+  local get_params = {}
+  local get_params_array = setmetatable({}, {
+    __index = function(self, key)
+      local value = { get_params[key] }
+      self[key] = value
+      return value
+    end,
+  })
+  local query_string = params.QUERY_STRING
+  if query_string then
+    for key, value in string.gmatch(query_string, "([^&=]+)=([^&=]*)") do
+      key = decode_uri(key)
+      value = decode_uri(value)
+      local old_value = get_params[key]
+      if old_value then
+        local array = get_params_array[key]
+        array[#array+1] = value
+      else
+        get_params[key] = value
+      end
+    end
+  end
   local request = setmetatable(
     {
       _conn = conn,
@@ -344,7 +407,8 @@ function _M.connection_handler(conn, request_handler)
       ),
       _stream_funcs = {},
       cgi_params = params,
-      get_params = web.decode_urlencoded_form(params.QUERY_STRING or ""),
+      get_params = get_params,
+      get_params_array = get_params_array,
     },
     request_metatbl
   )
