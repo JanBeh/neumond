@@ -159,8 +159,11 @@ function request_methods:process_request_body()
       )
       local boundary = "\r\n" .. boundary
       local post_params = {}
+      local post_params_filename = {}
+      local post_params_content_type = {}
+      local post_params_content_type_params = {}
       while true do
-        local name
+        local name, content_type, content_type_params
         local header_line_count = 0
         while true do
           local line = assert(self:_read(16384, "\n"))
@@ -202,10 +205,17 @@ function request_methods:process_request_body()
             if key == "content-disposition" and value_base == "form-data" then
               local value_params = parse_header_params(value_ext)
               name = value_params.name
+              post_params_filename[name] = value_params.filename
+            elseif key == "content-type" then
+              local value_params = parse_header_params(value_ext)
+              content_type = value_base
+              content_type_params = value_params
             end
           end
         end
         if name then
+          post_params_content_type[name] = content_type
+          post_params_content_type_params[name] = content_type_params
           local chunks = {}
           assert(
             stream_until_boundary(self, boundary, function(chunk)
@@ -233,20 +243,33 @@ function request_methods:process_request_body()
         )
       end
       self.post_params = post_params
+      self.post_params_filename = post_params_filename
+      self.post_params_content_type = post_params_content_type
+      self.post_params_content_type_params = post_params_content_type_params
     else
       self.post_params = {}
+      self.post_params_filename = {}
+      self.post_params_content_type = {}
+      self.post_params_content_type_params = {}
     end
   end)
 end
 
+local body_keys = {
+  post_params = true,
+  post_params_filename = true,
+  post_params_content_type = true,
+  post_params_content_type_params = true,
+}
+
 local request_metatbl = {
   __index = function(self, key)
-    if key == "post_params" then
+    if body_keys[key] then
       self:process_request_body()
       do
         local guard <close> = self._request_body_mutex()
       end
-      return rawget(self, "post_params")
+      return rawget(self, key)
     end
     return request_methods[key]
   end,
