@@ -74,16 +74,22 @@ function request_methods:flush(...)
 end
 
 function request_methods:read(...)
-  if self._request_body_mode == "auto" then
+  local request_body_mode = self._request_body_mode
+  if request_body_mode == "auto" then
     error("request body has already been processed", 2)
+  elseif request_body_mode == "stream" then
+    error("request body streaming function has been set", 2)
   end
   self.request_body_state = "manual"
   return self:_read(...)
 end
 
 function request_methods:unread(...)
-  if self._request_body_mode == "auto" then
+  local request_body_mode = self._request_body_mode
+  if request_body_mode == "auto" then
     error("request body has already been processed", 2)
+  elseif request_body_mode == "stream" then
+    error("request body streaming function has been set", 2)
   end
   if not self._request_body_unexpected_eof then
     self._request_body_mode = "manual"
@@ -158,6 +164,7 @@ function request_methods:process_request_body()
         "no linebreak after boundary in multipart form-data request body"
       )
       local boundary = "\r\n" .. boundary
+      -- TODO: duplicate names?
       local post_params = {}
       local post_params_filename = {}
       local post_params_content_type = {}
@@ -216,20 +223,31 @@ function request_methods:process_request_body()
         if name then
           post_params_content_type[name] = content_type
           post_params_content_type_params[name] = content_type_params
-          local chunks = {}
-          assert(
-            stream_until_boundary(self, boundary, function(chunk)
-              non_streamed_size = non_streamed_size + #chunk
-              if non_streamed_size > _M.max_non_streamed_size then
-                error(
-                  "non-streamed request body parts exceeded maximum length"
-                )
-              end
-              chunks[#chunks+1] = chunk
-            end),
-            "unexpected EOF in multipart form-data"
-          )
-          post_params[name] = table.concat(chunks)
+          local stream_funcs = self._stream_funcs[name]
+          -- TODO: avoid duplicate streaming?
+          if stream_funcs then
+            stream_funcs.init_func(name)
+            assert(
+              stream_until_boundary(self, boundary, stream_funcs.chunk_func),
+              "unexpected EOF in multipart form-data"
+            )
+            stream_funcs.done_func()
+          else
+            local chunks = {}
+            assert(
+              stream_until_boundary(self, boundary, function(chunk)
+                non_streamed_size = non_streamed_size + #chunk
+                if non_streamed_size > _M.max_non_streamed_size then
+                  error(
+                    "non-streamed request body parts exceeded maximum length"
+                  )
+                end
+                chunks[#chunks+1] = chunk
+              end),
+              "unexpected EOF in multipart form-data"
+            )
+            post_params[name] = table.concat(chunks)
+          end
         else
           stream_until_boundary(self, boundary, noop)
         end
@@ -255,6 +273,26 @@ function request_methods:process_request_body()
   end)
 end
 
+function request_methods:setup_stream(name, init_func, chunk_func, done_func)
+  local request_body_mode = self._request_body_mode
+  if request_body_mode == "auto" then
+    error("request body has already been processed", 2)
+  elseif request_body_mode == "manual" then
+    error("request body has already been read", 2)
+  end
+  self._request_body_mode = "stream"
+  self._stream_funcs[name] = {
+    init_func = init_func or noop,
+    chunk_func = chunk_func or noop,
+    done_func = done_func or noop,
+  }
+end
+
+function request_methods:await_stream()
+  self:process_request_body()
+  local _ = self.post_params
+end
+
 local body_keys = {
   post_params = true,
   post_params_filename = true,
@@ -265,6 +303,12 @@ local body_keys = {
 local request_metatbl = {
   __index = function(self, key)
     if body_keys[key] then
+      if self._request_body_mode == "stream" then
+        error(
+          "request body streaming requires explicit request body processing",
+          2
+        )
+      end
       self:process_request_body()
       do
         local guard <close> = self._request_body_mutex()
@@ -298,6 +342,7 @@ function _M.connection_handler(conn, request_handler)
         tonumber(params.CONTENT_LENGTH),
         "missing or invalid CONTENT_LENGTH in SCGI header"
       ),
+      _stream_funcs = {},
       cgi_params = params,
       get_params = web.decode_urlencoded_form(params.QUERY_STRING or ""),
     },
