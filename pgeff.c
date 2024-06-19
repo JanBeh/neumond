@@ -5,6 +5,9 @@
 #include <lauxlib.h>
 #include <libpq-fe.h>
 
+// NOTE: only needed for notice processor:
+#define PGEFF_MODULE_REGKEY "pgeff_module"
+
 #define PGEFF_DBCONN_MT_REGKEY "pgeff_dbconn"
 #define PGEFF_TMPRES_MT_REGKEY "pgeff_tmpres"
 #define PGEFF_RESULT_MT_REGKEY "pgeff_result"
@@ -57,6 +60,19 @@ static void pgeff_push_string_trim(lua_State *L, const char *s) {
   size_t len = strlen(s);
   if (s[len-1] == '\n') len--;
   lua_pushlstring(L, s, len);
+}
+
+static void pgeff_notice_processor(void *ptr, const char *message) {
+  lua_State *const L = ptr;
+  lua_getfield(L, LUA_REGISTRYINDEX, PGEFF_MODULE_REGKEY);
+  lua_getfield(L, -1, "notice_processor");
+  lua_remove(L, -2);
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+  } else {
+    pgeff_push_string_trim(L, message);
+    lua_call(L, 1, 0);
+  }
 }
 
 static int pgeff_dbconn_close_cont(
@@ -159,6 +175,7 @@ static int pgeff_connect(lua_State *L) {
     "could not allocate memory for PGconn structure"
   );
   luaL_setmetatable(L, PGEFF_DBCONN_MT_REGKEY);
+  PQsetNoticeProcessor(dbconn->pgconn, pgeff_notice_processor, L);
   return pgeff_connect_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
@@ -418,6 +435,8 @@ int luaopen_pgeff(lua_State *L) {
   lua_pop(L, 1); // 0
 
   luaL_newlibtable(L, pgeff_funcs); // 1
+  lua_pushvalue(L, -1); // 2
+  lua_setfield(L, LUA_REGISTRYINDEX, PGEFF_MODULE_REGKEY); // 1
   lua_pushvalue(L, -1); // 2
 
   lua_getglobal(L, "require"); // 3
