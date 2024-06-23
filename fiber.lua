@@ -338,7 +338,7 @@ local function scope(...)
     end,
     -- Effect spawning a new fiber:
     [spawn] = function(resume, ...)
-      resume:call(spawn_impl, ...)
+      return resume:call(spawn_impl, ...)
     end,
   }
   -- Implementation of spawn function for current scheduler:
