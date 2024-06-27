@@ -343,7 +343,7 @@ local wait_posix_fiber = require "wait_posix_fiber"
 wait_posix_fiber.main(
   function()
     -- code here may perform "wait" or "wait_posix" effects (e.g. through "eio"
-       module), or spawn fibers that use these effects
+    -- module), or spawn fibers that use these effects
   end
 )
 ```
