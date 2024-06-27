@@ -14,8 +14,8 @@ local wait = require "wait"
 local wait_posix = require "wait_posix"
 local lkq = require "lkq"
 
-local function wake(self)
-  return self:wake()
+local function call(func, ...)
+  return func(...)
 end
 
 local weak_mt = { __mode = "k" }
@@ -29,46 +29,36 @@ local function handle_call_reset(self)
   self.ready = false
 end
 
-local handle_reset_metatbl = {
-  __call = handle_call_reset,
-}
+local handle_reset_metatbl = { __call = handle_call_reset }
 
 function _M.run(...)
   local eventqueue <close> = lkq.new_queue()
+  local read_fds, write_fds, pids, handles = {}, {}, {}, {}
   local poll_state_metatbl = {
     __close = function(self)
-      local entries = self.read_fds
-      for fd in pairs(entries) do
+      for fd in pairs(read_fds) do
         eventqueue:remove_fd_read(fd)
-        entries[fd] = nil
+        read_fds[fd] = nil
       end
-      local entries = self.write_fds
-      for fd in pairs(entries) do
+      for fd in pairs(write_fds) do
         eventqueue:remove_fd_write(fd)
-        entries[fd] = nil
+        write_fds[fd] = nil
       end
-      local entries = self.pids
-      for pid in pairs(entries) do
+      for pid in pairs(pids) do
         eventqueue:remove_pid(pid)
-        entries[pid] = nil
+        pids[pid] = nil
       end
-      local entries = self.handles
-      for handle in pairs(entries) do
+      for handle in pairs(handles) do
         handle._waiting = false
-        entries[handle] = nil
+        handles[handle] = nil
       end
     end,
   }
-  local poll_state = setmetatable(
-    { read_fds = {}, write_fds = {}, pids = {}, handles = {} },
-    poll_state_metatbl
-  )
-  local waiter = {
-    ready = false,
-    wake = function(self)
-      self.ready = true
-    end,
-  }
+  local poll_state = setmetatable({}, poll_state_metatbl)
+  local ready = false
+  local function make_ready()
+    ready = true
+  end
   local function wait_select(...)
     local poll_state <close> = poll_state
     for argidx = 1, math.huge, 2 do
@@ -77,14 +67,14 @@ function _M.run(...)
         break
       end
       if rtype == "fd_read" then
-        poll_state.read_fds[arg] = true
-        eventqueue:add_fd_read_once(arg, waiter)
+        read_fds[arg] = true
+        eventqueue:add_fd_read_once(arg, make_ready)
       elseif rtype == "fd_write" then
-        poll_state.write_fds[arg] = true
-        eventqueue:add_fd_write_once(arg, waiter) 
+        write_fds[arg] = true
+        eventqueue:add_fd_write_once(arg, make_ready)
       elseif rtype == "pid" then
-        poll_state.pids[arg] = true
-        eventqueue:add_pid(arg, waiter)
+        pids[arg] = true
+        eventqueue:add_pid(arg, make_ready)
       elseif rtype == "handle" then
         if arg.ready then
           return
@@ -94,9 +84,9 @@ function _M.run(...)
         error("unsupported resource type to wait for")
       end
     end
-    waiter.ready = false
-    while not waiter.ready do
-      eventqueue:wait(wake)
+    ready = false
+    while not ready do
+      eventqueue:wait(call)
     end
   end
   local signal_handles = {}
@@ -107,13 +97,14 @@ function _M.run(...)
       signal_handles[sig] = false
       eventqueue:add_signal(
         sig,
-        {
-          wake = function()
-            for handle, waker in pairs(handles) do
-              waker()
+        function()
+          for handle in pairs(handles) do
+            handle.ready = true
+            if handle._waiting then
+              ready = true
             end
-          end,
-        }
+          end
+        end
       )
       signal_handles[sig] = handles
     end
@@ -121,12 +112,7 @@ function _M.run(...)
       { ready = false, _waiting = false },
       handle_reset_metatbl
     )
-    handles[handle] = function()
-      handle.ready = true
-      if handle._waiting then
-        waiter.ready = true
-      end
-    end
+    handles[handle] = true
     return handle
   end
   local function clean_timeout(self)
@@ -148,14 +134,12 @@ function _M.run(...)
     )
     handle.inner_handle = eventqueue:add_timeout(
       seconds,
-      {
-        wake = function()
-          handle.ready = true
-          if handle._waiting then
-            waiter.ready = true
-          end
-        end,
-      }
+      function()
+        handle.ready = true
+        if handle._waiting then
+          ready = true
+        end
+      end
     )
     return handle
   end
@@ -178,14 +162,12 @@ function _M.run(...)
     )
     handle._inner_handle = eventqueue:add_interval(
       seconds,
-      {
-        wake = function()
-          handle.ready = true
-          if handle._waiting then
-            waiter.ready = true
-          end
-        end,
-      }
+      function()
+        handle.ready = true
+        if handle._waiting then
+          ready = true
+        end
+      end
     )
     return handle
   end
@@ -197,7 +179,7 @@ function _M.run(...)
     local function waker()
       sleeper.ready = true
       if sleeper._waiting then
-        waiter.ready = true
+        ready = true
       end
     end
     return sleeper, waker
