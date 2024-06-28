@@ -44,7 +44,8 @@ Web applications can be built using the `scgi` module, which allows creating an 
 Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
 
-Further modules are `web`, `scgi`, and `pgeff`. Those are not documented in this documentation file; see source code instead.
+Further modules are `web`, `scgi`, `pgeff`, and `subprocess`. Those are not
+documented in this documentation file; see source code instead.
 
 
 ## Module `effect`
