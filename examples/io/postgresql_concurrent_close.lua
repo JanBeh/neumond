@@ -1,6 +1,6 @@
-local fiber = require "fiber"
-local wait_posix_fiber = require "wait_posix_fiber"
-local pgeff = require "pgeff"
+local fiber = require "neumond.fiber"
+local wait_posix_fiber = require "neumond.wait.posix.fiber"
+local pgeff = require "neumond.pgeff"
 
 return wait_posix_fiber.main(function()
   local dbconn = assert(pgeff.connect(""))

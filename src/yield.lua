@@ -7,7 +7,7 @@ _ENV = setmetatable({}, {
 })
 
 -- Import "effect" module:
-local effect = require "effect"
+local effect = require "neumond.effect"
 
 -- The module table is used as effect:
 local _M = setmetatable({}, {

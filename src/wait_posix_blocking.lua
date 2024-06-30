@@ -9,10 +9,10 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
-local effect = require "effect"
-local wait = require "wait"
-local wait_posix = require "wait_posix"
-local lkq = require "lkq"
+local effect = require "neumond.effect"
+local wait = require "neumond.wait"
+local wait_posix = require "neumond.wait.posix"
+local lkq = require "neumond.lkq"
 
 local function call(func, ...)
   return func(...)

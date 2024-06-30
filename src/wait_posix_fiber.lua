@@ -10,10 +10,10 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
-local fiber = require "fiber"
-local wait = require "wait"
-local wait_posix = require "wait_posix"
-local lkq = require "lkq"
+local fiber = require "neumond.fiber"
+local wait = require "neumond.wait"
+local wait_posix = require "neumond.wait.posix"
+local lkq = require "neumond.lkq"
 
 local function wake(self)
   return self:wake()

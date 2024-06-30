@@ -427,7 +427,7 @@ static const struct luaL_Reg pgeff_funcs[] = {
   } while (0)
 
 // Library initialization:
-int luaopen_pgeff(lua_State *L) {
+int luaopen_neumond_pgeff(lua_State *L) {
   lua_settop(L, 0);
 
   luaL_newmetatable(L, PGEFF_TMPRES_MT_REGKEY); // 1
@@ -440,12 +440,12 @@ int luaopen_pgeff(lua_State *L) {
   lua_pushvalue(L, -1); // 2
 
   lua_getglobal(L, "require"); // 3
-  lua_pushliteral(L, "wait"); // 4
+  lua_pushliteral(L, "neumond.wait"); // 4
   lua_call(L, 1, 1); // 3
   lua_getfield(L, -1, "select"); // 4 -> 3
   lua_remove(L, -2);
   lua_getglobal(L, "require"); // 4
-  lua_pushliteral(L, "wait_posix"); // 5
+  lua_pushliteral(L, "neumond.wait.posix"); // 5
   lua_call(L, 1, 1); // 4
   lua_getfield(L, -1, "deregister_fd"); // 5 -> 4
   lua_remove(L, -2);

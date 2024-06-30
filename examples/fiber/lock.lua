@@ -1,6 +1,6 @@
-local fiber = require "fiber"
-local wait = require "wait"
-local wait_posix_fiber = require "wait_posix_fiber"
+local fiber = require "neumond.fiber"
+local wait = require "neumond.wait"
+local wait_posix_fiber = require "neumond.wait.posix.fiber"
 
 local lock = wait.mutex()
 

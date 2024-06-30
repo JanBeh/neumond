@@ -1,5 +1,5 @@
-local wait_posix_fiber = require "wait_posix_fiber"
-local eio = require "eio"
+local wait_posix_fiber = require "wait.posix.fiber"
+local eio = require "neumond.eio"
 
 eio.stdin:unread("Some more...")
 eio.stdin:unread("Hello World!\n")

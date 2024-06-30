@@ -1,4 +1,4 @@
-local effect = require "effect"
+local effect = require "neumond.effect"
 
 local collect = effect.new("collect")
 local use = effect.new("use")

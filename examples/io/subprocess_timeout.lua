@@ -1,8 +1,8 @@
-local subprocess = require "subprocess" -- uses fibers
-local wait_posix_fiber = require "wait_posix_fiber"
-local effect = require "effect"
-local fiber = require "fiber"
-local wait = require "wait"
+local subprocess = require "neumond.subprocess" -- uses fibers
+local wait_posix_fiber = require "neumond.wait.posix.fiber"
+local effect = require "neumond.effect"
+local fiber = require "neumond.fiber"
+local wait = require "neumond.wait"
 
 local timeout = effect.new("execution timeout")
 

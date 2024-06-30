@@ -9,7 +9,7 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
-local effect = require "effect"
+local effect = require "neumond.effect"
 
 -- Effect select(...) waits until one of several listed events occurred. Each
 -- event is denoted by two arguments, i.e. the number of arguments passed to

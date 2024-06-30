@@ -1,4 +1,4 @@
-local fiber = require "fiber"
+local fiber = require "neumond.fiber"
 
 local user_exception = setmetatable({}, {
   __tostring = function() return "user exception" end,

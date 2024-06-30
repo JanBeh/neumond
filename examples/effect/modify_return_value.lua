@@ -1,4 +1,4 @@
-local effect = require "effect"
+local effect = require "neumond.effect"
 
 local increment_result = effect.new("increment_result")
 

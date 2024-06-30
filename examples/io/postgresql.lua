@@ -1,6 +1,6 @@
-local effect = require "effect"
-local wait_posix_fiber = require "wait_posix_fiber"
-local pgeff = require "pgeff"
+local effect = require "neumond.effect"
+local wait_posix_fiber = require "neumond.wait.posix.fiber"
+local pgeff = require "neumond.pgeff"
 
 local function int_array_converter(s)
   local seq = {}

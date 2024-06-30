@@ -10,8 +10,8 @@ _ENV = setmetatable({}, {
 local _M = {}
 
 -- Import "effect" module and "yield" module (which is used as "yield" effect):
-local effect = require "effect"
-local yield = require "yield"
+local effect = require "neumond.effect"
+local yield = require "neumond.yield"
 
 -- Function creating a FIFO-like data structure where there can be no
 -- duplicates (i.e. pushing an already existing element is a no-op):

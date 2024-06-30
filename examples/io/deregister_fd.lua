@@ -1,8 +1,8 @@
-local effect = require "effect"
-local fiber = require "fiber"
-local wait = require "wait"
-local wait_posix_fiber = require "wait_posix_fiber"
-local eio = require "eio"
+local effect = require "neumond.effect"
+local fiber = require "neumond.fiber"
+local wait = require "neumond.wait"
+local wait_posix_fiber = require "neumond.wait.posix.fiber"
+local eio = require "neumond.eio"
 
 wait_posix_fiber.main(function()
   local listener = assert(eio.tcplisten(nil, 1234))

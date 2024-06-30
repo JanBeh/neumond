@@ -3,10 +3,10 @@
 _ENV = setmetatable({}, { __index = _G })
 local _M = {}
 
-local fiber = require "fiber"
-local wait = require "wait"
-local eio = require "eio"
-local web = require "web"
+local fiber = require "neumond.fiber"
+local wait = require "neumond.wait"
+local eio = require "neumond.eio"
+local web = require "neumond.web"
 
 _M.max_header_length = 1024 * 256
 

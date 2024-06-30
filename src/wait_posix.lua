@@ -9,8 +9,8 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
-local effect = require "effect"
-local wait = require "wait"
+local effect = require "neumond.effect"
+local wait = require "neumond.wait"
 
 -- Effect deregister_fd(fd) deregisters file descriptor fd, which should be
 -- done before closing a file descriptor that is currently waited on:

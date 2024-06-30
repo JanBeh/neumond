@@ -1,5 +1,5 @@
-local effect = require "effect"
-local fiber = require "fiber"
+local effect = require "neumond.effect"
+local fiber = require "neumond.fiber"
 
 local log = effect.new("log")
 

@@ -9,8 +9,8 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
-local nbio = require "nbio"
-local wait_posix = require "wait_posix"
+local nbio = require "neumond.nbio"
+local wait_posix = require "neumond.wait.posix"
 
 local handle_methods = {}
 

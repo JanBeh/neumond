@@ -462,7 +462,7 @@ static const struct luaL_Reg lkq_module_funcs[] = {
   {NULL, NULL}
 };
 
-int luaopen_lkq(lua_State *L) {
+int luaopen_neumond_lkq(lua_State *L) {
   luaL_newmetatable(L, LKQ_QUEUE_MT_REGKEY);
   luaL_setfuncs(L, lkq_queue_metamethods, 0);
   lua_newtable(L);

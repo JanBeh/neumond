@@ -9,8 +9,8 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
-local eio = require "eio"
-local fiber = require "fiber"
+local eio = require "neumond.eio"
+local fiber = require "neumond.fiber"
 
 -- Alias for eio.execute:
 _M.execute = eio.execute

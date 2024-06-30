@@ -1,10 +1,10 @@
-local effect = require "effect"
-local fiber = require "fiber"
-local wait_posix_fiber = require "wait_posix_fiber"
-local eio = require "eio"
-local scgi = require "scgi"
-local web = require "web"
-local pgeff = require "pgeff"
+local effect = require "neumond.effect"
+local fiber = require "neumond.fiber"
+local wait_posix_fiber = require "neumond.wait.posix.fiber"
+local eio = require "neumond.eio"
+local scgi = require "neumond.scgi"
+local web = require "neumond.web"
+local pgeff = require "neumond.pgeff"
 
 local scgi_path = assert(..., "no socket path given")
 

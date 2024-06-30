@@ -1,5 +1,5 @@
-local wait_posix = require "wait_posix"
-local wait_posix_blocking = require "wait_posix_blocking"
+local wait_posix = require "neumond.wait.posix"
+local wait_posix_blocking = require "neumond.wait.posix.blocking"
 
 wait_posix_blocking.main(
   function()

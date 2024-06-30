@@ -24,31 +24,32 @@ Web applications can be built using the `scgi` module, which allows creating an 
 
 ## Overview of core modules (dependency tree)
 
-  * **`effect`** (effect handling)
-      * **`yield`** (abstract yield effect)
-          * **`fiber`** (lightweight threads)
-              * `wait_posix_fiber`
-      * **`wait`** (platform independent waiting and synchronization)
-          * **`wait_posix`** (waiting for I/O on POSIX platforms)
-              * **`wait_posix_blocking`** (waiting through blocking)
-              * **`wait_posix_fiber`** (waiting in a fiber environment)
-              * **`eio`** (basic I/O)
-  * ***`lkq`*** ([kqueue] interface)
-      * `wait_posix_blocking`
-      * `wait_posix_fiber`
-  * ***`nbio`*** (basic non-blocking I/O interface written in C)
-      * `eio`
+  * **`neumond.effect`** (effect handling)
+      * **`neumond.yield`** (abstract yield effect)
+          * **`neumond.fiber`** (lightweight threads)
+              * `neumond.wait.posix.fiber`
+      * **`neumond.wait`** (platform independent waiting and synchronization)
+          * **`neumond.wait.posix`** (waiting for I/O on POSIX platforms)
+              * **`neumond.wait.posix.blocking`** (waiting through blocking)
+              * **`neumond.wait.posix.fiber`** (waiting in a fiber environment)
+              * **`neumond.eio`** (basic I/O)
+  * ***`neumond.lkq`*** ([kqueue] interface)
+      * `neumond.wait_posix_blocking`
+      * `neumond.wait_posix_fiber`
+  * ***`neumond.nbio`*** (basic non-blocking I/O interface written in C)
+      * `neumond.eio`
 
 [kqueue]: https://man.freebsd.org/cgi/man.cgi?kqueue
 
 Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
 
-Further modules are `web`, `scgi`, `pgeff`, and `subprocess`. Those are not
-documented in this documentation file; see source code instead.
+Further modules are `neumond.web`, `neumond.scgi`, `neumond.pgeff`, and
+`neumond.subprocess`. Those are not documented in this documentation file; see
+source code instead.
 
 
-## Module `effect`
+## Module `neumond.effect`
 
 Module for algebraic effect handling implemented in pure Lua with no
 dependencies other than Lua's standard library.
@@ -63,7 +64,7 @@ The following example demonstrates control flow using effects. It prints out
 the two lines "`Hello`" and "`World`":
 
 ```
-local effect = require "effect"
+local effect = require "neumond.effect"
 
 local increment_result = effect.new("increment_result")
 
@@ -136,13 +137,13 @@ achieve this, it is possible to use the method **`resume:call(func, ...)`**.
 In that case, `effect.perform` will call the function `func` (with given
 arguments) and return `func`'s return values.
 
-## Module `yield`
+## Module `neumond.yield`
 
 Module for yielding. The module also serves as an effect, thus it is possible
 to write:
 
 ```
-local yield = require "yield"
+local yield = require "neumond.yield"
 yield()
 ```
 
@@ -152,7 +153,7 @@ The module's only effect (itself) is:
     to be executed. It is a no-op if no effect handler for `yield` is
     installed.
 
-## Module `fiber`
+## Module `neumond.fiber`
 
 Module for lightweight threads implemented in pure Lua by using the `effect`
 module.
@@ -221,7 +222,7 @@ A fiber handle `f` provides the following attributes and methods:
     `f` has terminated. If `f` was killed, this method returns `false`,
     otherwise returns `true` followed by `f`'s return values.
 
-## Module `wait`
+## Module `neumond.wait`
 
 Module for waiting and synchronization.
 
@@ -286,7 +287,7 @@ local func()
 end
 ```
 
-## Module `wait_posix`
+## Module `neumond.wait.posix`
 
 Module providing additional effects and functions for waiting on POSIX
 platforms.
@@ -324,7 +325,7 @@ are created for waiting, each handle must not be used more than once in
 parallel. Violating these rules may result in an error or unspecified behavior,
 e.g. deadlocks.
 
-## Module `wait_posix_fiber`
+## Module `wait.posix.fiber`
 
 Module providing handling of the effects defined in the `wait` and `wait_posix`
 modules in a POSIX environment using `kqueue` system/library calls (through the
@@ -339,7 +340,7 @@ The module provides the following function:
 Example use:
 
 ```
-local wait_posix_fiber = require "wait_posix_fiber"
+local wait_posix_fiber = require "wait.posix.fiber"
 
 wait_posix_fiber.main(
   function()
@@ -349,10 +350,10 @@ wait_posix_fiber.main(
 )
 ```
 
-## Module `eio`
+## Module `neumond.eio`
 
-Module for basic I/O, using non-blocking I/O (through the `nbio` Lua module
-written in C) and the `wait_posix` module to wait for I/O.
+Module for basic I/O, using non-blocking I/O (through the `neumond.nbio` Lua
+module written in C) and the `neumond.wait.posix` module to wait for I/O.
 
 With the exception of depending on POSIX file descriptors, this module generic
 in regard to how "waiting" is implemented. In particular, `eio` does not depend

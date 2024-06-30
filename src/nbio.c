@@ -1393,7 +1393,7 @@ static const struct luaL_Reg nbio_child_metamethods[] = {
 };
 
 // Library initialization:
-int luaopen_nbio(lua_State *L) {
+int luaopen_neumond_nbio(lua_State *L) {
   luaL_newmetatable(L, NBIO_HANDLE_MT_REGKEY);
   lua_newtable(L);
   luaL_setfuncs(L, nbio_handle_methods, 0);

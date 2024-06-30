@@ -1,4 +1,4 @@
-local fiber = require "fiber"
+local fiber = require "neumond.fiber"
 
 fiber.scope(function()
   local f1, f2
