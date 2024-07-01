@@ -36,6 +36,7 @@ creating an [SCGI] application server using fibers and asynchronous I/O.
           * **`neumond.wait_posix`** (waiting for I/O on POSIX platforms)
               * **`neumond.wait_posix_blocking`** (waiting through blocking)
               * **`neumond.wait_posix_fiber`** (waiting in a fiber environment)
+                  * **`neumond.runtime`** (runtime for POSIX platforms)
               * **`neumond.eio`** (basic I/O)
   * ***`neumond.lkq`*** ([kqueue] interface)
       * `neumond.wait_posix_blocking`
@@ -51,6 +52,26 @@ Duplicates due to multiple dependencies are non-bold.
 Further modules are `neumond.web`, `neumond.scgi`, `neumond.pgeff`, and
 `neumond.subprocess`. Those are not documented in this documentation file; see
 source code instead.
+
+
+## Module `neumond.runtime`
+
+This module provides a multi-fiber asynchronous I/O runtime for POSIX
+platforms. Use as follows:
+
+```
+local runtime = require "neumond.runtime"
+
+local function main(...)
+  -- You may spawn fibers or perform asynchronous I/O here.
+
+  -- For example:
+  local wait = require "neumond.wait"
+  wait.timeout(1)() -- waits 1 second
+end
+
+return runtime(main, ...)
+```
 
 
 ## Module `neumond.effect`
@@ -332,32 +353,6 @@ writing are considered as two different resources in that matter. Where handles
 are created for waiting, each handle must not be used more than once in
 parallel. Violating these rules may result in an error or unspecified behavior,
 e.g. deadlocks.
-
-
-## Module `neumond.wait_posix_fiber`
-
-Module providing handling of the effects defined in the `wait` and `wait_posix`
-modules in a POSIX environment using `kqueue` system/library calls (through the
-`lkq` Lua module written in C) and fibers to avoid blocking.
-
-The module provides the following function:
-
-  * **`wait_posix_fiber.main(action, ...)`** runs the `action` function while
-    the effects of the `wait` and `wait_posix` modules are handled with the
-    help of fibers provided by the `fiber` module.
-
-Example use:
-
-```
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
-
-wait_posix_fiber.main(
-  function()
-    -- code here may perform "wait" or "wait_posix" effects (e.g. through "eio"
-    -- module), or spawn fibers that use these effects
-  end
-)
-```
 
 
 ## Module `neumond.eio`
