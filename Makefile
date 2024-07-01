@@ -6,7 +6,7 @@
 	@echo "# For testing, you may use the following environment variables:"
 	@echo "#"
 	@echo "export LUA_PATH='target/lua-libs/?.lua;;'"
-	@echo "export LUAC_PATH='target/c-libs/?.so;;'"
+	@echo "export LUA_CPATH='target/c-libs/?.so;;'"
 	@echo "#"
 	@echo "# Several examples are found in the examples/ directory."
 
@@ -39,6 +39,7 @@ PGSQL_INCLUDE ?= /usr/local/include
 PGSQL_LIBDIR  ?= /usr/local/lib
 PGSQL_LIBRARY ?= pq
 KQUEUE_FLAGS ?=
+LUA_CMD ?= lua54
 
 .elif $(PLATFORM) == "Linux"
 # Distinguish between different Linux distributions
@@ -80,6 +81,9 @@ PGSQL_INCLUDE ?= /usr/include
 PGSQL_LIBDIR  ?= /usr/lib
 PGSQL_LIBRARY ?= pq
 KQUEUE_FLAGS ?= -lkqueue
+LUA_CMD ?= lua
+
+.export LUA_CMD
 
 all:: target/lua-libs target/c-libs/neumond/lkq.so target/c-libs/neumond/nbio.so target/c-libs/neumond/pgeff.so
 
@@ -122,6 +126,9 @@ target/c-libs/neumond/pgeff.so: target/obj/pgeff.o
 target/obj/pgeff.o: src/pgeff.c
 	mkdir -p target/obj
 	cc -c -Wall -g -fPIC -o target/obj/pgeff.o -I $(LUA_INCLUDE) -I $(PGSQL_INCLUDE) src/pgeff.c
+
+test:: all
+	cd testing && ./run-tests.sh
 
 clean::
 	rm -Rf target/
