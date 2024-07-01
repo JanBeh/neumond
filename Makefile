@@ -2,29 +2,22 @@
 # On GNU systems, use bmake.
 
 .DEFAULT:: all
-	@echo "#"
-	@echo "# For testing, you may use the following environment variables:"
-	@echo "#"
-	@echo "export LUA_PATH='target/lua-libs/?.lua;;'"
-	@echo "export LUA_CPATH='target/c-libs/?.so;;'"
-	@echo "#"
-	@echo "# Several examples are found in the examples/ directory."
 
 .DELETE_ON_ERROR::
 
 .ERROR::
+	@echo
+	@echo '# Build failed.'
+	@echo '# Note that the following variables may be used:'
 	@echo '#'
-	@echo '# Build failed. Consider setting the following variables:'
-	@echo '#'
-	@echo '# LUA_INCLUDE e.g. to "/usr/include"'
-	@echo '# LUA_LIBDIR e.g. to "/usr/lib"'
-	@echo '# LUA_LIBRARY e.g. to "lua" (for liblua)'
-	@echo '# PGSQL_INCLUDE e.g. to "/usr/include"'
-	@echo '# PGSQL_LIBDIR e.g. to "/usr/lib"'
-	@echo '# PGSQL_LIBRARY e.g. to "pq" (for libpq)'
-	@echo '# KQUEUE_INCLUDE_FLAGS e.g. to "" or "-I/usr/include"'
-	@echo '# KQUEUE_FLAGS e.g. to "" or "-lkqueue"'
-	@echo '#'
+	@echo '# LUA_INCLUDE e.g. set to "/usr/include"'
+	@echo '# LUA_LIBDIR e.g. set to "/usr/lib"'
+	@echo '# LUA_LIBRARY e.g. set to "lua" (for liblua)'
+	@echo '# PGSQL_INCLUDE e.g. set to "/usr/include"'
+	@echo '# PGSQL_LIBDIR e.g. set to "/usr/lib"'
+	@echo '# PGSQL_LIBRARY e.g. set to "pq" (for libpq)'
+	@echo '# KQUEUE_INCLUDE_FLAGS e.g. set to "" or "-I/usr/include"'
+	@echo '# KQUEUE_FLAGS e.g. set to "" or "-lkqueue"'
 
 .ifndef PLATFORM
 PLATFORM != uname
@@ -86,6 +79,19 @@ LUA_CMD ?= lua
 .export LUA_CMD
 
 all:: target/lua-libs target/c-libs/neumond/lkq.so target/c-libs/neumond/nbio.so target/c-libs/neumond/pgeff.so
+	@echo
+	@echo "# Build complete. See target/lua-libs and target/c-libs directories."
+	@echo "#"
+	@echo "# Copy the lua and C files to an appropriate location"
+	@echo "# or use the following environment variables to"
+	@echo "# execute Lua code from the current directory:"
+	@echo "#"
+	@echo "export LUA_PATH='target/lua-libs/?.lua;;'"
+	@echo "export LUA_CPATH='target/c-libs/?.so;;'"
+	@echo "#"
+	@echo "# Several examples are found in the examples/ directory."
+	@echo
+
 
 target/lua-libs: src/*.lua
 	mkdir -p target/lua-libs/neumond
