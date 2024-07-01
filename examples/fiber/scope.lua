@@ -17,9 +17,6 @@ end
 
 -- This function is also not aware of any fibers:
 local function logging_important(...)
-  -- But uncommenting this line (i.e. using the naive/original effect.handle
-  -- function) would stop "Hello World!" from being logged as "IMPORTANT":
-  --local effect = require "effect"
   return effect.handle({
     [log] = function(resume, message)
       print("LOG IMPORTANT: " .. tostring(message))
@@ -42,8 +39,17 @@ local function do_twice_parallel(...)
   )
 end
 
+-- Using this in function double_hello would cause logging_important in task 2
+-- to be ignored:
+local function do_twice_parallel_WRONG(...)
+  local f1 = fiber.spawn(...)
+  local f2 = fiber.spawn(...)
+  return f1:await(), (f2:await())
+end
+
 -- This function is performing but not handling any effects:
 local function double_hello()
+  --do_twice_parallel_WRONG(function()
   do_twice_parallel(function()
     log("Hello World!")
   end)
