@@ -95,18 +95,7 @@ all:: target/lua-libs target/c-libs/neumond/lkq.so target/c-libs/neumond/nbio.so
 
 target/lua-libs: src/*.lua
 	mkdir -p target/lua-libs/neumond
-	mkdir -p target/lua-libs/neumond/wait/posix
-	cp src/effect.lua target/lua-libs/neumond/
-	cp src/yield.lua target/lua-libs/neumond/
-	cp src/fiber.lua target/lua-libs/neumond/
-	cp src/wait.lua target/lua-libs/neumond/
-	cp src/wait_posix.lua target/lua-libs/neumond/wait/posix.lua
-	cp src/wait_posix_blocking.lua target/lua-libs/neumond/wait/posix/blocking.lua
-	cp src/wait_posix_fiber.lua target/lua-libs/neumond/wait/posix/fiber.lua
-	cp src/eio.lua target/lua-libs/neumond/
-	cp src/subprocess.lua target/lua-libs/neumond/
-	cp src/web.lua target/lua-libs/neumond/
-	cp src/scgi.lua target/lua-libs/neumond/
+	cp src/*.lua target/lua-libs/neumond/
 	touch target/lua-libs
 
 target/c-libs/neumond/lkq.so: target/obj/lkq.o
