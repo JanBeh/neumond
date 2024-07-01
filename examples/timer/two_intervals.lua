@@ -1,6 +1,6 @@
 local fiber = require "neumond.fiber"
 local wait = require "neumond.wait"
-local wait_posix_fiber = require "neumond.wait.posix.fiber"
+local wait_posix_fiber = require "neumond.wait_posix_fiber"
 
 wait_posix_fiber.main(function()
   local a = wait.interval(1)

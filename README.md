@@ -27,11 +27,11 @@ Web applications can be built using the `scgi` module, which allows creating an 
   * **`neumond.effect`** (effect handling)
       * **`neumond.yield`** (abstract yield effect)
           * **`neumond.fiber`** (lightweight threads)
-              * `neumond.wait.posix.fiber`
+              * `neumond.wait_posix_fiber`
       * **`neumond.wait`** (platform independent waiting and synchronization)
-          * **`neumond.wait.posix`** (waiting for I/O on POSIX platforms)
-              * **`neumond.wait.posix.blocking`** (waiting through blocking)
-              * **`neumond.wait.posix.fiber`** (waiting in a fiber environment)
+          * **`neumond.wait_posix`** (waiting for I/O on POSIX platforms)
+              * **`neumond.wait_posix_blocking`** (waiting through blocking)
+              * **`neumond.wait_posix_fiber`** (waiting in a fiber environment)
               * **`neumond.eio`** (basic I/O)
   * ***`neumond.lkq`*** ([kqueue] interface)
       * `neumond.wait_posix_blocking`
@@ -287,7 +287,7 @@ local func()
 end
 ```
 
-## Module `neumond.wait.posix`
+## Module `neumond.wait_posix`
 
 Module providing additional effects and functions for waiting on POSIX
 platforms.
@@ -325,7 +325,7 @@ are created for waiting, each handle must not be used more than once in
 parallel. Violating these rules may result in an error or unspecified behavior,
 e.g. deadlocks.
 
-## Module `wait.posix.fiber`
+## Module `neumond.wait_posix_fiber`
 
 Module providing handling of the effects defined in the `wait` and `wait_posix`
 modules in a POSIX environment using `kqueue` system/library calls (through the
@@ -340,7 +340,7 @@ The module provides the following function:
 Example use:
 
 ```
-local wait_posix_fiber = require "wait.posix.fiber"
+local wait_posix_fiber = require "neumond.wait_posix_fiber"
 
 wait_posix_fiber.main(
   function()
@@ -353,7 +353,7 @@ wait_posix_fiber.main(
 ## Module `neumond.eio`
 
 Module for basic I/O, using non-blocking I/O (through the `neumond.nbio` Lua
-module written in C) and the `neumond.wait.posix` module to wait for I/O.
+module written in C) and the `neumond.wait_posix` module to wait for I/O.
 
 With the exception of depending on POSIX file descriptors, this module generic
 in regard to how "waiting" is implemented. In particular, `eio` does not depend
@@ -363,8 +363,8 @@ appropriate handlers have to be installed. One way to achieve this is to use
 `wait_posix_fiber.main(action, ...)` as in the following example:
 
 ```
-local wait_posix_fiber = require "wait_posix_fiber"
-local eio = require "eio"
+local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local eio = require "neumond.eio"
 
 wait_posix_fiber.main(
   function()

@@ -1,7 +1,7 @@
 local effect = require "neumond.effect"
 local fiber = require "neumond.fiber"
 local wait = require "neumond.wait"
-local wait_posix_fiber = require "neumond.wait.posix.fiber"
+local wait_posix_fiber = require "neumond.wait_posix_fiber"
 local eio = require "neumond.eio"
 
 wait_posix_fiber.main(function()

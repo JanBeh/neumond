@@ -1,6 +1,6 @@
 local wait = require "neumond.wait"
-local wait_posix = require "neumond.wait.posix"
-local wait_posix_blocking = require "neumond.wait.posix.blocking"
+local wait_posix = require "neumond.wait_posix"
+local wait_posix_blocking = require "neumond.wait_posix_blocking"
 
 wait_posix_blocking.main(function()
   print("Startup")

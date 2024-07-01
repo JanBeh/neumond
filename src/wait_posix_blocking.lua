@@ -11,7 +11,7 @@ local _M = {}
 
 local effect = require "neumond.effect"
 local wait = require "neumond.wait"
-local wait_posix = require "neumond.wait.posix"
+local wait_posix = require "neumond.wait_posix"
 local lkq = require "neumond.lkq"
 
 local function call(func, ...)

@@ -1,5 +1,5 @@
 local subprocess = require "neumond.subprocess" -- uses fibers
-local wait_posix_fiber = require "neumond.wait.posix.fiber"
+local wait_posix_fiber = require "neumond.wait_posix_fiber"
 
 local function shell_add(a, b)
   local a = assert(tonumber(a))

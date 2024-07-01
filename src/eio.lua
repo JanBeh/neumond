@@ -10,7 +10,7 @@ _ENV = setmetatable({}, {
 local _M = {}
 
 local nbio = require "neumond.nbio"
-local wait_posix = require "neumond.wait.posix"
+local wait_posix = require "neumond.wait_posix"
 
 local handle_methods = {}
 
