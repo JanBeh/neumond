@@ -440,15 +440,11 @@ int luaopen_neumond_pgeff(lua_State *L) {
   lua_pushvalue(L, -1); // 2
 
   lua_getglobal(L, "require"); // 3
-  lua_pushliteral(L, "neumond.wait"); // 4
+  lua_pushliteral(L, "neumond.wait_posix"); // 4
   lua_call(L, 1, 1); // 3
   lua_getfield(L, -1, "select"); // 4 -> 3
-  lua_remove(L, -2);
-  lua_getglobal(L, "require"); // 4
-  lua_pushliteral(L, "neumond.wait_posix"); // 5
-  lua_call(L, 1, 1); // 4
   lua_getfield(L, -1, "deregister_fd"); // 5 -> 4
-  lua_remove(L, -2);
+  lua_remove(L, -3);
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY); // 5
   pgeff_userdata_helper(); // 12

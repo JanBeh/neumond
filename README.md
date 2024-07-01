@@ -327,6 +327,8 @@ platforms.
 
 The module provides the following effects:
 
+  * **`wait_posix.select(...)`** which is an alias for `wait.select(...)`.
+
   * **`wait_posix.catch_signal(sig)`** starts listening for signal `sig` and
     returns a callable handle, which, upon calling, waits until a signal has
     been delivered. The callable handle may also be passed to the `wait.select`
