@@ -1,41 +1,21 @@
 local effect = require "neumond.effect"
 
-local eff1 = effect.new("eff1")
-local eff2 = effect.new("eff2")
+local early_exit = effect.new("early_exit")
 
 effect.handle(
   {
-    [eff1] = function(resume)
-      local cleanup <close> = setmetatable({}, {
-        __close = function()
-          print("Cleaning up eff1 handler.")
-        end,
-      })
-      -- eff1 handler doesn't resume
+    [early_exit] = function(resume)
+      print("Exiting early.")
+      -- resume not used
     end,
   },
   function()
-    effect.handle(
-      {
-        [eff2] = function(resume)
-          local cleanup <close> = setmetatable({}, {
-            __close = function()
-              print("Cleaning up eff2 handler.")
-            end,
-          })
-          eff1() -- this causes eff2 to not resume
-          return resume()
-        end,
-      },
-      function()
-        local cleanup <close> = setmetatable({}, {
-          __close = function()
-            print("Cleaning up inner action.")
-          end,
-        })
-        eff2()
-        print("unreachable")
-      end
-    )
+    local guard <close> = setmetatable({}, {
+      __close = function()
+        print("Cleaning up.")
+      end,
+    })
+    early_exit()
+    error("unreachable")
   end
 )
