@@ -73,6 +73,10 @@ end
 return runtime(main, ...)
 ```
 
+In addition to providing a runtime for fibers and asynchronous I/O, the
+`runtime` function will also stringify any uncaught errors and append stack
+traces (see also `effect.auto_traceback`).
+
 
 ## Module `neumond.effect`
 
