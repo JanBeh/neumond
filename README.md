@@ -14,13 +14,17 @@ Some basic asynchronous I/O support is given for:
     (including TCP server support)
   * subprocesses with stdin, stdout, and stderr
 
-Moreover, a small example for integration with a third party C library [libpq] is included (Lua module `pgeff`, written in C), allowing asynchronous communication with a [PostgreSQL] server.
+Moreover, a small example for integration with a third party C library
+([libpq] from [PostgreSQL]) is included (Lua module `neumond.pgeff`, written in
+C).
 
-Web applications can be built using the `scgi` module, which allows creating an [SCGI] application server using fibers and asynchronous I/O.
+Web applications can be built using the `neumond.scgi` module, which allows
+creating an [SCGI] application server using fibers and asynchronous I/O.
 
 [libpq]: https://www.postgresql.org/docs/current/libpq.html
 [PostgreSQL]: https://www.postgresql.org/
 [SCGI]: https://en.wikipedia.org/wiki/Simple_Common_Gateway_Interface
+
 
 ## Overview of core modules (dependency tree)
 
@@ -137,6 +141,7 @@ achieve this, it is possible to use the method **`resume:call(func, ...)`**.
 In that case, `effect.perform` will call the function `func` (with given
 arguments) and return `func`'s return values.
 
+
 ## Module `neumond.yield`
 
 Module for yielding. The module also serves as an effect, thus it is possible
@@ -152,6 +157,7 @@ The module's only effect (itself) is:
   * **`yield()`** allows an environment to yield and allow other program code
     to be executed. It is a no-op if no effect handler for `yield` is
     installed.
+
 
 ## Module `neumond.fiber`
 
@@ -222,6 +228,7 @@ A fiber handle `f` provides the following attributes and methods:
     `f` has terminated. If `f` was killed, this method returns `false`,
     otherwise returns `true` followed by `f`'s return values.
 
+
 ## Module `neumond.wait`
 
 Module for waiting and synchronization.
@@ -287,6 +294,7 @@ local func()
 end
 ```
 
+
 ## Module `neumond.wait_posix`
 
 Module providing additional effects and functions for waiting on POSIX
@@ -325,6 +333,7 @@ are created for waiting, each handle must not be used more than once in
 parallel. Violating these rules may result in an error or unspecified behavior,
 e.g. deadlocks.
 
+
 ## Module `neumond.wait_posix_fiber`
 
 Module providing handling of the effects defined in the `wait` and `wait_posix`
@@ -349,6 +358,7 @@ wait_posix_fiber.main(
   end
 )
 ```
+
 
 ## Module `neumond.eio`
 
@@ -501,6 +511,7 @@ An I/O handle `h` provides the following attributes and methods:
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.
 
+
 ## Caveats
 
 On Linux, [`libkqueue`] is needed. Some older versions of this library do not
@@ -520,6 +531,7 @@ BSD, etc.) only. In particular, there is no support for Microsoft Windows.
 However, it is possible to use the `effect` and `fiber` modules on Windows,
 since those are implemented in pure Lua and do not have any operating system
 dependencies.
+
 
 ## Related work
 
