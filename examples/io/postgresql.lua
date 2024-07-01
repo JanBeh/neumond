@@ -1,5 +1,5 @@
 local effect = require "neumond.effect"
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 local pgeff = require "neumond.pgeff"
 
 local function int_array_converter(s)
@@ -24,7 +24,7 @@ local function input_converter(v)
   return v
 end
 
-return effect.auto_traceback(wait_posix_fiber.main, function()
+local function main(...)
   local dbconn = assert(pgeff.connect(""))
 
   local a, b = 15, 7
@@ -61,4 +61,6 @@ return effect.auto_traceback(wait_posix_fiber.main, function()
   assert(ary[1] == 11)
   assert(ary[2] == 12)
   assert(ary[3] == 13)
-end)
+end
+
+return runtime(main, ...)

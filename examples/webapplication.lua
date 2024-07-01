@@ -1,6 +1,6 @@
 local effect = require "neumond.effect"
 local fiber = require "neumond.fiber"
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 local eio = require "neumond.eio"
 local scgi = require "neumond.scgi"
 local web = require "neumond.web"
@@ -67,10 +67,9 @@ end
 
 local terminate = effect.new("terminate")
 
-effect.auto_traceback(
-  effect.handle,
+return runtime(
+  fiber.handle,
   { [terminate] = function(resume, sig) end },
-  wait_posix_fiber.main,
   function()
     fiber.spawn(function() eio.catch_signal(2)(); terminate() end)
     fiber.spawn(function() eio.catch_signal(15)(); terminate() end)

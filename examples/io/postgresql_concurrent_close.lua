@@ -1,8 +1,8 @@
 local fiber = require "neumond.fiber"
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 local pgeff = require "neumond.pgeff"
 
-return wait_posix_fiber.main(function()
+local function main(...)
   local dbconn = assert(pgeff.connect(""))
 
   local f1 = fiber.spawn(function()
@@ -13,4 +13,6 @@ return wait_posix_fiber.main(function()
     dbconn:close()
   end)
   return f1:await(), f2:await()
-end)
+end
+
+return runtime(main, ...)

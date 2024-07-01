@@ -1,8 +1,8 @@
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 local eio = require "neumond.eio"
 
-wait_posix_fiber.main(
-  function()
-    eio.stdout:flush("Hello World!\n")
-  end
-)
+local function main(...)
+  eio.stdout:flush("Hello World!\n")
+end
+
+return runtime(main, ...)

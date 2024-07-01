@@ -1,8 +1,8 @@
 local fiber = require "neumond.fiber"
 local wait = require "neumond.wait"
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 
-wait_posix_fiber.main(function()
+function main(...)
   local a = wait.interval(1)
   local b = wait.interval(1.1)
   local c = wait.timeout(10)
@@ -20,4 +20,6 @@ wait_posix_fiber.main(function()
   end)
   c()
   print("Done")
-end)
+end
+
+return runtime(main, ...)

@@ -1,9 +1,9 @@
 local checkpoint = require "checkpoint"
 local fiber = require "neumond.fiber"
 local wait = require "neumond.wait"
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 
-wait_posix_fiber.main(function()
+runtime(function()
   local tmr1 = wait.interval(0.02 * 5)
   local tmr2 = wait.interval(0.02 * 8)
   local tmr3 = wait.timeout(0.02 * 36)

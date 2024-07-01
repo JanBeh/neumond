@@ -1,6 +1,6 @@
 local effect = require "neumond.effect"
 local fiber = require "neumond.fiber"
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 local eio = require "neumond.eio"
 local scgi = require "neumond.scgi"
 local web = require "neumond.web"
@@ -49,18 +49,21 @@ local terminate = effect.new("terminate")
 
 print("Starting SCGI server.")
 
-effect.handle(
-  {
-    [terminate] = function(resume, sig)
-      print("Terminating SCGI server due to " .. sig .. ".")
+local function main(...)
+  return fiber.handle(
+    {
+      [terminate] = function(resume, sig)
+        print("Terminating SCGI server due to " .. sig .. ".")
+      end
+    },
+    function()
+      fiber.spawn(function() eio.catch_signal(2)(); terminate("SIGINT") end)
+      fiber.spawn(function() eio.catch_signal(15)(); terminate("SIGTERM") end)
+      scgi.run(scgi_path, request_handler)
     end
-  },
-  wait_posix_fiber.main,
-  function()
-    fiber.spawn(function() eio.catch_signal(2)(); terminate("SIGINT") end)
-    fiber.spawn(function() eio.catch_signal(15)(); terminate("SIGTERM") end)
-    scgi.run(scgi_path, request_handler)
-  end
-)
+  )
+end
+
+runtime(main, ...)
 
 print("SCGI server terminated.")

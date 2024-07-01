@@ -1,10 +1,10 @@
 local effect = require "neumond.effect"
 local fiber = require "neumond.fiber"
 local wait = require "neumond.wait"
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 local eio = require "neumond.eio"
 
-wait_posix_fiber.main(function()
+local function main(...)
   local listener = assert(eio.tcplisten(nil, 1234))
   while true do
     local conn <close> = assert(listener:accept())
@@ -19,4 +19,6 @@ wait_posix_fiber.main(function()
     print("Got:", conn:read(1024, "\n"))
     fib:kill()
   end
-end)
+end
+
+return runtime(main, ...)

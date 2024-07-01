@@ -1,5 +1,5 @@
 local subprocess = require "neumond.subprocess" -- uses fibers
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 local effect = require "neumond.effect"
 local fiber = require "neumond.fiber"
 local wait = require "neumond.wait"
@@ -25,12 +25,12 @@ local function exec_timeout(...)
   )
 end
 
-wait_posix_fiber.main(
-  function()
-    local hello = assert(exec_timeout("sh", "-c", "echo Hello"))
-    assert(hello == "Hello\n")
-    local output, errmsg = exec_timeout("sh", "-c", "sleep 2")
-    assert(output == nil)
-    assert(errmsg == "timeout")
-  end
-)
+local function main(...)
+  local hello = assert(exec_timeout("sh", "-c", "echo Hello"))
+  assert(hello == "Hello\n")
+  local output, errmsg = exec_timeout("sh", "-c", "sleep 2")
+  assert(output == nil)
+  assert(errmsg == "timeout")
+end
+
+return runtime(main, ...)
