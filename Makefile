@@ -1,7 +1,7 @@
 # BSD Makefile
 # On GNU systems, use bmake.
 
-.DEFAULT:: all
+.MAIN:: all
 
 .DELETE_ON_ERROR::
 
