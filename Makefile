@@ -3,21 +3,10 @@
 
 .MAIN:: all
 
-.DELETE_ON_ERROR::
-
 .ERROR::
 	@echo
-	@echo '# Build failed.'
-	@echo '# Note that the following variables may be used:'
-	@echo '#'
-	@echo '# LUA_INCLUDE e.g. set to "/usr/include"'
-	@echo '# LUA_LIBDIR e.g. set to "/usr/lib"'
-	@echo '# LUA_LIBRARY e.g. set to "lua" (for liblua)'
-	@echo '# PGSQL_INCLUDE e.g. set to "/usr/include"'
-	@echo '# PGSQL_LIBDIR e.g. set to "/usr/lib"'
-	@echo '# PGSQL_LIBRARY e.g. set to "pq" (for libpq)'
-	@echo '# KQUEUE_INCLUDE_FLAGS e.g. set to "" or "-I/usr/include"'
-	@echo '# KQUEUE_FLAGS e.g. set to "" or "-lkqueue"'
+	@echo 'Build failed.'
+	@echo 'Consider setting {LUA,PGSQL,KQUEUE}_{INCDIR,LIBDIR,LIBNAME} variables.'
 
 .ifndef PLATFORM
 PLATFORM != uname
@@ -25,14 +14,13 @@ PLATFORM != uname
 
 .if $(PLATFORM) == "FreeBSD"
 # Default configuration for FreeBSD
-LUA_INCLUDE ?= /usr/local/include/lua54
+LUA_INCDIR ?= /usr/local/include/lua54
 LUA_LIBDIR  ?= /usr/local/lib
-LUA_LIBRARY ?= lua-5.4
-PGSQL_INCLUDE ?= /usr/local/include
-PGSQL_LIBDIR  ?= /usr/local/lib
-PGSQL_LIBRARY ?= pq
-KQUEUE_FLAGS ?=
+LUA_LIBNAME ?= lua-5.4
 LUA_CMD ?= lua54
+PGSQL_INCDIR ?= /usr/local/include
+PGSQL_LIBDIR  ?= /usr/local/lib
+KQUEUE_LIBNAME ?=
 
 .elif $(PLATFORM) == "Linux"
 # Distinguish between different Linux distributions
@@ -41,39 +29,31 @@ DISTRIBUTION != lsb_release -i -s
 .endif
 .if $(DISTRIBUTION) == "Debian" || $(DISTRIBUTION) == "Raspbian"
 # Default configuration for Debian
-LUA_INCLUDE ?= /usr/include/lua5.4
+LUA_INCDIR ?= /usr/include/lua5.4
 LUA_LIBDIR  ?= /usr/lib
-LUA_LIBRARY ?= lua5.4
-PGSQL_INCLUDE ?= /usr/include
-PGSQL_LIBDIR  ?= /usr/lib
-PGSQL_LIBRARY ?= pq
-KQUEUE_FLAGS ?= -lkqueue
+LUA_LIBNAME ?= lua5.4
+KQUEUE_LIBNAME ?= kqueue
 .elif $(DISTRIBUTION) == "Ubuntu"
 # Default configuration for Ubuntu
-LUA_INCLUDE ?= /usr/include/lua5.4
+LUA_INCDIR ?= /usr/include/lua5.4
 LUA_LIBDIR  ?= /usr/lib/x86_64-linux-gnu
-LUA_LIBRARY ?= lua5.4
-PGSQL_INCLUDE ?= /usr/include
+LUA_LIBNAME ?= lua5.4
+PGSQL_INCDIR ?= /usr/include
 PGSQL_LIBDIR  ?= /usr/lib/x86_64-linux-gnu
-PGSQL_LIBRARY ?= pq
-KQUEUE_INCLUDE_FLAGS ?= -I /usr/include/kqueue
-KQUEUE_FLAGS ?= -lkqueue
+KQUEUE_LIBDIR ?= -I /usr/include/kqueue
+KQUEUE_LIBNAME ?= kqueue
 .else
-.warning Could not determine Linux distribution. You might need to set LUA_INCLUDE, LUA_LIBDIR, LUA_LIBRARY, KQUEUE_INCLUDE_FLAGS, and KQUEUE_FLAGS manually!
+.warning Could not determine Linux distribution.
 .endif
 
 .else
-.warning Could not determine Platform. You might need to set LUA_INCLUDE, LUA_LIBDIR, LUA_LIBRARY, KQUEUE_INCLUDE_FLAGS, and KQUEUE_FLAGS manually!
+.warning Could not determine Platform.
 .endif
 
-# Default configuration
-LUA_INCLUDE ?= /usr/include
-LUA_LIBDIR  ?= /usr/lib
-LUA_LIBRARY ?= lua
-PGSQL_INCLUDE ?= /usr/include
-PGSQL_LIBDIR  ?= /usr/lib
-PGSQL_LIBRARY ?= pq
-KQUEUE_FLAGS ?= -lkqueue
+# Default configuration (uses libkqueue by default)
+LUA_LIBNAME ?= lua
+PGSQL_LIBNAME ?= pq
+KQUEUE_LIBNAME ?= kqueue
 LUA_CMD ?= lua
 
 .export LUA_CMD
@@ -100,27 +80,46 @@ target/lua-libs: src/*.lua
 
 target/c-libs/neumond/lkq.so: target/obj/lkq.o
 	mkdir -p target/c-libs/neumond
-	cc -shared -o target/c-libs/neumond/lkq.so target/obj/lkq.o $(KQUEUE_FLAGS)
+	cc -shared \
+		-o target/c-libs/neumond/lkq.so \
+		target/obj/lkq.o \
+		$(KQUEUE_LIBDIR:%=-L%) $(KQUEUE_LIBNAME:%=-l%)
 
 target/obj/lkq.o: src/lkq.c
 	mkdir -p target/obj
-	cc -c -Wall -g -fPIC -o target/obj/lkq.o -I $(LUA_INCLUDE) $(KQUEUE_INCLUDE_FLAGS) src/lkq.c
+	cc -c -Wall -g -fPIC \
+		-o target/obj/lkq.o \
+		$(LUA_INCDIR:%=-I%) \
+		$(KQUEUE_INCDIR:%=-I%) \
+		src/lkq.c
 
 target/c-libs/neumond/nbio.so: target/obj/nbio.o
 	mkdir -p target/c-libs/neumond
-	cc -shared -o target/c-libs/neumond/nbio.so target/obj/nbio.o
+	cc -shared \
+		-o target/c-libs/neumond/nbio.so \
+		target/obj/nbio.o
 
 target/obj/nbio.o: src/nbio.c
 	mkdir -p target/obj
-	cc -c -Wall -g -fPIC -o target/obj/nbio.o -I $(LUA_INCLUDE) src/nbio.c
+	cc -c -Wall -g -fPIC \
+		-o target/obj/nbio.o \
+		$(LUA_INCDIR:%=-I%) \
+		src/nbio.c
 
 target/c-libs/neumond/pgeff.so: target/obj/pgeff.o
 	mkdir -p target/c-libs/neumond
-	cc -shared -o target/c-libs/neumond/pgeff.so target/obj/pgeff.o -L $(PGSQL_LIBDIR) -l $(PGSQL_LIBRARY)
+	cc -shared \
+		-o target/c-libs/neumond/pgeff.so \
+		target/obj/pgeff.o \
+		$(PGSQL_LIBDIR:%=-L%) $(PGSQL_LIBNAME:%=-l%)
 
 target/obj/pgeff.o: src/pgeff.c
 	mkdir -p target/obj
-	cc -c -Wall -g -fPIC -o target/obj/pgeff.o -I $(LUA_INCLUDE) -I $(PGSQL_INCLUDE) src/pgeff.c
+	cc -c -Wall -g -fPIC \
+		-o target/obj/pgeff.o \
+		$(LUA_INCDIR:%=-I%) \
+		$(PGSQL_INCDIR:%=-I%) \
+		src/pgeff.c
 
 test:: all
 	cd testing && ./run-tests.sh
