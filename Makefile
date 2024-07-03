@@ -17,7 +17,7 @@ PLATFORM != uname
 
 # Default configuration for FreeBSD
 LUA_INCDIR ?= /usr/local/include/lua54
-#LUA_LIBDIR  ?= /usr/local/lib
+#LUA_LIBDIR ?= /usr/local/lib
 LUA_LIBNAME ?= lua-5.4
 LUA_CMD ?= lua54
 PGSQL_INCDIR ?= /usr/local/include
@@ -35,7 +35,7 @@ DISTRIBUTION != lsb_release -i -s
 
 # Default configuration for Debian
 LUA_INCDIR ?= /usr/include/lua5.4
-#LUA_LIBDIR  ?= /usr/lib
+#LUA_LIBDIR ?= /usr/lib
 LUA_LIBNAME ?= lua5.4
 LUA_CMD ?= lua5.4
 KQUEUE_LIBNAME ?= kqueue
@@ -44,12 +44,12 @@ KQUEUE_LIBNAME ?= kqueue
 
 # Default configuration for Ubuntu
 LUA_INCDIR ?= /usr/include/lua5.4
-#LUA_LIBDIR  ?= /usr/lib/x86_64-linux-gnu
+#LUA_LIBDIR ?= /usr/lib/x86_64-linux-gnu
 LUA_LIBNAME ?= lua5.4
 LUA_CMD ?= lua5.4
-PGSQL_INCDIR ?= /usr/include
+PGSQL_INCDIR ?= /usr/include/postgresql
 PGSQL_LIBDIR  ?= /usr/lib/x86_64-linux-gnu
-KQUEUE_LIBDIR ?= -I /usr/include/kqueue
+KQUEUE_INCDIR ?= /usr/include/kqueue
 KQUEUE_LIBNAME ?= kqueue
 
 .else
