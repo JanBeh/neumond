@@ -1,0 +1,65 @@
+# Included by Makefile
+#
+# NOTE: You may also pass the following variables on
+# make's command line or set them as environment
+# variables.
+
+# Directory, e.g. /usr/include, /usr/include/lua5.4,
+# or /usr/local/include/lua54 where Lua's header files
+# (e.g. lua.h) reside:
+#
+#LUA_INCDIR = /usr/include
+
+# Name of lua library, e.g. lua or lua5.4:
+#
+#LUA_LIBNAME = lua
+
+# Directory, e.g. /usr/include or /usr/local/include,
+# where PostgreSQL's header files (e.g. libpq-fe.h)
+# reside:
+#
+#PGSQL_INCDIR = /usr/include
+
+# Directory, e.g. /usr/lib, /usr/local/lib, or
+# /usr/lib/x86_64-linux-gnu where PostrgreSQL library
+# files reside:
+#
+#PGSQL_LIBDIR = /usr/lib
+
+# Name of PostgreSQL's client library, e.g. pq:
+#
+#PGSQL_LIBNAME = pq
+
+# Directory, e.g. /usr/include or /usr/local/include,
+# where libkqueue's header files (e.g. sys/event.h)
+# reside:
+#
+#KQUEUE_INCDIR = /usr/include
+
+# Directory, e.g. /usr/lib or /usr/local/lib where
+# libkqueue's library files reside:
+#
+#KQUEUE_LIBDIR = /usr/lib
+
+# Name of kqueue library, e.g. kqueue or empty if no
+# library is needed:
+#
+#KQUEUE_LIBNAME =
+#KQUEUE_LIBNAME = kqueue
+
+# Name of Lua command, e.g. lua:
+#
+#LUA_CMD = lua
+
+# Name of C-compiler command, e.g. cc:
+#
+#CC = cc
+
+# C-compiler arguments for linking shared libraries:
+#
+#CC_LINK_LIB_ARGS = -shared -Wall
+
+# C-compiler arguments for compiling object files:
+#
+#CC_COMPILE_OBJ_ARGS = -c -Wall -O2 -fPIC
+

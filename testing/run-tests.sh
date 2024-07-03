@@ -1,6 +1,5 @@
 #!/bin/sh
-export LUA_PATH="?.lua;../target/lua-libs/?.lua"
-export LUA_CPATH="../target/c-libs/?.so"
+cd "`dirname "$0"`" || exit 1
 if [ ! -n "$LUA_CMD" ]; then
   export LUA_CMD=lua
 fi
