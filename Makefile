@@ -6,7 +6,7 @@
 .ERROR: .PHONY
 	@echo
 	@echo 'Build failed.'
-	@echo 'Check Makefile.options and/or set appropriate
+	@echo 'Check Makefile.options and/or set appropriate'
 	@echo 'environment variables or command line options.'
 
 .ifndef PLATFORM
