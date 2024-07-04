@@ -6,7 +6,7 @@ local interrupt = effect.new("interrupt")
 local resume = effect.handle(
   {
     [interrupt] = function(resume)
-      checkpoint(2)
+      checkpoint(2, 5)
       return resume:persistent()
     end,
   },
@@ -14,9 +14,13 @@ local resume = effect.handle(
     checkpoint(1)
     interrupt()
     checkpoint(4)
+    interrupt()
+    checkpoint(7)
   end
 )
 checkpoint(3)
-resume()
+resume = resume()
+checkpoint(6)
+resume = resume()
 
-checkpoint(5)
+checkpoint(8)

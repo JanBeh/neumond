@@ -1,28 +1,33 @@
 local checkpoint = require "checkpoint"
 local effect = require "neumond.effect"
 
-local increment_result = effect.new("increment_result")
+local add = effect.new("add")
+local mul = effect.new("mul")
 
 local function foo()
-  checkpoint(2)
-  increment_result("Hello")
-  checkpoint(4)
+  add(3)
+end
+
+local function bar()
+  mul(2)
 end
 
 local retval = effect.handle(
   {
-    [increment_result] = function(resume, message)
-      checkpoint(3)
-      assert(message == "Hello")
-      return resume() + 1
+    [add] = function(resume, x)
+      return resume() + x
+    end,
+    [mul] = function(resume, x)
+      return resume() * x
     end,
   },
   function()
-    checkpoint(1)
     foo()
-    checkpoint(5)
+    -- adding 3 happens after resuming, i.e. after the following:
+    bar()
+    -- multiplying by 2 happens after resuming, i.e. after the following:
     return 100
   end
 )
 
-assert(retval == 101)
+assert(retval == 203)

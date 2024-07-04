@@ -12,7 +12,7 @@ effect.handle(
   function()
     local guard <close> = setmetatable({}, {
       __close = function()
-        print("Cleaning up.")
+        print("Cleaning up.") -- this will be executed
       end,
     })
     early_exit()

@@ -12,8 +12,8 @@ effect.handle(
       return resume()
     end,
     [eff2] = function(resume)
-      -- using saved_resume should not be allowed,
-      -- but it is not caught for performance reasons
+      -- Using saved_resume should not be allowed,
+      -- but it is not caught for performance reasons.
       return saved_resume()
     end,
   },
