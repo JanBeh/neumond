@@ -35,3 +35,29 @@ effect.handle(
 )
 
 checkpoint(6)
+
+effect.handle(
+  {
+    [cleanup] = function(resume)
+      checkpoint(10)
+      return resume()
+    end,
+    [exit] = function(resume)
+      checkpoint(8)
+    end,
+  },
+  function()
+    checkpoint(7)
+    local guard <close> = setmetatable({}, {
+      __close = function()
+        checkpoint(9)
+        cleanup()
+        checkpoint(11)
+      end,
+    })
+    exit()
+    error("unreachable")
+  end
+)
+
+checkpoint(12)

@@ -169,95 +169,38 @@ function _M.auto_traceback(...)
   return assert_traceback(pcall_traceback(...))
 end
 
--- Error used to unwind stacks of coroutines:
+-- Error used to unwind the stack of a coroutine:
 local close_error = setmetatable({}, {
   __tostring = function() return "coroutine is being closed" end,
 })
 
--- Forward declaration:
-local close_coroutine_process
-
--- Helper function for close_coroutine:
-local function close_coroutine_resume(thread, ...)
-  -- Resume coroutine and process results with other helper function:
-  return close_coroutine_process(thread, coroutine_resume(thread, ...))
-end
-
--- Helper function for close_coroutine:
-function close_coroutine_process(thread, coro_success, ...)
-  -- Check if coroutine.resume failed (should not happen):
-  if coro_success then
-    -- coroutine.resume did not fail.
-    -- Check if coroutine terminated:
-    if coroutine_status(thread) == "dead" then
-      -- Coroutine terminated.
-      -- Check error status:
-      local success, errmsg = ...
-      if success then
-        -- Coroutine returned successfully, which means the close_error has
-        -- been caught and handled, which is unexpected.
-        -- Report an error:
-        error("closed coroutine returned with unexpected success", 0)
-      elseif errmsg ~= close_error then
-        -- Another error, not being close_error, occurred.
-        -- Rethrow error:
-        error(errmsg, 0)
-      end
-      -- close_error occurred, which is the expected case, i.e. do nothing.
-    else
-      -- Coroutine did not terminate yet, i.e. an effect has been performed.
-      -- Check if yielding is possible:
-      if coroutine_isyieldable() then
-        -- Yielding is possible.
-        -- Pass yield further down the stack and return its results back up:
-        return close_coroutine_resume(thread, coroutine_yield(...))
-      end
-      -- Yielding is not possible.
-      -- Check if current coroutine is main coroutine:
-      local current_coro, is_main = coroutine_running()
-      if is_main then
-        -- Current coroutine is main coroutine, thus no effect handler has been
-        -- found.
-        -- Check if a default handler is available for the given effect:
-        local default_handler = default_handlers[...]
-        if default_handler then
-          -- A default handler is available.
-          -- Call default handler and resume with its return values:
-          return close_coroutine_resume(thread, default_handler())
-        end
-        -- No default handler has been found.
-        -- Throw error in context of performer:
-        coroutine_resume(
-          thread, call_marker,
-          error, "unhandled effect or yield: " .. tostring((...)), 2
-        )
-      else
-        -- Current coroutine is not main coroutine, but yielding is not
-        -- possible due to C-call boundaries.
-        -- Throw error in context of performer:
-        coroutine_resume(
-          thread, call_marker,
-          error,
-          "cannot yield across C-call boundary while performing effect: " ..
-          tostring((...)),
-          2
-        )
-      end
+-- Function closing a guard's coroutine:
+local function close_via_guard(guard)
+  -- Mark as closing:
+  guard.closing = true
+  -- Check if coroutine is still running:
+  if coroutine_status(guard.thread) ~= "dead" then
+    -- Coroutine is still running.
+    -- NOTE: Using coroutine.close does not allow finalizers to yield (due to a
+    -- C-call boundary), thus we need to close the coroutine by throwing an
+    -- error.
+    -- Close corouine by throwing a close_error within the coroutine and
+    -- catching the error here:
+    local success, errmsg = pcall_traceback(
+      guard.resume_func, call_marker, error, close_error
+    )
+    -- Check if close_error was caught:
+    if success then
+      -- No error was caught.
+      -- Report an error:
+      error("error used for unwinding stack of coroutine was caught", 0)
+    elseif errmsg ~= close_error then
+      -- Another error was caught.
+      -- Re-throw error:
+      error(errmsg, 0)
     end
-  else
-    -- coroutine.resume failed.
-    error("unhandled error in coroutine: " .. tostring((...)))
   end
-end
 
-local function close_coroutine(thread)
-  -- Check if coroutine is already dead:
-  if coroutine_status(thread) ~= "dead" then
-    -- Coroutine is not dead.
-    -- Throw close_error in coroutine and handle yields, such that finalizers
-    -- may perform effects:
-    return close_coroutine_resume(thread, call_marker, error, close_error)
-  end
 end
 
 -- Ephemeron mapping continuations to guards, which are helper objects to
@@ -268,14 +211,16 @@ local guards = setmetatable({}, weak_mt)
 local guard_metatbl = {
   -- Invoked when to-be-closed variable goes out of scope:
   __close = function(self)
-    -- Mark as being no longer on stack:
-    self.onstack = false
     -- Check if automatic discontinuation is enabled:
     if self.enabled then
       -- Automatic discontinuation is enabled.
-      -- Discontinue continuation, i.e. close all to-be-closed variables of
-      -- coroutine:
-      close_coroutine(self.thread)
+      -- NOTE: It is not necessary to mark guard as not being on stack.
+      -- Close coroutine:
+      close_via_guard(self)
+    else
+      -- Automatic discontinuation is disabled.
+      -- Mark as being no longer on stack:
+      self.onstack = false
     end
   end,
 }
@@ -284,6 +229,13 @@ local guard_metatbl = {
 -- possible) while ensuring that the continuation is discontinued when
 -- resume_func returns:
 local function resume_with_guard(guard, ...)
+  -- Check if coroutine is being closed:
+  if guard.closing then
+    -- Coroutine is being closed.
+    -- Simply call function with arguments as tail-call:
+    return guard.resume_func(...)
+  end
+  -- Coroutine is not being closed.
   -- Enable auto-discontinuation:
   guard.enabled = true
   -- Check if guard is already on stack:
@@ -292,6 +244,7 @@ local function resume_with_guard(guard, ...)
     -- Simply call function with arguments as tail-call:
     return guard.resume_func(...)
   end
+  -- Coroutine is not being closed and guard is not on stack.
   -- Put guard on stack as to-be-closed variable:
   local guard <close> = guard
   -- Mark guard as being on stack:
@@ -325,9 +278,8 @@ local continuation_metatbl = {
     end,
     -- Discontinues continuation:
     discontinue = function(self)
-      -- Discontinue continuation, i.e. close all to-be-closed variables of
-      -- coroutine stored in guard:
-      close_coroutine(guards[self].thread)
+      -- Close coroutine:
+      close_via_guard(guards[self])
     end,
   }
 }
@@ -421,6 +373,7 @@ function _M.handle(handlers, action, ...)
       thread = action_thread,
       onstack = true,
       enabled = true,
+      closing = false,
     },
     guard_metatbl
   )
