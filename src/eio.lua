@@ -36,7 +36,10 @@ end
 
 _M.handle_metatbl = {
   __close = handle_methods.close,
-  __gc = handle_methods.close,
+  -- NOTE: Closing is not possible during garbage collection, because closing
+  -- requires the deregister_fd effect to be handled. The following line is
+  -- thus commented out.
+  --__gc = handle_methods.close,
   __index = handle_methods,
 }
 
@@ -191,7 +194,10 @@ end
 
 _M.listener_metatbl = {
   __close = listener_methods.close,
-  __gc = listener_methods.close,
+  -- NOTE: Closing is not possible during garbage collection, because closing
+  -- requires the deregister_fd effect to be handled. The following line is
+  -- thus commented out.
+  --__gc = listener_methods.close,
   __index = listener_methods,
 }
 
@@ -233,7 +239,10 @@ end
 
 _M.child_metatbl = {
   __close = child_methods.close,
-  __gc = child_methods.close,
+  -- NOTE: Closing is not possible during garbage collection, because closing
+  -- requires the deregister_fd effect to be handled. The following line is
+  -- thus commented out.
+  --__gc = child_methods.close,
   __index = child_methods,
 }
 
