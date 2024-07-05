@@ -80,7 +80,7 @@ local function perform(...)
   if default_handler then
     -- A default handler is available.
     -- Call default handler and return its values:
-    return default_handler()
+    return default_handler(select(2, ...))
   end
   -- No default handler has been found.
   -- Report error:
