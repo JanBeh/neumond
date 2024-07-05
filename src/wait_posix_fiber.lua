@@ -34,7 +34,7 @@ local handle_reset_metatbl = {
   __call = handle_call_reset,
 }
 
-local function run(...)
+function _M.main(...)
   local eventqueue <close> = lkq.new_queue()
   local read_fd_locks, write_fd_locks, pid_locks, handle_locks = {}, {}, {}, {}
   local function deregister_fd(fd)
@@ -286,10 +286,6 @@ local function run(...)
     end,
     ...
   )
-end
-
-function _M.main(...)
-  return fiber.scope(run, ...)
 end
 
 return _M
