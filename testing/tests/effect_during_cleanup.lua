@@ -7,6 +7,7 @@ local exit = effect.new("exit")
 effect.handle(
   {
     [cleanup] = function(resume)
+      checkpoint(4)
       return resume()
     end,
   },
@@ -14,12 +15,16 @@ effect.handle(
     effect.handle(
       {
         [exit] = function(resume)
+          checkpoint(2)
         end,
       },
       function()
+        checkpoint(1)
         local guard <close> = setmetatable({}, {
           __close = function()
+            checkpoint(3)
             cleanup()
+            checkpoint(5)
           end,
         })
         exit()
@@ -29,4 +34,4 @@ effect.handle(
   end
 )
 
-checkpoint(1)
+checkpoint(6)
