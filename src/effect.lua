@@ -14,6 +14,7 @@ local coroutine_close       = coroutine.close
 local coroutine_create      = coroutine.create
 local coroutine_isyieldable = coroutine.isyieldable
 local coroutine_resume      = coroutine.resume
+local coroutine_running     = coroutine.running
 local coroutine_status      = coroutine.status
 local coroutine_yield       = coroutine.yield
 local debug_traceback = debug.traceback
@@ -68,27 +69,40 @@ end
 
 -- Performs an effect:
 local function perform(...)
-  -- Check if current coroutine is main coroutine:
+  -- Check if yielding is possible:
   if coroutine_isyieldable() then
-    -- Current coroutine is not main coroutine, thus yielding is possible.
+    -- Yielding is possible.
     -- Yield from coroutine and process results using check_call function:
     return check_call(coroutine_yield(...))
   end
-  -- Current coroutine is main coroutine, thus yielding is not possible.
-  -- Check if a default handler is available for the given effect:
-  local default_handler = default_handlers[...]
-  if default_handler then
-    -- A default handler is available.
-    -- Call default handler and return its values:
-    return default_handler(select(2, ...))
+  -- Yielding is not possible.
+  -- Check if current coroutine is main coroutine:
+  local current_coro, is_main = coroutine_running()
+  if is_main then
+    -- Current coroutine is main coroutine, thus no effect handlers are
+    -- installed.
+    -- Check if a default handler is available for the given effect:
+    local default_handler = default_handlers[...]
+    if default_handler then
+      -- A default handler is available.
+      -- Call default handler and return its values:
+      return default_handler(select(2, ...))
+    end
+    -- No default handler has been found.
+    error(
+      "no effect handler installed while performing effect: " ..
+      tostring((...)),
+      2
+    )
+  else
+    -- Current coroutine is not main coroutine, but yielding is not possible
+    -- due to C-call boundaries.
+    error(
+      "cannot yield across C-call boundary while performing effect: " ..
+      tostring((...)),
+      2
+    )
   end
-  -- No default handler has been found.
-  -- Report error:
-  error(
-    "no effect handler installed while performing effect: " ..
-    tostring((...)),
-    2
-  )
 end
 _M.perform = perform
 
@@ -272,24 +286,39 @@ function _M.handle(handlers, action, ...)
         return handler(resume, select(2, ...))
       end
       -- No handler has been found.
-      -- Check if current coroutine is main coroutine:
+      -- Check if yielding is possible:
       if coroutine_isyieldable() then
-        -- Current coroutine is not main coroutine, thus yielding is possible.
+        -- Yielding is possible.
         -- Pass yield further down the stack and return its results back up:
         return resume_func(coroutine_yield(...))
       end
-      -- Current coroutine is main coroutine, thus yielding is not possible.
-      -- Check if a default handler is available for the given effect:
-      local default_handler = default_handlers[...]
-      if default_handler then
-        -- A default handler is available.
-        -- Call default handler and resume with its return values:
-        return resume_func(default_handler())
+      -- Yielding is not possible.
+      -- Check if current coroutine is main coroutine:
+      local current_coro, is_main = coroutine_running()
+      if is_main then
+        -- Current coroutine is main coroutine, thus no effect handler has been
+        -- found.
+        -- Check if a default handler is available for the given effect:
+        local default_handler = default_handlers[...]
+        if default_handler then
+          -- A default handler is available.
+          -- Call default handler and resume with its return values:
+          return resume_func(default_handler())
+        end
+        -- No default handler has been found.
+        -- Throw error in context of performer:
+        resume:call(error, "unhandled effect or yield: " .. tostring((...)), 0)
+      else
+        -- Current coroutine is not main coroutine, but yielding is not
+        -- possible due to C-call boundaries.
+        -- Throw error in context of performer:
+        resume:call(
+          error,
+          "cannot yield across C-call boundary while performing effect: " ..
+          tostring((...)),
+          2
+        )
       end
-      -- No default handler has been found.
-      -- Current coroutine is main coroutine and yielding is not possible.
-      -- Throw error in context of performer:
-      resume:call(error, "unhandled effect or yield: " .. tostring((...)), 0)
     else
       -- coroutine.resume failed.
       error("unhandled error in coroutine: " .. tostring((...)))
