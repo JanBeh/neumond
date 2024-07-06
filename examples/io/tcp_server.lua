@@ -41,8 +41,10 @@ local function main(...)
         fiber.spawn(handle_client_ioerr, function()
           local conn <close> = conn
           assert_io(conn:flush("Hello, what is your name?\n"))
-          local name =
-            assert_io(conn:read(1024, "\n")):match("^[ \t]*(.-)\r?\n?$")
+          local name = (
+            assert_io(conn:read(1024, "\n"))
+            :match("^[ \t\r\n]*(.-)[ \t\r\n]*$")
+          )
           if name == "" then
             assert_io(conn:flush("You didn't provide a name, bye.\n"))
           else
