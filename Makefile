@@ -142,7 +142,10 @@ target/_obj/pgeff.o: src/pgeff.c
 		src/pgeff.c
 
 test: .PHONY all
-	cd testing && ./run-tests.sh
+	cd testing && ./run-tests.sh tests/*.lua
+
+test-pgsql: .PHONY all
+	cd testing && ./run-tests.sh tests-pgsql/*.lua
 
 clean: .PHONY
 	rm -Rf target/

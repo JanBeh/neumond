@@ -1,10 +1,12 @@
 #!/bin/sh
-cd "`dirname "$0"`" || exit 1
 if [ ! -n "$LUA_CMD" ]; then
   export LUA_CMD=lua
 fi
+if [ $# -eq 0 ]; then
+  echo "Warning: No test specified!"
+fi
 FAILED=0
-for test in tests/*.lua
+for test in "$@"
 do
   echo "Running $test"
   $LUA_CMD $test || FAILED=1
