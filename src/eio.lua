@@ -203,12 +203,15 @@ _M.listener_metatbl = {
 
 function listener_methods:accept()
   local nbio_listener = self.nbio_listener
-  wait_posix.wait_fd_read(nbio_listener.fd)
-  local handle, err = nbio_listener:accept()
-  if not handle then
-    return handle, err
+  while true do
+    local handle, err = nbio_listener:accept()
+    if handle == nil then
+      return handle, err
+    elseif handle then
+      return wrap_handle(handle)
+    end
+    wait_posix.wait_fd_read(nbio_listener.fd)
   end
-  return wrap_handle(handle)
 end
 
 local function wrap_listener(listener)

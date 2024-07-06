@@ -1050,7 +1050,9 @@ static int nbio_listener_accept(lua_State *L) {
   while (1) {
     fd = accept4(listener->fd, NULL, NULL, SOCK_CLOEXEC);
     if (fd == -1) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      // NOTE: Do not report ECONNABORTED as error to allow users of library to
+      // exit on (hard) errors.
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNABORTED) {
         lua_pushboolean(L, 0);
         lua_pushliteral(L, "no incoming connection pending");
         return 2;
