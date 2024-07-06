@@ -31,7 +31,7 @@ function handle_methods:shutdown()
   if fd then
     wait_posix.deregister_fd(nbio_handle.fd)
   end
-  nbio_handle:shutdown()
+  return nbio_handle:shutdown()
 end
 
 _M.handle_metatbl = {
