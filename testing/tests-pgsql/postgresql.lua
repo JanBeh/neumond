@@ -25,7 +25,7 @@ local function input_converter(v)
 end
 
 local function main(...)
-  local dbconn = assert(pgeff.connect(""))
+  local dbconn <close> = assert(pgeff.connect(""))
 
   local a, b = 15, 7
   local result = dbconn:query("SELECT $1::INT + $2::INT AS val", a, b)

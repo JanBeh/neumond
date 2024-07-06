@@ -35,7 +35,7 @@ local function main(...)
   checkpoint(4)
   wait.timeout(0.2)()
   checkpoint(6)
-  local success, result = pcall(function()
+  local success = pcall(function()
     server_conn:read(1024, "\n") -- closed on own side while waiting for I/O
   end)
   assert(success == false)
