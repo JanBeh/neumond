@@ -234,6 +234,9 @@ end
 local child_methods = {}
 
 function child_methods:close()
+  self.stdin:close()
+  self.stdout:close()
+  self.stderr:close()
   return self.nbio_child:close()
 end
 
