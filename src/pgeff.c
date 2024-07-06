@@ -391,7 +391,8 @@ static const struct luaL_Reg pgeff_dbconn_methods[] = {
 
 static const struct luaL_Reg pgeff_dbconn_metamethods[] = {
   {"__close", pgeff_dbconn_close},
-  {"__gc", pgeff_dbconn_close},
+  // NOTE: closing requires deregister_fd, thus can't run through GC:
+  //{"__gc", pgeff_dbconn_close},
   {"__index", pgeff_dbconn_index},
   {"__newindex", pgeff_dbconn_newindex},
   {NULL, NULL}
