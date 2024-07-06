@@ -443,7 +443,7 @@ int luaopen_neumond_pgeff(lua_State *L) {
   lua_pushliteral(L, "neumond.wait_posix"); // 4
   lua_call(L, 1, 1); // 3
   lua_getfield(L, -1, "select"); // 4 -> 3
-  lua_getfield(L, -1, "deregister_fd"); // 5 -> 4
+  lua_getfield(L, -2, "deregister_fd"); // 5 -> 4
   lua_remove(L, -3);
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY); // 5
