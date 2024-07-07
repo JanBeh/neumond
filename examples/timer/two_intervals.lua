@@ -5,7 +5,7 @@ local runtime = require "neumond.runtime"
 function main(...)
   local a = wait.interval(1)
   local b = wait.interval(1.1)
-  local c = wait.timeout(10)
+  local c = wait.timeout(10.1)
   local f1 = fiber.spawn(function()
     while true do
       a()
