@@ -2,6 +2,10 @@ local effect = require "neumond.effect"
 
 local fail = effect.new("fail")
 
+local function foo()
+  fail()
+end
+
 local retval = effect.handle(
   {
     [fail] = function(resume)
@@ -9,7 +13,7 @@ local retval = effect.handle(
     end,
   },
   function()
-    fail()
+    foo()
     return "success"
   end
 )
