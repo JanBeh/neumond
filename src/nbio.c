@@ -415,7 +415,7 @@ static int nbio_locallisten(lua_State *L) {
   }
   struct sockaddr_un sockaddr = { .sun_family = AF_LOCAL };
   strcpy(sockaddr.sun_path, path);
-  int fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  int fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
   if (fd == -1) {
     nbio_prepare_errmsg(errno);
     lua_pushnil(L);
