@@ -163,8 +163,14 @@ The module provides the following functions and tables:
 Sometimes an effect hander may wish to execute code in the context of the
 performer of the effect (e.g. to perform other effects in *that* context). To
 achieve this, it is possible to use the method **`resume:call(func, ...)`**.
-In that case, `effect.perform` will call the function `func` (with given
-arguments) and return `func`'s return values.
+In that case, the action will be resumed, `effect.perform` will call the
+function `func` (with given arguments), and the performer retrieves `func`'s
+return values.
+
+It is also possible to execute a function in the context of the interrupted
+action without resuming. This is done by invoking the method
+**`resume:call_only(func, ...)`**. It will execute `func(...)` in the context
+of the performer and directly return without resuming further.
 
 
 ## Module `neumond.yield`

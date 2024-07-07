@@ -9,6 +9,9 @@ end
 local retval = effect.handle(
   {
     [fail] = function(resume)
+      print("Caught failure.")
+      -- Print stack trace where "fail" effect was performed:
+      print(resume:call_only(debug.traceback))
       return "failed"
     end,
   },

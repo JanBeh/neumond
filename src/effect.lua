@@ -107,7 +107,7 @@ _M.perform = perform
 
 -- Convenience function, which creates an object that is suitable to be used as
 -- an effect, because it is callable and has a string representation:
-function _M.new(name)
+local function new(name)
   if type(name) ~= "string" then
     error("effect name is not a string", 2)
   end
@@ -117,6 +117,7 @@ function _M.new(name)
     __tostring = function() return str end,
   })
 end
+_M.new = new
 
 -- Ephemeron holding stack trace information for non-string error objects:
 local traces = setmetatable({}, weak_mt)
@@ -168,6 +169,15 @@ end
 function _M.auto_traceback(...)
   return assert_traceback(pcall_traceback(...))
 end
+
+-- Forward declaration:
+local handle
+
+-- Effect used to call a function in context of performer without resuming
+local no_resume = new("neumond.effect.no_resume")
+local no_resume_handlers = {
+  [no_resume] = function(resume, ...) return ... end,
+}
 
 -- Error used to unwind the stack of a coroutine:
 local close_error = setmetatable({}, {
@@ -263,11 +273,24 @@ local continuation_metatbl = {
   end,
   -- Methods of continuation objects:
   __index = {
-    -- Calls a function in context of the performer:
+    -- Calls a function in context of the performer and resumes with its
+    -- results:
     call = function(self, ...)
       -- Enable guard on stack and call stored resume function with special
       -- call marker as first argument:
       return resume_with_guard(guards[self], call_marker, ...)
+    end,
+    -- Calls a function in context of the performer and does not resume but
+    -- returns its results:
+    call_only = function(self, ...)
+      return handle(
+        no_resume_handlers,
+        resume_with_guard, guards[self], call_marker,
+        function(func, ...)
+          return no_resume(func(...))
+        end,
+        ...
+      )
     end,
     -- Avoids auto-discontinuation on handler return or error:
     persistent = function(self)
@@ -296,7 +319,7 @@ local continuation_metatbl = {
 -- not be called after the effect handler has returned, unless
 -- resume:persistent() is called before the handler returns.
 --
-function _M.handle(handlers, action, ...)
+function handle(handlers, action, ...)
   -- Create coroutine with pcall_traceback as function:
   local action_thread = coroutine_create(pcall_traceback)
   -- Forward declarations:
@@ -383,6 +406,7 @@ function _M.handle(handlers, action, ...)
   -- Call resume_func with arguments for pcall_traceback:
   return resume_func(action, ...)
 end
+_M.handle = handle
 
 -- Return module table:
 return _M
