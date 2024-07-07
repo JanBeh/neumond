@@ -3,7 +3,6 @@ local runtime = require "neumond.runtime"
 local fiber = require "neumond.fiber"
 local eio = require "neumond.eio"
 local wait = require "neumond.wait"
-local wait_posix = require "neumond.wait_posix"
 
 local function r8()
   return math.random(10000000,99999999)
