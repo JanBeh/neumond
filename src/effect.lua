@@ -119,11 +119,23 @@ local function new(name)
 end
 _M.new = new
 
+-- Error used to unwind the stack of a coroutine:
+local discontinued = setmetatable({}, {
+  __tostring = function() return "action discontinued" end,
+})
+
 -- Ephemeron holding stack trace information for non-string error objects:
 local traces = setmetatable({}, weak_mt)
 
 -- Function adding or storing stack trace to/for error objects:
 local function add_traceback(errmsg)
+  -- Check if error message is a discontinuation of an action:
+  if errmsg == discontinued then
+    -- Error message is a discontinuation error. Discontinuations should always
+    -- be caught, thus no stack trace needs to be generated.
+    -- Return original error object:
+    return errmsg
+  end
   local errtype = type(errmsg)
   -- Check if error message is a string:
   if errtype == "string" then
@@ -149,11 +161,31 @@ local function pcall_traceback(func, ...)
   return xpcall(func, add_traceback, ...)
 end
 
+-- Helper function for pcall function below:
+local function process_pcall_results(success, ...)
+  if not success then
+  end
+  if success or ... ~= discontinued then
+    return success, ...
+  end
+  error(discontinued, 0)
+end
+
+-- Function like Lua's pcall, but re-throwing any "discontinued" error and
+-- adding or storing a traceback to/for the error message:
+function _M.pcall(...)
+  return process_pcall_results(pcall_traceback(...))
+end
+
 -- Helper function for auto_traceback, acting like assert_nopos but converting
--- error messages to strings and appending stored stack traces (if existing):
+-- error messages (except discontinuation errors) to strings and appending
+-- stored stack traces (if existing):
 local function assert_traceback(success, ...)
   if success then
     return ...
+  end
+  if ... == discontinued then
+    error(..., 0)
   end
   local errmsg = tostring((...))
   local trace = traces[...]
@@ -165,13 +197,34 @@ local function assert_traceback(success, ...)
 end
 
 -- auto_traceback(action, ...) runs action(...) and stringifies any uncaught
--- errors and appends a stack trace if applicable:
+-- errors (except for discontinuation errors) and appends a stack trace if
+-- applicable:
 function _M.auto_traceback(...)
   return assert_traceback(pcall_traceback(...))
 end
 
--- Forward declaration:
-local handle
+-- Helper function for pcall_auto_traceback function below:
+local function process_pcall_auto_traceback_results(success, ...)
+  if success then
+    return success, ...
+  end
+  if ... == discontinued then
+    error(..., 0)
+  end
+  local errmsg = tostring((...))
+  local trace = traces[...]
+  if trace then
+    return success, errmsg .. "\n" .. trace
+  else
+    return success, errmsg
+  end
+end
+
+-- pcall_auto_traceback(...) is equivalent to _M.pcall(auto_traceback(...)) but
+-- more efficient:
+function _M.pcall_auto_traceback(...)
+  return process_pcall_auto_traceback_results(pcall_traceback(...))
+end
 
 -- Effect used to call a function in context of performer without resuming
 local no_resume = new("neumond.effect.no_resume")
@@ -179,10 +232,8 @@ local no_resume_handlers = {
   [no_resume] = function(resume, ...) return ... end,
 }
 
--- Error used to unwind the stack of a coroutine:
-local close_error = setmetatable({}, {
-  __tostring = function() return "coroutine is being closed" end,
-})
+-- Forward declaration:
+local handle
 
 -- Function closing a guard's coroutine:
 local function close_via_guard(guard)
@@ -194,17 +245,17 @@ local function close_via_guard(guard)
     -- NOTE: Using coroutine.close does not allow finalizers to yield (due to a
     -- C-call boundary), thus we need to close the coroutine by throwing an
     -- error.
-    -- Close corouine by throwing a close_error within the coroutine and
-    -- catching the error here:
+    -- Close corouine by throwing a "discontinued" error within the coroutine
+    -- and catching the error here:
     local success, errmsg = pcall_traceback(
-      guard.resume_func, call_marker, error, close_error
+      guard.resume_func, call_marker, error, discontinued
     )
-    -- Check if close_error was caught:
+    -- Check if "discontinued" error was caught:
     if success then
       -- No error was caught.
       -- Report an error:
       error("error used for unwinding stack of coroutine was caught", 0)
-    elseif errmsg ~= close_error then
+    elseif errmsg ~= discontinued then
       -- Another error was caught.
       -- Re-throw error:
       error(errmsg, 0)

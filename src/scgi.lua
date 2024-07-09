@@ -3,6 +3,7 @@
 _ENV = setmetatable({}, { __index = _G })
 local _M = {}
 
+local effect = require "neumond.effect"
 local fiber = require "neumond.fiber"
 local wait = require "neumond.wait"
 local eio = require "neumond.eio"
@@ -18,6 +19,18 @@ local string_match  = string.match
 local string_sub    = string.sub
 
 local decode_uri = web.decode_uri
+
+-- Effect indicating an I/O error during communication with client:
+local io_error = effect.new("neumond.scgi.io_error")
+_M.io_error = io_error
+
+local function assert_io(first, ...)
+  if first then
+    return first, ...
+  else
+    io_error(...)
+  end
+end
 
 -- Function parsing parameters of a header value, which must not contain any
 -- NULL byte:
@@ -48,7 +61,7 @@ local function stream_until_boundary(handle, boundary, callback)
   local chunk_size = _M.streaming_chunk_size
   local rlen = chunk_size + #boundary
   while true do
-    local chunk = assert(handle:_read(rlen))
+    local chunk = assert_io(handle:_read(rlen))
     if chunk == "" then
       return false
     end
@@ -169,12 +182,12 @@ function request_methods:process_request_body()
     local ct_base, ct_ext = string_match(content_type, "^([^; \t]*)(.*)")
     ct_base = string_lower(ct_base)
     if ct_base == "application/x-www-form-urlencoded" then
-      assert(
+      assert_io(
         self._request_body_remaining < _M.max_non_streamed_size,
         "request body exceeded maximum length"
       )
       for key, value in
-        string.gmatch(assert(self:_read()), "([^&=]+)=([^&=]*)")
+        string.gmatch(assert_io(self:_read()), "([^&=]+)=([^&=]*)")
       do
         key = decode_uri(key)
         value = decode_uri(value)
@@ -188,16 +201,16 @@ function request_methods:process_request_body()
       end
     elseif ct_base == "multipart/form-data" then
       local non_streamed_size = 0
-      local boundary = "--" .. assert(
+      local boundary = "--" .. assert_io(
         parse_header_params(ct_ext).boundary,
         "no multipart/form-data boundary set"
       )
-      assert(
+      assert_io(
         stream_until_boundary(self, boundary, noop),
         "boundary not found in request body"
       )
-      local eol = assert(self:_read(1024, "\n"))
-      assert(
+      local eol = assert_io(self:_read(1024, "\n"))
+      assert_io(
         string_find(eol, "\r\n$"),
         "no linebreak after boundary in multipart form-data request body"
       )
@@ -206,7 +219,7 @@ function request_methods:process_request_body()
         local name, content_type, content_type_params
         local header_line_count = 0
         while true do
-          local line = assert(self:_read(16384, "\n"))
+          local line = assert_io(self:_read(16384, "\n"))
           if line == "\r\n" or line == "\n" or line == "" then
             break
           end
@@ -219,7 +232,7 @@ function request_methods:process_request_body()
           end
           line = string_gsub(line, "\r?\n$", "")
           while true do
-            local nextline = assert(self:_read(16384, "\n"))
+            local nextline = assert_io(self:_read(16384, "\n"))
             if not string_find(nextline, "^[\t ]") then
               self:_unread(nextline)
               break
@@ -263,13 +276,13 @@ function request_methods:process_request_body()
           -- TODO: avoid duplicate streaming?
           if stream_funcs then
             if old_value then
-              assert(
+              assert_io(
                 stream_until_boundary(self, boundary, noop),
                 "unexpected EOF in multipart form-data"
               )
             else
               stream_funcs.init_func(name)
-              assert(
+              assert_io(
                 stream_until_boundary(self, boundary, stream_funcs.chunk_func),
                 "unexpected EOF in multipart form-data"
               )
@@ -277,7 +290,7 @@ function request_methods:process_request_body()
             end
           else
             local chunks = {}
-            assert(
+            assert_io(
               stream_until_boundary(self, boundary, function(chunk)
                 non_streamed_size = non_streamed_size + #chunk
                 if non_streamed_size > _M.max_non_streamed_size then
@@ -300,11 +313,11 @@ function request_methods:process_request_body()
         else
           stream_until_boundary(self, boundary, noop)
         end
-        local eol = assert(self:_read(1024, "\n"))
+        local eol = assert_io(self:_read(1024, "\n"))
         if string.find(eol, "^-%-") then
           break
         end
-        assert(
+        assert_io(
           string_find(eol, "\r\n$"),
           "no linebreak after boundary in multipart form-data request body"
         )
@@ -361,21 +374,21 @@ local request_metatbl = {
 }
 
 function _M.connection_handler(conn, request_handler)
-  local header_len = assert(
-    tonumber(string_match(assert(conn:read(16, ":")), "^([0-9]+):")),
+  local header_len = assert_io(
+    tonumber(string_match(assert_io(conn:read(16, ":")), "^([0-9]+):")),
     "could not parse SCGI header length"
   )
-  assert(header_len <= _M.max_header_length, "SCGI header too long")
-  local header = assert(conn:read(header_len))
-  assert(#header == header_len, "unexpected EOF in SCGI header")
-  local separator = assert(conn:read(1))
-  assert(#separator == 1, "unexpected EOF after SCGI header")
-  assert(separator == ",", "unexpected byte after SCGI header")
+  assert_io(header_len <= _M.max_header_length, "SCGI header too long")
+  local header = assert_io(conn:read(header_len))
+  assert_io(#header == header_len, "unexpected EOF in SCGI header")
+  local separator = assert_io(conn:read(1))
+  assert_io(#separator == 1, "unexpected EOF after SCGI header")
+  assert_io(separator == ",", "unexpected byte after SCGI header")
   local params = {}
   for key, value in string_gmatch(header, "([^\0]+)\0([^\0]+)\0") do
     params[key] = value
   end
-  assert(params.SCGI == "1", "missing or unexpected SCGI version")
+  assert_io(params.SCGI == "1", "missing or unexpected SCGI version")
   local get_params = {}
   local get_params_array = setmetatable({}, {
     __index = function(self, key)
@@ -401,7 +414,7 @@ function _M.connection_handler(conn, request_handler)
   local request = setmetatable(
     {
       _conn = conn,
-      _request_body_remaining = assert(
+      _request_body_remaining = assert_io(
         tonumber(params.CONTENT_LENGTH),
         "missing or invalid CONTENT_LENGTH in SCGI header"
       ),
@@ -413,13 +426,13 @@ function _M.connection_handler(conn, request_handler)
     request_metatbl
   )
   local success, errmsg = fiber.scope(
-    xpcall, request_handler, debug.traceback, request
+    effect.pcall_auto_traceback, request_handler, request
   )
   if not success then
     eio.stderr:flush(
       "Error in request handler: " .. tostring(errmsg) .. "\n")
   end
-  assert(conn:flush())
+  assert_io(conn:flush())
 end
 
 -- Run SCGI server:
@@ -433,17 +446,17 @@ function _M.run(fcgi_path, request_handler)
     fiber.spawn(function()
       -- Ensure that connection gets closed when fiber terminates:
       local conn <close> = conn
-      -- Execute connection handler and catch errors:
-      local success, errmsg = xpcall(
-        _M.connection_handler, debug.traceback, conn, request_handler
+      effect.handle(
+        {
+          [io_error] = function(resume, errmsg)
+            eio.stderr:flush(
+              "I/O Error in connection handler: " ..
+              tostring(errmsg) .. "\n"
+            )
+          end,
+        },
+        _M.connection_handler, conn, request_handler
       )
-      -- Check if there was an error in the connection handler:
-      if not success then
-        -- There was an error in the connection handler:
-        -- Print error to application's stderr:
-        eio.stderr:flush(
-          "Error in connection handler: " .. tostring(errmsg) .. "\n")
-      end
     end)
   end
 end

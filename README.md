@@ -154,11 +154,25 @@ The module provides the following functions and tables:
     object) and the return values of the default handler function are passed
     back to the caller of `effect.perform`.
 
-  * **`effect.auto_traceback(action, ...)`** calls the `action` function with
-    given arguments and ensures that thrown error objects are automatically
-    stringified and get a stack trace appended. This function should be used
-    as an outer wrapper if non-string error objects may be thrown, in order to
-    see stack traces in case of unhandled errors.
+  * **`effect.pcall(func, ...)`** calls `func(...)` and catches errors. Returns
+    `true` followed by the return values of `func` in case of success, and
+    `false` followed by an error message in case of a caught error.
+    It differs from Lua's built-in `pcall` as it automatically attaches a stack
+    trace to the error message (or stores it in an ephemeron if the error
+    message is not a string) and it will not catch errors that are used to
+    implement discontinuations. Use `effect.pcall` as a drop-in replacement for
+    Lua's `pcall` if you deal with effects that may discontinue an action (e.g.
+    when an effect handler does not resume).
+
+  * **`effect.auto_traceback(func, ...)`** calls `func(...)` and ensures that
+    thrown error objects (except those used to implement discontinuations) are
+    automatically stringified and get a stack trace appended. This function
+    should be used as an outer wrapper if non-string error objects may be
+    thrown, in order to see stack traces in case of unhandled errors.
+
+  * **`effect.pcall_auto_traceback(...)`** is equivalent to
+    `effect.pcall(effect.auto_traceback, ...)` but implemented slightly more
+    efficiently.
 
 Sometimes an effect hander may wish to execute code in the context of the
 performer of the effect (e.g. to perform other effects in *that* context). To
