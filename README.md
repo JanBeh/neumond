@@ -75,7 +75,7 @@ return runtime(main, ...)
 
 In addition to providing a runtime for fibers and asynchronous I/O, the
 `runtime` function will also stringify any uncaught errors and append stack
-traces (see also `effect.auto_traceback`).
+traces (see also `effect.stringify_errors`).
 
 
 ## Module `neumond.effect`
@@ -164,14 +164,17 @@ The module provides the following functions and tables:
     Lua's `pcall` if you deal with effects that may discontinue an action (e.g.
     when an effect handler does not resume).
 
-  * **`effect.auto_traceback(func, ...)`** calls `func(...)` and ensures that
+  * **`effect.stringify_error(message)`** converts an error message into a
+    string while appending any stored stack traces for that error message.
+
+  * **`effect.stringify_errors(func, ...)`** calls `func(...)` and ensures that
     thrown error objects (except those used to implement discontinuations) are
     automatically stringified and get a stack trace appended. This function
     should be used as an outer wrapper if non-string error objects may be
     thrown, in order to see stack traces in case of unhandled errors.
 
-  * **`effect.pcall_auto_traceback(...)`** is equivalent to
-    `effect.pcall(effect.auto_traceback, ...)` but implemented slightly more
+  * **`effect.pcall_stringify_errors(...)`** is equivalent to
+    `effect.pcall(effect.stringify_errors, ...)` but implemented slightly more
     efficiently.
 
 Sometimes an effect hander may wish to execute code in the context of the

@@ -11,7 +11,7 @@ effect.handle(
   },
   function()
     checkpoint(1)
-    effect.pcall_auto_traceback(function()
+    effect.pcall_stringify_errors(function()
       checkpoint(2)
       fail()
       error("unreachable")
@@ -22,7 +22,7 @@ effect.handle(
 
 checkpoint(4)
 
-local success, message = effect.pcall_auto_traceback(function()
+local success, message = effect.pcall_stringify_errors(function()
   checkpoint(5)
   error("some error", 0)
 end)
@@ -37,7 +37,7 @@ local error_object = setmetatable({}, {
   __tostring = function(self) return "error object" end,
 })
 
-local success, message = effect.pcall_auto_traceback(function()
+local success, message = effect.pcall_stringify_errors(function()
   checkpoint(7)
   error(error_object)
 end)

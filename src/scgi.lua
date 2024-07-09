@@ -426,7 +426,7 @@ function _M.connection_handler(conn, request_handler)
     request_metatbl
   )
   local success, errmsg = fiber.scope(
-    effect.pcall_auto_traceback, request_handler, request
+    effect.pcall_stringify_errors, request_handler, request
   )
   if not success then
     eio.stderr:flush(

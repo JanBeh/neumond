@@ -10,5 +10,5 @@ local effect = require "neumond.effect"
 local wait_posix_fiber = require "neumond.wait_posix_fiber"
 
 return function(...)
-  effect.auto_traceback(wait_posix_fiber.main, ...)
+  effect.stringify_errors(wait_posix_fiber.main, ...)
 end

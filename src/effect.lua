@@ -161,12 +161,12 @@ local function pcall_traceback(func, ...)
   return xpcall(func, add_traceback, ...)
 end
 
--- Helper function for pcall function below:
+-- Helper function for pcall function:
 local function process_pcall_results(success, ...)
   if success or ... ~= discontinued then
     return success, ...
   end
-  error(discontinued, 0)
+  error(..., 0)
 end
 
 -- Function like Lua's pcall, but re-throwing any "discontinued" error and
@@ -175,53 +175,52 @@ function _M.pcall(...)
   return process_pcall_results(pcall_traceback(...))
 end
 
--- Helper function for auto_traceback, acting like assert_nopos but converting
--- error messages (except discontinuation errors) to strings and appending
--- stored stack traces (if existing):
-local function assert_traceback(success, ...)
+-- Function that turns an error message (which can be a table) into a string:
+local function stringify_error(message)
+  local trace = traces[message]
+  local message = tostring(message)
+  if trace then
+    return message .. "\n" .. trace
+  else
+    return message
+  end
+end
+_M.stringify_error = stringify_error
+
+-- Helper function for stringify_errors function:
+local function process_stringify_errors_results(success, ...)
   if success then
     return ...
   end
-  if ... == discontinued then
+  if ... ~= discontinued then
+    error(stringify_error((...)), 0)
+  else
     error(..., 0)
   end
-  local errmsg = tostring((...))
-  local trace = traces[...]
-  if trace then
-    error(errmsg .. "\n" .. trace, 0)
-  else
-    error(errmsg, 0)
-  end
 end
 
--- auto_traceback(action, ...) runs action(...) and stringifies any uncaught
+-- stringify_errors(action, ...) runs action(...) and stringifies any uncaught
 -- errors (except for discontinuation errors) and appends a stack trace if
 -- applicable:
-function _M.auto_traceback(...)
-  return assert_traceback(pcall_traceback(...))
+function _M.stringify_errors(...)
+  return process_stringify_errors_results(pcall_traceback(...))
 end
 
--- Helper function for pcall_auto_traceback function below:
-local function process_pcall_auto_traceback_results(success, ...)
+-- Helper function for pcall_stringify_errors function:
+local function process_pcall_stringify_errors_results(success, ...)
   if success then
     return success, ...
   end
-  if ... == discontinued then
-    error(..., 0)
+  if ... ~= discontinued then
+    return success, stringify_error((...))
   end
-  local errmsg = tostring((...))
-  local trace = traces[...]
-  if trace then
-    return success, errmsg .. "\n" .. trace
-  else
-    return success, errmsg
-  end
+  error(..., 0)
 end
 
--- pcall_auto_traceback(...) is equivalent to _M.pcall(auto_traceback(...)) but
+-- pcall_stringify_errors(...) is equivalent to _M.pcall(stringify_errors(...)) but
 -- more efficient:
-function _M.pcall_auto_traceback(...)
-  return process_pcall_auto_traceback_results(pcall_traceback(...))
+function _M.pcall_stringify_errors(...)
+  return process_pcall_stringify_errors_results(pcall_traceback(...))
 end
 
 -- Effect used to call a function in context of performer without resuming
