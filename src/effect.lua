@@ -163,8 +163,6 @@ end
 
 -- Helper function for pcall function below:
 local function process_pcall_results(success, ...)
-  if not success then
-  end
   if success or ... ~= discontinued then
     return success, ...
   end
