@@ -177,17 +177,32 @@ The module provides the following functions and tables:
     `effect.pcall(effect.stringify_errors, ...)` but implemented slightly more
     efficiently.
 
-Sometimes an effect hander may wish to execute code in the context of the
-performer of the effect (e.g. to perform other effects in *that* context). To
-achieve this, it is possible to use the method **`resume:call(func, ...)`**.
-In that case, the action will be resumed, `effect.perform` will call the
-function `func` (with given arguments), and the performer retrieves `func`'s
-return values.
+A continuation `resume` (as passed to an effect handler) provides the following
+methods:
 
-It is also possible to execute a function in the context of the interrupted
-action without resuming. This is done by invoking the method
-**`resume:call_only(func, ...)`**. It will execute `func(...)` in the context
-of the performer and directly return without resuming further.
+  * **`resume(...)`** resumes the continuation with given arguments.
+
+  * **`resume:call(func, ...)`** resumes the continuation and calls `func(...)`
+    in that context. The return values of `func` are passed to the performer of
+    the effect (i.e. returned by `effect.perform`).
+
+  * **`resume:call_only(func, ...)`** calls `func(...)` in the context as if it
+    was called where `effect.perform` was invoked. When `func` returns, its
+    return values are returned by the `:call_only` method. The continuation
+    isn't resumed further but can still be resumed later.
+
+  * **`resume:perform(eff, ...)`** performs the effect `eff` in the current
+    context while providing a continuation to the respective effect handler,
+    which represents the same continuation as `resume`. This method can be used
+    to pass effects further down the stack, e.g. when an effect handler
+    sometimes does not want to handle a particular effect.
+
+  * **`resume:persistent()`** disables automatic discontinuation when the
+    effect handler returns. The method returns `resume` for convenience.
+
+  * **`resume:discontinue()`** closes all to-be-closed variables of the action,
+    i.e. runs finalizers. This is implemented by throwing a special error
+    object within the action and catching it.
 
 
 ## Module `neumond.yield`

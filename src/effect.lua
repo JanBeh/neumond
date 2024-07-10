@@ -223,21 +223,87 @@ function _M.pcall_stringify_errors(...)
   return process_pcall_stringify_errors_results(pcall_traceback(...))
 end
 
--- Effect used to call a function in context of performer without resuming
-local no_resume = new("neumond.effect.no_resume")
-local no_resume_handlers = {
-  [no_resume] = function(resume, ...) return ... end,
-}
+-- Ephemeron mapping continuations to states, which interally represent the
+-- continuation and hold some private attributes:
+local states = setmetatable({}, weak_mt)
 
--- Forward declaration:
-local handle
+-- state_resume(state, ...) calls state.resume_func (as tail-call if possible)
+-- while ensuring that the continuation is discontinued when resume_func
+-- returns:
+local function state_resume(state, ...)
+  -- Check if coroutine is being closed:
+  if state.closing then
+    -- Coroutine is being closed.
+    -- Simply call function with arguments as tail-call:
+    return state.resume_func(...)
+  end
+  -- Coroutine is not being closed.
+  -- Enable auto-discontinuation:
+  state.auto_discontinue = true
+  -- Check if state is already on stack:
+  if state.onstack then
+    -- State is already on stack.
+    -- Simply call function with arguments as tail-call:
+    return state.resume_func(...)
+  end
+  -- Coroutine is not being closed and state is not on stack.
+  -- Put state on stack as to-be-closed variable:
+  local state <close> = state
+  -- Mark state as being on stack:
+  state.onstack = true
+  -- Call function with arguments
+  -- (not a tail-call due to to-be-closed variable):
+  return state.resume_func(...)
+end
 
--- Function closing a guard's coroutine:
-local function close_via_guard(guard)
+-- state_perform(state, eff, ...) (re-)performs an effect eff in the context of
+-- the continuation, which is necessary to pass effects down the stack:
+local function state_perform(state, ...)
+  -- Check if yielding is possible:
+  if coroutine_isyieldable() then
+    -- Yielding is possible.
+    -- Yield further down the stack and return results back up:
+    return state.resume_func(coroutine_yield(...))
+  end
+  -- Yielding is not possible.
+  -- Check if current coroutine is main coroutine:
+  local current_coro, is_main = coroutine_running()
+  if is_main then
+    -- Current coroutine is main coroutine, thus no effect handler has been
+    -- found.
+    -- Check if a default handler is available for the given effect:
+    local default_handler = default_handlers[...]
+    if default_handler then
+      -- A default handler is available.
+      -- Call default handler and resume with its return values:
+      return state.resume_func(default_handler())
+    end
+    -- No default handler has been found.
+    -- Throw error in context of performer:
+    state_resume(
+      state, call_marker,
+      error, "unhandled effect or yield: " .. tostring((...)), 2
+    )
+  else
+    -- Current coroutine is not main coroutine, but yielding is not
+    -- possible due to C-call boundaries.
+    -- Throw error in context of performer:
+    state_resume(
+      state, call_marker,
+      error,
+      "cannot yield across C-call boundary while performing effect: " ..
+      tostring((...)),
+      2
+    )
+  end
+end
+
+-- Function closing a state's coroutine:
+local function state_close(state)
   -- Mark as closing:
-  guard.closing = true
+  state.closing = true
   -- Check if coroutine is still running:
-  if coroutine_status(guard.thread) ~= "dead" then
+  if coroutine_status(state.thread) ~= "dead" then
     -- Coroutine is still running.
     -- NOTE: Using coroutine.close does not allow finalizers to yield (due to a
     -- C-call boundary), thus we need to close the coroutine by throwing an
@@ -245,7 +311,7 @@ local function close_via_guard(guard)
     -- Close corouine by throwing a "discontinued" error within the coroutine
     -- and catching the error here:
     local success, errmsg = pcall_traceback(
-      guard.resume_func, call_marker, error, discontinued
+      state.resume_func, call_marker, error, discontinued
     )
     -- Check if "discontinued" error was caught:
     if success then
@@ -258,23 +324,18 @@ local function close_via_guard(guard)
       error(errmsg, 0)
     end
   end
-
 end
 
--- Ephemeron mapping continuations to guards, which are helper objects to
--- auto-discontinue a continuation:
-local guards = setmetatable({}, weak_mt)
-
--- Metatable for guards:
-local guard_metatbl = {
+-- Metatable for internal states:
+local state_metatbl = {
   -- Invoked when to-be-closed variable goes out of scope:
   __close = function(self)
     -- Check if automatic discontinuation is enabled:
-    if self.enabled then
+    if self.auto_discontinue then
       -- Automatic discontinuation is enabled.
-      -- NOTE: It is not necessary to mark guard as not being on stack.
+      -- NOTE: It is not necessary to mark state as not being on stack.
       -- Close coroutine:
-      close_via_guard(self)
+      state_close(self)
     else
       -- Automatic discontinuation is disabled.
       -- Mark as being no longer on stack:
@@ -283,74 +344,61 @@ local guard_metatbl = {
   end,
 }
 
--- resume_with_guard(guard, ...) calls guard.resume_func (as tail-call if
--- possible) while ensuring that the continuation is discontinued when
--- resume_func returns:
-local function resume_with_guard(guard, ...)
-  -- Check if coroutine is being closed:
-  if guard.closing then
-    -- Coroutine is being closed.
-    -- Simply call function with arguments as tail-call:
-    return guard.resume_func(...)
-  end
-  -- Coroutine is not being closed.
-  -- Enable auto-discontinuation:
-  guard.enabled = true
-  -- Check if guard is already on stack:
-  if guard.onstack then
-    -- Guard is already on stack.
-    -- Simply call function with arguments as tail-call:
-    return guard.resume_func(...)
-  end
-  -- Coroutine is not being closed and guard is not on stack.
-  -- Put guard on stack as to-be-closed variable:
-  local guard <close> = guard
-  -- Mark guard as being on stack:
-  guard.onstack = true
-  -- Call function with arguments
-  -- (not a tail-call due to to-be-closed variable):
-  return guard.resume_func(...)
-end
+-- Effect used to call a function in context of performer without resuming
+local no_resume = new("neumond.effect.no_resume")
+local no_resume_handlers = {
+  [no_resume] = function(resume, ...) return ... end,
+}
 
--- Metatable for continuation objects:
+-- Forward declaration:
+local handle
+
+-- Metatable for exposed continuation objects:
 local continuation_metatbl = {
   -- Calling a continuation object will resume the interrupted action:
   __call = function(self, ...)
-    -- Enable guard on stack and call stored resume function with arguments:
-    return resume_with_guard(guards[self], ...)
+    -- Ensure auto-discontinuation and call stored resume function with
+    -- arguments:
+    return state_resume(states[self], ...)
   end,
   -- Methods of continuation objects:
   __index = {
     -- Calls a function in context of the performer and resumes with its
     -- results:
     call = function(self, ...)
-      -- Enable guard on stack and call stored resume function with special
-      -- call marker as first argument:
-      return resume_with_guard(guards[self], call_marker, ...)
+      -- Ensure auto-discontinuation and call stored resume function with
+      -- special call marker as first argument:
+      return state_resume(states[self], call_marker, ...)
     end,
     -- Calls a function in context of the performer and does not resume but
     -- returns its results:
     call_only = function(self, ...)
+      -- Like :call method, but use no_resume effect to exit resumed coroutine
+      -- after calling the passed function:
       return handle(
         no_resume_handlers,
-        resume_with_guard, guards[self], call_marker,
+        state_resume, states[self], call_marker,
         function(func, ...)
           return no_resume(func(...))
         end,
         ...
       )
     end,
+    -- Re-performs an effect in the context of the continuation:
+    perform = function(self, ...)
+      return state_perform(states[self], ...)
+    end,
     -- Avoids auto-discontinuation on handler return or error:
     persistent = function(self)
       -- Disable automatic discontinuation:
-      guards[self].enabled = false
+      states[self].auto_discontinue = false
       -- Return self for convenience:
       return self
     end,
     -- Discontinues continuation:
     discontinue = function(self)
       -- Close coroutine:
-      close_via_guard(guards[self])
+      state_close(states[self])
     end,
   }
 }
@@ -371,7 +419,7 @@ function handle(handlers, action, ...)
   -- Create coroutine with pcall_traceback as function:
   local action_thread = coroutine_create(pcall_traceback)
   -- Forward declarations:
-  local resume, process_action_results
+  local resume, process_action_results, state
   -- Function resuming the action:
   local function resume_func(...)
     -- Resume coroutine and use helper function to process multiple return
@@ -399,58 +447,28 @@ function handle(handlers, action, ...)
         return handler(resume, select(2, ...))
       end
       -- No handler has been found.
-      -- Check if yielding is possible:
-      if coroutine_isyieldable() then
-        -- Yielding is possible.
-        -- Pass yield further down the stack and return its results back up:
-        return resume_func(coroutine_yield(...))
-      end
-      -- Yielding is not possible.
-      -- Check if current coroutine is main coroutine:
-      local current_coro, is_main = coroutine_running()
-      if is_main then
-        -- Current coroutine is main coroutine, thus no effect handler has been
-        -- found.
-        -- Check if a default handler is available for the given effect:
-        local default_handler = default_handlers[...]
-        if default_handler then
-          -- A default handler is available.
-          -- Call default handler and resume with its return values:
-          return resume_func(default_handler())
-        end
-        -- No default handler has been found.
-        -- Throw error in context of performer:
-        resume:call(error, "unhandled effect or yield: " .. tostring((...)), 2)
-      else
-        -- Current coroutine is not main coroutine, but yielding is not
-        -- possible due to C-call boundaries.
-        -- Throw error in context of performer:
-        resume:call(
-          error,
-          "cannot yield across C-call boundary while performing effect: " ..
-          tostring((...)),
-          2
-        )
-      end
+      -- Re-perform effect:
+      return state_perform(state, ...)
     else
       -- coroutine.resume failed.
       error("unhandled error in coroutine: " .. tostring((...)))
     end
   end
-  -- Create and install guard for auto-discontinuation on return:
-  local guard <close> = setmetatable(
+  -- Create and install state for auto-discontinuation on return:
+  state = setmetatable(
     {
       resume_func = resume_func,
       thread = action_thread,
       onstack = true,
-      enabled = true,
+      auto_discontinue = true,
       closing = false,
     },
-    guard_metatbl
+    state_metatbl
   )
-  -- Create continuation object and associate guard:
+  local state <close> = state
+  -- Create continuation object and associate state:
   resume = setmetatable({}, continuation_metatbl)
-  guards[resume] = guard
+  states[resume] = state
   -- Call resume_func with arguments for pcall_traceback:
   return resume_func(action, ...)
 end
