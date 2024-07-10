@@ -195,7 +195,8 @@ methods:
     context while providing a continuation to the respective effect handler,
     which represents the same continuation as `resume`. This method can be used
     to pass effects further down the stack, e.g. when an effect handler
-    sometimes does not want to handle a particular effect.
+    sometimes does not want to handle a particular effect. The original
+    continuation (`resume`) must not be used after invoking this method.
 
   * **`resume:persistent()`** disables automatic discontinuation when the
     effect handler returns. The method returns `resume` for convenience.
