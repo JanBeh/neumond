@@ -573,7 +573,7 @@ with version 2.3.1, which is subject to this bug.
 [`libkqueue`]: https://github.com/mheily/libkqueue
 [release notes]: https://github.com/mheily/libkqueue/releases/tag/v2.4.0
 
-Also note, that the provided `Makefile` is a BSD Makefile. Use `bmake` instead of `make` on Linux platforms.
+Also note that the provided `Makefile` is a BSD Makefile. Use `bmake` instead of `make` on Linux platforms.
 
 The I/O related modules of this library support POSIX operating systems (Linux,
 BSD, etc.) only. In particular, there is no support for Microsoft Windows.
