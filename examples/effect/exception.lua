@@ -9,8 +9,7 @@ local function catch_impl(traceback, action, kind, handler)
       [exception] = function(resume, ex)
         if string.find(ex.kind, pattern) then
           if traceback then
-            -- TODO: debug.traceback contains current coroutine only
-            return handler(ex, resume:call_only(debug.traceback))
+            return handler(ex, resume:traceback())
           else
             return handler(ex)
           end

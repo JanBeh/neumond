@@ -17,6 +17,7 @@ local coroutine_running     = coroutine.running
 local coroutine_status      = coroutine.status
 local coroutine_yield       = coroutine.yield
 local debug_traceback = debug.traceback
+local table_concat = table.concat
 
 -- Disallow global variables in the implementation of this module:
 _ENV = setmetatable({}, {
@@ -353,6 +354,9 @@ local no_resume_handlers = {
   end,
 }
 
+-- Effect used to generate tracebacks of a continuation:
+local traceback = new("neumond.effect.traceback")
+
 -- Forward declaration:
 local handle
 
@@ -385,6 +389,15 @@ local continuation_metatbl = {
           return no_resume(func(...))
         end,
         ...
+      )
+    end,
+    -- Returns a traceback of the continuation:
+    traceback = function(self)
+      -- Perform traceback effect in context of continuation with necessary
+      -- arguments, and concatenate parts of traceback into one string:
+      return table_concat(
+        self:call_only(traceback, states[self].thread, {}),
+        "\n"
       )
     end,
     -- Re-performs an effect in the context of the continuation:
@@ -450,6 +463,27 @@ function handle(handlers, action, ...)
         return handler(resume, select(2, ...))
       end
       -- No handler has been found.
+      -- Check if traceback effect has been performed:
+      if ... == traceback then
+        -- Internal effect "traceback" has been performed.
+        -- Obtain arguments:
+        local dummy_, until_thread, parts = ...
+        -- Extend stack trace parts:
+        local part_count = #parts
+        if part_count == 0 then
+          parts[1] = debug_traceback(action_thread, nil, 3)
+        else
+          parts[#parts+1] = debug_traceback(action_thread)
+        end
+        -- Check if end level (of nested coroutines) has been reached:
+        if action_thread == until_thread then
+          -- End level has been reached.
+          -- Resume with stack trace parts:
+          return resume_func(parts)
+        end
+        -- End level has not been reached and traceback effect must be
+        -- re-performed.
+      end
       -- Re-perform effect:
       return state_perform(state, ...)
     else

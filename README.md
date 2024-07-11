@@ -191,6 +191,8 @@ methods:
     return values are returned by the `:call_only` method. The continuation
     isn't resumed further but can still be resumed later.
 
+  * **`resume:traceback()`** generates a stack trace of the continuation.
+
   * **`resume:perform(eff, ...)`** performs the effect `eff` in the current
     context while providing a continuation to the respective effect handler,
     which represents the same continuation as `resume`. This method can be used
