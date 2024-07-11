@@ -89,33 +89,40 @@ effect. Distinct from exception handlers, an effect handler may decide to
 *resume* the program flow at the position where the effect has been performed
 and also optionally modify the final return value of that continuation.
 
-The following example demonstrates control flow using effects. It prints out
-the two lines "`Hello`" and "`World`":
+The following example demonstrates control flow using effects:
 
 ```
 local effect = require "neumond.effect"
 
-local increment_result = effect.new("increment_result")
+-- Define a new effect named "log":
+local log = effect.new("log")
 
-local function foo()
-  increment_result("Hello")
+-- Function that uses the "log" effect
+-- (without knowing what the log effect actually does):
+function foo()
+  local success = log("Hello World!")
+  assert(success == true)
 end
 
+-- Run code while handling the log effect by printing:
 local retval = effect.handle(
   {
-    [increment_result] = function(resume, message)
+    -- The following function gets called when "log" is performed:
+    [log] = function(resume, message)
       print(message)
-      return resume() + 1
+      return resume(true) -- resume and pass return values (42 in this case)
     end,
   },
   function()
+    -- Anything in this function uses the above log handler
+    -- that prints the message and resumes.
     foo()
-    print("World")
-    return 5
+    log("Good bye.")
+    return 42
   end
 )
 
-assert(retval == 6)
+assert(retval == 42)
 ```
 
 The module provides the following functions and tables:
