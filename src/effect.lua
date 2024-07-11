@@ -344,10 +344,13 @@ local state_metatbl = {
   end,
 }
 
--- Effect used to call a function in context of performer without resuming
+-- Effect used to call a function in context of performer without resuming:
 local no_resume = new("neumond.effect.no_resume")
 local no_resume_handlers = {
-  [no_resume] = function(resume, ...) return ... end,
+  [no_resume] = function(resume, ...)
+    resume:persistent()
+    return ...
+  end,
 }
 
 -- Forward declaration:
