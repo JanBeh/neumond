@@ -28,7 +28,7 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
--- Metatable for ephemerons:
+-- Metatable for private ephemerons:
 local weak_mt = {__mode = "k"}
 
 -- Assert function that does not prepend position information to the error:
@@ -42,7 +42,7 @@ end
 -- Default handlers, where each key is an effect and each value is a function
 -- that does not get a continuation handle but simply returns the arguments for
 -- resuming:
-local default_handlers = {}
+local default_handlers = setmetatable({}, {__mode = "k"})
 _M.default_handlers = default_handlers
 
 -- Internally used marker, which indicates that a value passed from the effect
