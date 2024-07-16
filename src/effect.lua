@@ -241,9 +241,9 @@ local function state_resume(state, ...)
   -- Coroutine is not being closed.
   -- Enable auto-discontinuation:
   state.auto_discontinue = true
-  -- Check if state is already on stack:
+  -- Check if state is already on stack as to-be-closed variable:
   if state.onstack then
-    -- State is already on stack.
+    -- State is already on stack as to-be-closed variable.
     -- Simply call function with arguments as tail-call:
     return state.resume_func(...)
   end
