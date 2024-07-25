@@ -246,7 +246,9 @@ function _M.main(...)
       local fib = sleeper._fiber
       if fib then
         fib:wake()
+        return true
       end
+      return false
     end
     return sleeper, waker
   end

@@ -35,7 +35,8 @@ _M.interval = effect.new("wait.interval")
 
 -- Effect notify() returns a sleeper (as first return value) and a waker (as
 -- second return value) where the sleeper, when called, will wait until the
--- waker has been called:
+-- waker has been called (waker returns true if a sleeper had been waiting,
+-- otherwise false):
 local notify = effect.new("wait.notify")
 _M.notify = notify
 
@@ -52,12 +53,14 @@ function _M.mutex()
     __close = function()
       -- Set mutex state to unlocked:
       locked = false
-      -- Get waker from FIFO queue if possible:
-      local waker = table.remove(wakers, 1)
-      if waker then
-        -- Waker was obtained.
-        -- Trigger waker:
-        waker()
+      -- Repeat until a sleeper was woken:
+      while true do
+        -- Get waker from FIFO queue if possible:
+        local waker = table.remove(wakers, 1)
+        -- Break if there are no more wakers or if waking was successful:
+        if not waker or waker() then
+          break
+        end
       end
     end,
   })

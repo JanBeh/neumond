@@ -346,10 +346,13 @@ The module provides the following effects:
     `"handle"`).
 
   * **`wait.notify()`** creates and returns a handle `sleeper` and a function
-    `waker`. Calling `sleeper` will wait until `waker` has been called. The
-    `waker` function may be called first, in which case the next call to
-    `sleper` will return immediately. The `sleeper` handle may also be passed
-    to the `wait.select` effect (after the string `"handle"`).
+    `waker`. Calling `sleeper()` will wait until `waker()` has been called.
+    When calling `waker()`, `true` will be returned if a `sleeper` was waiting
+    and has been woken, otherwise `false` will be returned and the next call of
+    `sleeper()` will return immediately. Calling `waker()` multiple times will
+    not cause multiple calls to `sleeper()` to return immediately but only the
+    very next call. The `sleeper` handle may also be passed to the
+    `wait.select` effect (after the string `"handle"`).
 
 The module additionally provides the following function:
 
