@@ -28,7 +28,7 @@ _M.select = effect.new("wait.select")
 -- handle that waits, when called, until the timer has elapsed:
 _M.timeout = effect.new("wait.timeout")
 
--- Effect timeout(seconds) starts an interval timer and returns a
+-- Effect interval(seconds) starts an interval timer and returns a
 -- (to-be-closed) handle that waits, when called, until the next tick of the
 -- interval:
 _M.interval = effect.new("wait.interval")
