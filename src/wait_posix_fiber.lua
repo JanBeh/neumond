@@ -22,11 +22,15 @@ end
 local weak_mt = { __mode = "k" }
 
 local function handle_call_noreset(self)
-  wait.select("handle", self)
+  while not self.ready do
+    wait.select("handle", self)
+  end
 end
 
 local function handle_call_reset(self)
-  wait.select("handle", self)
+  while not self.ready do
+    wait.select("handle", self)
+  end
   self.ready = false
 end
 

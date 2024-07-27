@@ -329,6 +329,10 @@ The module provides the following effects:
     reset to `false` when wanting to reuse the handle to wait for the next
     event (e.g. another occurrence of the next interval tick).
 
+    Note that `wait.select` is allowed to sporadically wake up. Calling a
+    handle, in contrast, will repeatedly use `wait.select` until the handle is
+    ready.
+
   * **`wait.timeout(seconds)`** starts a timer that elapses after given
     `seconds` and returns a callable handle that, when called, waits until the
     time has elapsed. The handle can be closed by storing it in a `<close>`

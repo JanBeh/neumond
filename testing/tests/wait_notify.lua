@@ -1,0 +1,56 @@
+local checkpoint = require "checkpoint"
+local runtime = require "neumond.runtime"
+local fiber = require "neumond.fiber"
+local wait = require "neumond.wait"
+
+runtime(function()
+  local sleeper, waker = wait.notify()
+  local f1 = fiber.spawn(function()
+    checkpoint(2)
+    sleeper()
+    checkpoint(7)
+  end)
+  local f2 = fiber.spawn(function()
+    checkpoint(3)
+    fiber.yield()
+    checkpoint(4)
+    fiber.yield()
+    checkpoint(5)
+    waker()
+    checkpoint(6)
+    fiber.yield()
+    checkpoint(8)
+  end)
+  checkpoint(1)
+  f1:try_await()
+  f2:try_await()
+end)
+
+checkpoint(9)
+
+runtime(function()
+  local sleeper, waker = wait.notify()
+  local f1 = fiber.spawn(function()
+    checkpoint(11)
+    fiber.current():wake() -- must not have any effect
+    sleeper()
+    checkpoint(16)
+  end)
+  local f2 = fiber.spawn(function()
+    checkpoint(12)
+    fiber.yield()
+    checkpoint(13)
+    f1:wake() -- must not have any effect
+    fiber.yield()
+    checkpoint(14)
+    waker()
+    checkpoint(15)
+    fiber.yield()
+    checkpoint(17)
+  end)
+  checkpoint(10)
+  f1:try_await()
+  f2:try_await()
+end)
+
+checkpoint(18)
