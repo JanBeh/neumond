@@ -5,7 +5,7 @@ local _M = {}
 
 local effect = require "neumond.effect"
 local fiber = require "neumond.fiber"
-local wait = require "neumond.wait"
+local sync = require "neumond.sync"
 local eio = require "neumond.eio"
 local web = require "neumond.web"
 
@@ -157,7 +157,7 @@ function request_methods:process_request_body()
     error("request body has already been read", 2)
   end
   self._request_body_mode = "auto"
-  local mutex = wait.mutex()
+  local mutex = sync.mutex()
   self._request_body_mutex = mutex
   local guard = mutex()
   fiber.spawn(function()

@@ -32,12 +32,13 @@ creating an [SCGI] application server using fibers and asynchronous I/O.
       * **`neumond.yield`** (abstract yield effect)
           * **`neumond.fiber`** (lightweight threads)
               * `neumond.wait_posix_fiber`
-      * **`neumond.wait`** (platform independent waiting and synchronization)
+      * **`neumond.wait`** (platform independent waiting)
           * **`neumond.wait_posix`** (waiting for I/O on POSIX platforms)
               * **`neumond.wait_posix_blocking`** (waiting through blocking)
               * **`neumond.wait_posix_fiber`** (waiting in a fiber environment)
                   * **`neumond.runtime`** (runtime for POSIX platforms)
               * **`neumond.eio`** (basic I/O)
+          * **`neumond.sync`** (synchronization)
   * ***`neumond.lkq`*** ([kqueue] interface)
       * `neumond.wait_posix_blocking`
       * `neumond.wait_posix_fiber`
@@ -304,9 +305,7 @@ A fiber handle `f` provides the following attributes and methods:
 
 ## Module `neumond.wait`
 
-Module for waiting and synchronization.
-
-The module provides the following effects:
+The module provides the following effects (but no handlers) for waiting:
 
   * **`wait.select(...)`** waits until one of several listed events occurred.
     Each event is denoted by two arguments, i.e. the number of arguments passed
@@ -415,6 +414,27 @@ are created for waiting, each handle must not be used more than once in
 parallel. Violating these rules may result in an error or unspecified behavior,
 e.g. deadlocks.
 
+
+## Module `neumond.sync`
+
+The `sync` module uses the effects provided by the `wait` module to provide the
+following synchronization functions:
+
+  * **`sync.notify()`** is an alias for `wait.notify()`.
+
+  * **`sync.mutex()`** returns a mutex `m`. Calling `m` locks the mutex and
+    returns a guard that should be stored in a `<close>` variable which will
+    unlock the mutex when closed.
+
+A mutex protected section looks as follows:
+
+```
+local mutex = wait.mutex()
+local func()
+  local guard <close> = mutex()
+  -- do stuff here
+end
+```
 
 ## Module `neumond.eio`
 

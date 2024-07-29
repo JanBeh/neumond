@@ -1,11 +1,11 @@
 local checkpoint = require "checkpoint"
 local fiber = require "neumond.fiber"
-local wait = require "neumond.wait"
+local sync = require "neumond.sync"
 local runtime = require "neumond.runtime"
 
 runtime(function()
   checkpoint(1)
-  local lock = wait.mutex()
+  local lock = sync.mutex()
   local f1 = fiber.spawn(function()
     checkpoint(3)
     local guard <close> = lock()
