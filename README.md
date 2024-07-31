@@ -357,22 +357,6 @@ The module provides the following effects (but no handlers) for waiting:
     very next call. The `sleeper` handle may also be passed to the
     `wait.select` effect (after the string `"handle"`).
 
-The module additionally provides the following function:
-
-  * **`wait.mutex()`** returns a mutex `m`. Calling `m` locks the mutex and
-    returns a guard that should be stored in a `<close>` variable which will
-    unlock the mutex when closed.
-
-A mutex protected section looks as follows:
-
-```
-local mutex = wait.mutex()
-local func()
-  local guard <close> = mutex()
-  -- do stuff here
-end
-```
-
 
 ## Module `neumond.wait_posix`
 
@@ -426,15 +410,23 @@ following synchronization functions:
     returns a guard that should be stored in a `<close>` variable which will
     unlock the mutex when closed.
 
-A mutex protected section looks as follows:
+    A mutex protected section looks as follows:
 
-```
-local mutex = wait.mutex()
-local func()
-  local guard <close> = mutex()
-  -- do stuff here
-end
-```
+    ```
+    local mutex = wait.mutex()
+    local func()
+      local guard <close> = mutex()
+      -- do stuff here
+    end
+    ```
+
+  * **`sync.queue(size)`** returns a FIFO queue `q` with given `size`. Use
+    `q:push(e)` to push an element `e` and `q:pop()` to pop an element. Methods
+    `push` and `pop` will wait if the queue is full or empty, respectively. Use
+    `#q` to obtain the number of buffered elements plus minus any pending
+    pushes and pops. `q:push(e)` will return immediately if `#q < q.size` and
+    `q:pop()` will return immediately if `#q > 0`.
+
 
 ## Module `neumond.eio`
 

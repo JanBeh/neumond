@@ -18,102 +18,154 @@ _M.notify = notify
 -- Function mutex() creates a mutex handle that, when called, waits until the
 -- mutex can be locked and returns a to-be-closed lock guard:
 local function mutex()
-  -- State of mutex (locked or unlocked):
+  -- Storing if mutex is locked:
   local locked = false
-  -- FIFO queue of waker handles:
-  local wakers = {}
-  -- Mutex guard to be returned when mutex was locked:
-  local guard = setmetatable({}, {
-    -- Function to be executed when mutex guard is closed:
-    __close = function()
-      -- Repeat until a sleeper was woken or until there are no more sleepers:
-      while true do
-        -- Get waker from FIFO queue if possible:
-        local waker = table.remove(wakers, 1)
-        -- Check if there are no more wakers:
-        if not waker then
-          -- There are no more wakers.
-          -- Set mutex state to unlocked:
-          locked = false
-          -- Break loop:
-          break
-        end
-        -- Break if waking was successful:
-        if waker() then
-          -- TODO: If woken task gets killed, mutex will be locked forever.
-          break
-        end
+  -- Queue representing waiting tasks:
+  local waiters = {}
+  -- Function called internally to unlock mutex:
+  local function unlock()
+    -- Search for waiter that can be woken:
+    while true do
+      -- Get next waiter in queue:
+      local waiter = table.remove(waiters, 1)
+      if not waiter then
+        -- There are no more waiters.
+        -- Mark mutex as unlocked:
+        locked = false
+        -- Finish searching for waiters:
+        return
+      end
+      -- Check if next waiter has already been closed:
+      if not waiter.closed then
+        -- Waiter has not been closed.
+        -- Mark waiter as being woken up:
+        waiter.waking = true
+        -- Wake up waiter:
+        waiter.waker()
+        -- Finish searching for waiters:
+        return
+      end
+    end
+  end
+  -- Guard to be returned when mutex has been locked:
+  local guard = setmetatable({}, { __close = unlock })
+  -- Metatable for waiter entries in queue:
+  local waiter_metatbl = {
+    -- Function executed when waiter is closed:
+    __close = function(self)
+      -- Check if this waiter is currently waking up:
+      if self.waking then
+        -- This waiter is currently waking up but being closed before wakeup
+        -- was completed (e.g. due to canceled task).
+        -- Unlock mutex again (i.e. wake next non-closed waiter, if exists, or
+        -- mark mutex as unlocked if there is no non-closed waiter):
+        unlock()
+      else
+        -- This waiter is currently not waking up.
+        -- Mark waiter as closed, so it is not woken up in future either:
+        self.closed = true
       end
     end,
-  })
-  -- Return mutex handle (implemented as a function):
+  }
+  -- Return mutex, represented as a function that locks the mutex and returns a
+  -- mutex guard when called.
   return function()
     -- Check if mutex is locked:
     if locked then
       -- Mutex is locked.
-      -- Create new waker and waiter pair:
       local sleeper, waker = notify()
-      -- Store waker in FIFO queue:
-      wakers[#wakers+1] = waker
-      -- Wait for wakeup:
+      local waiter <close> = setmetatable(
+        { waker = waker, waking = false },
+        waiter_metatbl
+      )
+      waiters[#waiters+1] = waiter
       sleeper()
+      --assert(waiter.waking)
+      waiter.waking = false
     else
-      -- Set mutex state to locked:
+      -- Mutex is not locked.
+      -- Mark mutex as locked:
       locked = true
     end
-    -- Return mutex guard, which will unlock the mutex when closed:
+    -- Return mutex guard:
     return guard
   end
 end
 _M.mutex = mutex
 
+-- Helper function doing nothing:
 local function noop()
 end
 
+-- Methods for FIFO queues with backpressure:
 local queue_methods = {}
 
+-- Method that pushes a value into a queue:
 function queue_methods:push(value)
+  -- Serialize all pushes in a fair manner:
   local mutex_guard <close> = self._writer_mutex()
+  -- Check if too many entries have been written or are waiting:
   local old_used = self._used
   if old_used >= self.size then
+    -- Too many entries have been written or are waiting.
+    -- Count pending push:
     self._used = old_used + 1
+    -- Undo counting of pending push when woken or canceled:
     local writer_guard <close> = self._writer_guard
+    -- Sleep with possibility to be woken:
     local sleeper, waker = notify()
     self._writer_waker = waker
     sleeper()
     self._writer_waker = noop
   end
+  -- Write entry into queue:
   local old_wpos = self._buffer_wpos
   self._buffer[old_wpos] = value
   self._buffer_wpos = old_wpos + 1
+  -- Count written entry:
   self._used = self._used + 1
+  -- Wakeup any sleeping reader if exists:
   self._reader_waker()
 end
 
+-- Method that pops a value from a queue:
 function queue_methods:pop()
+  -- Serialize all pops in a fair manner:
   local mutex_guard <close> = self._reader_mutex()
+  -- Wakeup any sleeping writer if exists:
   self._writer_waker()
+  -- Check if no entry is available:
   local old_rpos = self._buffer_rpos
   if self._buffer_wpos == self._buffer_rpos then
+    -- No entry is available.
+    -- Count pending pop:
     self._used = self._used - 1
+    -- Undo counting of pending pop when woken or canceled:
     local reader_guard <close> = self._reader_guard
+    -- Sleep with possibility to be woken:
     local sleeper, waker = notify()
     self._reader_waker = waker
     sleeper()
     self._reader_waker = noop
   end
+  -- Read value from queue:
   local value = self._buffer[old_rpos]
   self._buffer_rpos = old_rpos + 1
+  -- Count read entry:
   self._used = self._used - 1
+  -- Return read value:
   return value
 end
 
+-- Metatable for FIFO queues with backpressure:
 local queue_metatbl = {
-  __index = function(self, key)
-    return queue_methods[key]
+  __index = queue_methods,
+  __len = function(self)
+    return self._used
   end,
 }
 
+-- Metatable for helper guard that undoes counting a pending push:
 local queue_writer_guard_metatbl = {
   __close = function(self)
     local queue = self.queue
@@ -121,6 +173,7 @@ local queue_writer_guard_metatbl = {
   end,
 }
 
+-- Metatable for helper guard that undoes counting a pending pop:
 local queue_reader_guard_metatbl = {
   __close = function(self)
     local queue = self.queue
@@ -128,18 +181,19 @@ local queue_reader_guard_metatbl = {
   end,
 }
 
+-- Function queue(size) returns a new queue with given size:
 function _M.queue(size)
   local queue = setmetatable(
     {
-      _buffer = {},
-      _buffer_rpos = 0,
-      _buffer_wpos = 0,
-      _writer_waker = noop,
-      _reader_waker = noop,
-      _writer_mutex = mutex(),
-      _reader_mutex = mutex(),
-      size = size,
-      _used = 0,
+      _buffer = {}, -- buffered entries in queue
+      _buffer_rpos = 0, -- read position in buffer
+      _buffer_wpos = 0, -- write position in buffer
+      _writer_waker = noop, -- wakes sleeping writer if existent
+      _reader_waker = noop, -- wakes sleeping reader if existent
+      _writer_mutex = mutex(), -- mutex for push method
+      _reader_mutex = mutex(), -- mutex for pop method
+      size = size, -- maximum number of buffered entries
+      _used = 0, -- number of buffered entries plus minus pending
     },
     queue_metatbl
   )
