@@ -22,19 +22,24 @@ local function mutex()
   local locked = false
   -- Queue representing waiting tasks:
   local waiters = {}
+  local waiters_rpos = 0
+  local waiters_wpos = 0
   -- Function called internally to unlock mutex:
   local function unlock()
     -- Search for waiter that can be woken:
     while true do
-      -- Get next waiter in queue:
-      local waiter = table.remove(waiters, 1)
-      if not waiter then
-        -- There are no more waiters.
+      -- Check if there is a waiter queued:
+      if waiters_wpos == waiters_rpos then
+        -- There is no waiter queued.
         -- Mark mutex as unlocked:
         locked = false
         -- Finish searching for waiters:
         return
       end
+      -- There is a waiter queued:
+      -- Pop queued waiter:
+      local waiter = waiters[waiters_rpos]
+      waiters_rpos = waiters_rpos + 1
       -- Check if next waiter has already been closed:
       if not waiter.closed then
         -- Waiter has not been closed.
@@ -73,14 +78,27 @@ local function mutex()
     -- Check if mutex is locked:
     if locked then
       -- Mutex is locked.
+      -- Create waiter with sleeper and waker:
       local sleeper, waker = notify()
       local waiter <close> = setmetatable(
         { waker = waker, waking = false },
         waiter_metatbl
       )
-      waiters[#waiters+1] = waiter
+      -- Check if queue is full:
+      local new_wpos = waiters_wpos + 1
+      if new_wpos == waiters_rpos then
+        -- Queue is full.
+        -- Report error:
+        error("overflow in mutex waiters")
+      end
+      -- Add waiter to FIFO queue:
+      waiters[waiters_wpos] = waiter
+      waiters_wpos = new_wpos
+      -- Sleep with possibility to be woken:
       sleeper()
+      -- waiter.waking should be set:
       --assert(waiter.waking)
+      -- Mark waiter as not waking to avoid next waiter being woken:
       waiter.waking = false
     else
       -- Mutex is not locked.
