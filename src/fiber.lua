@@ -1,43 +1,18 @@
 -- Module for lightweight threads (fibers)
 
--- Explicitly import certain items from Lua's standard library as local
--- variables for performance improvements to avoid table lookups:
-local error        = error
-local ipairs       = ipairs
-local next         = next
-local setmetatable = setmetatable
-local pairs        = pairs
-local table_insert = table.insert
-local table_pack   = table.pack
-local table_unpack = table.unpack
-
--- Import some items from effect module as local variables:
-local effect_new
-local effect_default_handlers
-local effect_handle
-do
-  local effect = require "neumond.effect"
-  effect_new              = effect.new
-  effect_default_handlers = effect.default_handlers
-  effect_handle           = effect.handle
-end
-
--- Import "yield" module (which is used as "yield" effect):
-local yield = require "neumond.yield"
-
--- Disallow global variables in the implementation of this module:
+-- Disallow setting global variables in the implementation of this module:
 _ENV = setmetatable({}, {
-  __index    = function() error("cannot get global variable", 2) end,
+  __index = _G,
   __newindex = function() error("cannot set global variable", 2) end,
 })
 
 -- Table containing all public items of this module:
 local _M = {}
 
--- Explicitly import certain items as local variables for performance
--- improvements to avoid table lookups:
-local error = error
-local setmetatable = setmetatable
+-- Import "effect" module and "yield" module (which is used as "yield" effect):
+local effect = require "neumond.effect"
+local yield = require "neumond.yield"
+
 -- Function creating a FIFO-like data structure where there can be no
 -- duplicates (i.e. pushing an already existing element is a no-op):
 local function fifoset()
@@ -85,9 +60,9 @@ end
 
 -- Effect resuming with a handle of the currently running fiber, or nil if
 -- called outside a scheduling environment:
-local try_current = effect_new("fiber.try_current")
+local try_current = effect.new("fiber.try_current")
 _M.try_current = try_current
-effect_default_handlers[try_current] = function() return nil end
+effect.default_handlers[try_current] = function() return nil end
 
 -- Function returning a handle of the currently running fiber:
 local function current()
@@ -100,20 +75,20 @@ end
 _M.current = current
 
 -- Effect putting the currently running fiber to sleep:
-local sleep = effect_new("fiber.sleep")
+local sleep = effect.new("fiber.sleep")
 _M.sleep = sleep
-effect_default_handlers[sleep] = scope_error
+effect.default_handlers[sleep] = scope_error
 
 -- Effect killing the currently running fiber:
-local suicide = effect_new("fiber.suicide")
+local suicide = effect.new("fiber.suicide")
 _M.suicide = suicide
-effect_default_handlers[suicide] = scope_error
+effect.default_handlers[suicide] = scope_error
 
 -- spawn(action, ...) spawns a new fiber with the given action function and
 -- arguments to the action function:
-local spawn = effect_new("fiber.spawn")
+local spawn = effect.new("fiber.spawn")
 _M.spawn = spawn
-effect_default_handlers[spawn] = scope_error
+effect.default_handlers[spawn] = scope_error
 
 -- Internal marker for attributes in the "fiber_methods" table:
 local getter_magic = {}
@@ -156,11 +131,11 @@ function fiber_methods.try_await(self)
   if results then
     -- Result is already available.
     -- Return true with available results:
-    return true, table_unpack(results, 1, results.n)
+    return true, table.unpack(results, 1, results.n)
   end
   -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
-  table_insert(attrs.waiting_fibers, current())
+  table.insert(attrs.waiting_fibers, current())
   -- Sleep until result is available or awaited fiber has been killed and
   -- proceed same as above:
   while true do
@@ -170,7 +145,7 @@ function fiber_methods.try_await(self)
       return false
     end
     if results then
-      return true, table_unpack(results, 1, results.n)
+      return true, table.unpack(results, 1, results.n)
     end
   end
 end
@@ -190,11 +165,11 @@ function fiber_methods.await(self)
   if results then
     -- Result is already available.
     -- Return available results:
-    return table_unpack(results, 1, results.n)
+    return table.unpack(results, 1, results.n)
   end
   -- No result is available and awaited fiber has not been killed.
   -- Add currently executed fiber to other fiber's waiting list:
-  table_insert(attrs.waiting_fibers, current())
+  table.insert(attrs.waiting_fibers, current())
   -- Sleep until result is available or awaited fiber has been killed and
   -- proceed same as above:
   while true do
@@ -204,7 +179,7 @@ function fiber_methods.await(self)
       return suicide()
     end
     if results then
-      return table_unpack(results, 1, results.n)
+      return table.unpack(results, 1, results.n)
     end
   end
 end
@@ -382,15 +357,15 @@ local function scope(...)
     -- Store attribute table in ephemeron:
     fiber_attrs[fiber] = attrs
     -- Pack arguments to spawned fiber's function:
-    local args = table_pack(...)
+    local args = table.pack(...)
     -- Initialize resume function for first run:
     attrs.resume = function()
       -- Mark fiber as started, such that cleanup may take place later:
       attrs.started = true
       -- Run with effect handlers:
-      return effect_handle(handlers, function()
+      return effect.handle(handlers, function()
         -- Run fiber's function and store its return values:
-        attrs.results = table_pack(func(table_unpack(args, 1, args.n)))
+        attrs.results = table.pack(func(table.unpack(args, 1, args.n)))
         -- Mark fiber as closed (i.e. remove it from "open_fibers" table):
         open_fibers[current_fiber] = nil
         -- Wakeup all fibers that are waiting for this fiber's return values:
@@ -423,7 +398,7 @@ local function scope(...)
     if main_results then
       -- Main fiber has terminated.
       -- Return results of main fiber:
-      return table_unpack(main_results, 1, main_results.n)
+      return table.unpack(main_results, 1, main_results.n)
     end
     -- Obtain next fiber to resume (or special marker):
     local fiber = woken_fibers:pop()
@@ -474,7 +449,7 @@ _M.scope = scope
 -- handle(handlers, action, ...) acts like effect.handle(action, ...) but also
 -- applies to spawned fibers within the action.
 function _M.handle(handlers, ...)
-  return effect_handle(handlers, scope, ...)
+  return effect.handle(handlers, scope, ...)
 end
 
 return _M
