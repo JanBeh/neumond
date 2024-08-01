@@ -396,8 +396,12 @@ local request_metatbl = {
 }
 
 function _M.connection_handler(conn, request_handler)
+  local header_len_str = assert_io(conn:read(16, ":"))
+  if header_len_str == "" then
+    return
+  end
   local header_len = assert_io(
-    tonumber(string_match(assert_io(conn:read(16, ":")), "^([0-9]+):")),
+    tonumber(string_match(header_len_str, "^([0-9]+):")),
     "could not parse SCGI header length"
   )
   assert_io(header_len <= _M.max_header_length, "SCGI header too long")
