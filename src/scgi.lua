@@ -7,10 +7,10 @@ local effect = require "neumond.effect"
 local fiber = require "neumond.fiber"
 local sync = require "neumond.sync"
 local eio = require "neumond.eio"
-local web = require "neumond.web"
 
 _M.max_header_length = 1024 * 256
 
+local string_byte   = string.byte
 local string_find   = string.find
 local string_gmatch = string.gmatch
 local string_gsub   = string.gsub
@@ -18,17 +18,39 @@ local string_lower  = string.lower
 local string_match  = string.match
 local string_sub    = string.sub
 
-local decode_uri = web.decode_uri
-
 -- Effect indicating an I/O error during communication with client:
 local io_error = effect.new("neumond.scgi.io_error")
 _M.io_error = io_error
 
+-- Assertion that raises an io_error effect:
 local function assert_io(first, ...)
   if first then
     return first, ...
   else
     io_error(...)
+  end
+end
+
+-- Decode URI encoding
+local decode_uri
+do
+  local b0, b9, bA, bF, ba, bf = string.byte("09AFaf", 1, 6)
+  local function decode_hex(hex)
+    local n1, n2 = string_byte(hex, 1, 2)
+    if n1 <= b9 then n1 = n1 - b0
+    elseif n1 <= bF then n1 = n1 - bA + 10
+    else n1 = n1 - ba + 10 end
+    if n2 <= b9 then n2 = n2 - b0
+    elseif n2 <= bF then n2 = n2 - bA + 10
+    else n2 = n2 - ba + 10 end
+    return string.char(n1 * 16 + n2)
+  end
+  function decode_uri(str)
+    return (string_gsub(
+      string_gsub(str, "%+", " "),
+      "%%([0-9A-Fa-f][0-9A-Fa-f])",
+      decode_hex
+    ))
   end
 end
 

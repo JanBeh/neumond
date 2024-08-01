@@ -9,41 +9,26 @@ _ENV = setmetatable({}, {
 -- Table containing all public items of this module:
 local _M = {}
 
+local tostring = tostring
+local gsub = string.gsub
+local format = string.format
+local byte = string.byte
+
+local function replaced_html_char(char)
+  if char == '"' then return "&quot;"
+  elseif char == '<' then return "&lt;"
+  elseif char == '>' then return "&gt;"
+  else return "&amp;" end
+end
+
 function _M.encode_html(text)
-  return (string.gsub(tostring(text), '[<>&"]', function(char)
-    if char == '"' then return "&quot;"
-    elseif char == '<' then return "&lt;"
-    elseif char == '>' then return "&gt;"
-    else return "&amp;" end
-  end))
+  return (gsub(tostring(text), '[<>&"]', replaced_html_char))
 end
 
 function _M.encode_uri(text)
-  return (string.gsub(text, "[^0-9A-Za-z_%.~-]",
-    function(char) return string.format("%%%02x", string.byte(char)) end
+  return (gsub(text, "[^0-9A-Za-z_%.~-]",
+    function(char) return format("%%%02x", byte(char)) end
   ))
 end
-
-local decode_uri
-do
-  local b0, b9, bA, bF, ba, bf = string.byte("09AFaf", 1, 6)
-  function decode_uri(str)
-    return (string.gsub(
-      string.gsub(str, "%+", " "),
-      "%%([0-9A-Fa-f][0-9A-Fa-f])",
-      function(hex)
-        local n1, n2 = string.byte(hex, 1, 2)
-        if n1 <= b9 then n1 = n1 - b0
-        elseif n1 <= bF then n1 = n1 - bA + 10
-        else n1 = n1 - ba + 10 end
-        if n2 <= b9 then n2 = n2 - b0
-        elseif n2 <= bF then n2 = n2 - bA + 10
-        else n2 = n2 - ba + 10 end
-        return string.char(n1 * 16 + n2)
-      end
-    ))
-  end
-end
-_M.decode_uri = decode_uri
 
 return _M
