@@ -471,10 +471,14 @@ function _M.run(fcgi_path, request_handler)
       effect.handle(
         {
           [io_error] = function(resume, errmsg)
+            -- I/O errors in connection handler usually mean a client
+            -- disconnected early, which doesn't need to be logged.
+            --[[
             eio.stderr:flush(
               "I/O Error in connection handler: " ..
               tostring(errmsg) .. "\n"
             )
+            --]]
           end,
         },
         _M.connection_handler, conn, request_handler
