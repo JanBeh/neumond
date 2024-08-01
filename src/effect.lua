@@ -354,6 +354,11 @@ local no_resume_handlers = {
   end,
 }
 
+-- Helper function that calls func and performs no_resume effect:
+local function no_resume_call(func, ...)
+  return perform(no_resume, func(...))
+end
+
 -- Effect used to generate tracebacks of a continuation:
 local traceback = new("neumond.effect.traceback")
 
@@ -384,11 +389,7 @@ local continuation_metatbl = {
       -- after calling the passed function:
       return handle(
         no_resume_handlers,
-        state_resume, states[self], call_marker,
-        function(func, ...)
-          return no_resume(func(...))
-        end,
-        ...
+        state_resume, states[self], call_marker, no_resume_call, ...
       )
     end,
     -- Returns a traceback of the continuation:
