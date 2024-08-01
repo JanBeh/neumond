@@ -35,8 +35,7 @@ _M.interval = effect.new("wait.interval")
 
 -- Effect notify() returns a sleeper (as first return value) and a waker (as
 -- second return value) where the sleeper, when called, will wait until the
--- waker has been called (waker returns true if a sleeper had been waiting,
--- otherwise false):
+-- waker has been called:
 local notify = effect.new("wait.notify")
 _M.notify = notify
 

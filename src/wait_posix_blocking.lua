@@ -180,9 +180,7 @@ function _M.run(...)
       sleeper.ready = true
       if sleeper._waiting then
         ready = true
-        return true
       end
-      return false
     end
     return sleeper, waker
   end
