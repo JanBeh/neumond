@@ -15,6 +15,14 @@ local wait = require "neumond.wait"
 local wait_posix = require "neumond.wait_posix"
 local lkq = require "neumond.lkq"
 
+-- Some local variables to avoid table lookups:
+local select = select
+local math_huge = math.huge
+local fiber_current = fiber.current
+local fiber_pending = fiber.pending
+local fiber_sleep   = fiber.sleep
+local fiber_yield   = fiber.yield
+
 local function wake(self)
   return self:wake()
 end
@@ -88,7 +96,7 @@ function _M.main(...)
   }
   local fiber_poll_states = setmetatable({}, weak_mt)
   local function wait_select(...)
-    local current_fiber = fiber.current()
+    local current_fiber = fiber_current()
     local poll_state = fiber_poll_states[current_fiber]
     if not poll_state then
       poll_state = setmetatable(
@@ -98,7 +106,7 @@ function _M.main(...)
       fiber_poll_states[current_fiber] = poll_state
     end
     local poll_state <close> = poll_state
-    for argidx = 1, math.huge, 2 do
+    for argidx = 1, math_huge, 2 do
       local rtype, arg = select(argidx, ...)
       if rtype == nil then
         break
@@ -146,7 +154,7 @@ function _M.main(...)
         error("unsupported resource type to wait for")
       end
     end
-    fiber.sleep()
+    fiber_sleep()
   end
   local signal_handles = {}
   local function catch_signal(sig)
@@ -278,12 +286,12 @@ function _M.main(...)
     function(body, ...)
       fiber.spawn(function()
         while true do
-          if fiber.pending() then
+          if fiber_pending() then
             eventqueue:poll(wake)
           else
             eventqueue:wait(wake)
           end
-          fiber.yield()
+          fiber_yield()
         end
       end)
       return body(...)
