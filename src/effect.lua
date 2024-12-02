@@ -218,8 +218,8 @@ local function process_pcall_stringify_errors_results(success, ...)
   error(..., 0)
 end
 
--- pcall_stringify_errors(...) is equivalent to _M.pcall(stringify_errors(...)) but
--- more efficient:
+-- pcall_stringify_errors(...) is equivalent to _M.pcall(stringify_errors(...))
+-- but more efficient:
 function _M.pcall_stringify_errors(...)
   return process_pcall_stringify_errors_results(pcall_traceback(...))
 end
