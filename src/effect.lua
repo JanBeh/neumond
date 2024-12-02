@@ -474,7 +474,7 @@ function handle(handlers, action, ...)
         if part_count == 0 then
           parts[1] = debug_traceback(action_thread, nil, 3)
         else
-          parts[#parts+1] = debug_traceback(action_thread)
+          parts[part_count+1] = debug_traceback(action_thread)
         end
         -- Check if end level (of nested coroutines) has been reached:
         if action_thread == until_thread then
