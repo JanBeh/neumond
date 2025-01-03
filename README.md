@@ -51,8 +51,9 @@ Names of modules written in C are marked as *italic* in the above tree.
 Duplicates due to multiple dependencies are non-bold.
 
 Further modules are `neumond.web`, `neumond.scgi`, `neumond.pgeff`, and
-`neumond.subprocess`. Those are not documented in this documentation file; see
-source code instead.
+`neumond.subprocess`. Those (as well as `neumond.wait_posix_blocking` and
+`neumond.wait_posix_fiber`) are not documented in this documentation file; see
+source code (including test cases) instead.
 
 
 ## Module `neumond.runtime`
@@ -358,9 +359,11 @@ The module provides the following effects (but no handlers) for waiting:
 ## Module `neumond.wait_posix`
 
 Module providing additional effects and functions for waiting on POSIX
-platforms.
+platforms. Appropriate handlers are provided by the `wait_posix_blocking` and
+`wait_posix_fiber` modules or the high-level `runtime` module as mentioned
+further above.
 
-The module provides the following effects:
+The `wait_posix` module provides the following effects:
 
   * **`wait_posix.select(...)`** which is an alias for `wait.select(...)`.
 
@@ -435,13 +438,13 @@ in regard to how "waiting" is implemented. In particular, `eio` does not depend
 on the `fiber` module, and whenever there is a need to wait for I/O, the
 effects of the `wait_posix` module are performed. In order to use `eio`,
 appropriate handlers have to be installed. One way to achieve this is to use
-`wait_posix_fiber.main(action, ...)` as in the following example:
+the `runtime` module:
 
 ```
-local wait_posix_fiber = require "neumond.wait_posix_fiber"
+local runtime = require "neumond.runtime"
 local eio = require "neumond.eio"
 
-wait_posix_fiber.main(
+runtime.main(
   function()
     eio.stdout:flush("Hello World!\n")
   end
