@@ -14,13 +14,18 @@
 #define PGEFF_ERROR_MT_REGKEY "pgeff_error"
 
 #define PGEFF_MODULE_UPVALIDX 1
-#define PGEFF_SELECT_UPVALIDX 2
-#define PGEFF_DEREGISTER_FD_UPVALIDX 3
+#define PGEFF_NOTIFY_UPVALIDX 2
+#define PGEFF_SELECT_UPVALIDX 3
+#define PGEFF_DEREGISTER_FD_UPVALIDX 4
 
-#define PGEFF_METHODS_UPVALIDX 4
+#define PGEFF_METHODS_UPVALIDX 5
 
 #define PGEFF_DBCONN_ATTR_USERVALIDX 1
-#define PGEFF_DBCONN_USERVAL_COUNT 1
+#define PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX 2
+#define PGEFF_DBCONN_QUERY_WAKER_USERVALIDX 3
+#define PGEFF_DBCONN_LISTEN_SLEEPER_USERVALIDX 4
+#define PGEFF_DBCONN_LISTEN_WAKER_USERVALIDX 5
+#define PGEFF_DBCONN_USERVAL_COUNT 5
 
 #define PGEFF_SQLTYPE_OTHER 0
 #define PGEFF_SQLTYPE_BOOL 1
@@ -50,6 +55,8 @@ static int pgeff_sqltype(Oid oid) {
 
 typedef struct {
   PGconn *pgconn;
+  int query_waiting;
+  int listen_waiting;
 } pgeff_dbconn_t;
 
 typedef struct {
@@ -163,6 +170,26 @@ static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
   }
 }
 
+static int pgeff_connect_cont_notify(
+  lua_State *L, int status, lua_KContext ctx
+) {
+  while (1) {
+    if (ctx < 2) {
+      ctx++;
+      lua_pushvalue(L, lua_upvalueindex(PGEFF_NOTIFY_UPVALIDX));
+      lua_callk(L, 0, 2, ctx, pgeff_connect_cont_notify);
+    } else {
+      lua_setiuservalue(L, -5, PGEFF_DBCONN_LISTEN_WAKER_USERVALIDX);
+      lua_setiuservalue(L, -4, PGEFF_DBCONN_LISTEN_SLEEPER_USERVALIDX);
+      lua_setiuservalue(L, -3, PGEFF_DBCONN_QUERY_WAKER_USERVALIDX);
+      lua_setiuservalue(L, -2, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
+      return pgeff_connect_cont(L,
+        LUA_OK, (lua_KContext)lua_touserdata(L, -1)
+      );
+    }
+  }
+}
+
 static int pgeff_connect(lua_State *L) {
   const char *conninfo = luaL_checkstring(L, 1);
   pgeff_dbconn_t *dbconn = lua_newuserdatauv(L,
@@ -174,17 +201,22 @@ static int pgeff_connect(lua_State *L) {
   if (!dbconn->pgconn) return luaL_error(L,
     "could not allocate memory for PGconn structure"
   );
+  dbconn->query_waiting = 0;
+  dbconn->listen_waiting = 0;
   luaL_setmetatable(L, PGEFF_DBCONN_MT_REGKEY);
   PQsetNoticeProcessor(dbconn->pgconn, pgeff_notice_processor, L);
-  return pgeff_connect_cont(L, LUA_OK, (lua_KContext)dbconn);
+  return pgeff_connect_cont_notify(L, LUA_OK, 0);
 }
 
 static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   while (1) {
+    dbconn->query_waiting = 0;
     if (!dbconn->pgconn) {
       return luaL_error(L, "database handle has been closed during query");
     }
+    lua_getiuservalue(L, 1, PGEFF_DBCONN_LISTEN_WAKER_USERVALIDX);
+    lua_call(L, 0, 0);
     int flushresult;
     if (
       !PQconsumeInput(dbconn->pgconn) ||
@@ -293,19 +325,37 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
       lua_remove(L, -2);
       luaL_setmetatable(L, PGEFF_RESULT_MT_REGKEY);
     }
-    if (flushresult) {
+    dbconn->query_waiting = 1;
+    if (dbconn->listen_waiting) {
       lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
-      int fd = PQsocket(dbconn->pgconn);
-      lua_pushliteral(L, "fd_read");
-      lua_pushinteger(L, fd);
-      lua_pushliteral(L, "fd_write");
-      lua_pushinteger(L, fd);
-      lua_callk(L, 4, 0, ctx, pgeff_query_cont);
-    } else {
-      lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
-      lua_pushliteral(L, "fd_read");
-      lua_pushinteger(L, PQsocket(dbconn->pgconn));
+      lua_pushliteral(L, "handle");
+      lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
+      lua_pushboolean(L, 0);
+      lua_setfield(L, -2, "ready");
       lua_callk(L, 2, 0, ctx, pgeff_query_cont);
+    } else {
+      if (flushresult) {
+        lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
+        int fd = PQsocket(dbconn->pgconn);
+        lua_pushliteral(L, "fd_read");
+        lua_pushinteger(L, fd);
+        lua_pushliteral(L, "fd_write");
+        lua_pushinteger(L, fd);
+        lua_pushliteral(L, "handle");
+        lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
+        lua_pushboolean(L, 0);
+        lua_setfield(L, -2, "ready");
+        lua_callk(L, 6, 0, ctx, pgeff_query_cont);
+      } else {
+        lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
+        lua_pushliteral(L, "fd_read");
+        lua_pushinteger(L, PQsocket(dbconn->pgconn));
+        lua_pushliteral(L, "handle");
+        lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
+        lua_pushboolean(L, 0);
+        lua_setfield(L, -2, "ready");
+        lua_callk(L, 4, 0, ctx, pgeff_query_cont);
+      }
     }
   }
 }
@@ -317,6 +367,9 @@ static int pgeff_query(lua_State *L) {
   if (!dbconn->pgconn) {
     return luaL_error(L, "database handle has been closed");
   }
+  if (dbconn->query_waiting) return luaL_error(L,
+    "cannot execute two queries concurrently on same database connection"
+  );
   Oid *type_oids = lua_newuserdatauv(L, nparams * sizeof(Oid), 0);
   const char **values = lua_newuserdatauv(L, nparams * sizeof(char *), 0);
   lua_getfield(L, 1, "input_converter");
@@ -378,6 +431,64 @@ static int pgeff_query(lua_State *L) {
   return pgeff_query_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
+static int pgeff_listen_cont(lua_State *L, int status, lua_KContext ctx) {
+  pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
+  PGnotify *notify;
+  while (1) {
+    dbconn->listen_waiting = 0;
+    if (!dbconn->pgconn) {
+      return luaL_error(L, "database handle has been closed during query");
+    }
+    lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_WAKER_USERVALIDX);
+    lua_call(L, 0, 0);
+    if (!PQconsumeInput(dbconn->pgconn)) {
+      lua_pushnil(L);
+      lua_newtable(L);
+      pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
+      lua_setfield(L, -2, "message");
+      lua_pushliteral(L, "");
+      lua_setfield(L, -2, "code");
+      luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+      return 2;
+    }
+    if ((notify = PQnotifies(dbconn->pgconn))) {
+      lua_createtable(L, 0, 3);
+      lua_pushstring(L, notify->relname);
+      lua_setfield(L, -2, "name");
+      lua_pushinteger(L, notify->be_pid);
+      lua_setfield(L, -2, "backend_pid");
+      lua_pushstring(L, notify->extra);
+      lua_setfield(L, -2, "payload");
+      PQfreemem(notify); // TODO: free when lua exception above
+      return 1;
+    }
+    lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
+    lua_pushliteral(L, "handle");
+    lua_getiuservalue(L, 1, PGEFF_DBCONN_LISTEN_SLEEPER_USERVALIDX);
+    lua_pushboolean(L, 0);
+    lua_setfield(L, -2, "ready");
+    if (dbconn->query_waiting) {
+      lua_callk(L, 2, 0, ctx, pgeff_listen_cont);
+    } else {
+      dbconn->listen_waiting = 1;
+      lua_pushliteral(L, "fd_read");
+      lua_pushinteger(L, PQsocket(dbconn->pgconn));
+      lua_callk(L, 4, 0, ctx, pgeff_listen_cont);
+    }
+  }
+}
+
+static int pgeff_listen(lua_State *L) {
+  pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+  if (!dbconn->pgconn) {
+    return luaL_error(L, "database handle has been closed");
+  }
+  if (dbconn->listen_waiting) return luaL_error(L,
+    "already listening for notifies on same database connection"
+  );
+  return pgeff_listen_cont(L, LUA_OK, (lua_KContext)dbconn);
+}
+
 static int pgeff_error_tostring(lua_State *L) {
   lua_getfield(L, 1, "message");
   return 1;
@@ -386,6 +497,7 @@ static int pgeff_error_tostring(lua_State *L) {
 static const struct luaL_Reg pgeff_dbconn_methods[] = {
   {"close", pgeff_dbconn_close},
   {"query", pgeff_query},
+  {"listen", pgeff_listen},
   {NULL, NULL}
 };
 
@@ -418,13 +530,15 @@ static const struct luaL_Reg pgeff_funcs[] = {
 };
 
 #define pgeff_userdata_helper() do { \
-    lua_pushvalue(L, -4); \
-    lua_pushvalue(L, -4); \
-    lua_pushvalue(L, -4); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
     lua_newtable(L); \
-    lua_pushvalue(L, -4); \
-    lua_pushvalue(L, -4); \
-    lua_pushvalue(L, -4); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
+    lua_pushvalue(L, -5); \
   } while (0)
 
 // Library initialization:
@@ -441,27 +555,32 @@ int luaopen_neumond_pgeff(lua_State *L) {
   lua_pushvalue(L, -1); // 2
 
   lua_getglobal(L, "require"); // 3
-  lua_pushliteral(L, "neumond.wait_posix"); // 4
+  lua_pushliteral(L, "neumond.wait"); // 4
   lua_call(L, 1, 1); // 3
-  lua_getfield(L, -1, "select"); // 4 -> 3
-  lua_getfield(L, -2, "deregister_fd"); // 5 -> 4
+  lua_getfield(L, -1, "notify"); // 4 -> 3
+  lua_remove(L, -2);
+  lua_getglobal(L, "require"); // 4
+  lua_pushliteral(L, "neumond.wait_posix"); // 5
+  lua_call(L, 1, 1); // 4
+  lua_getfield(L, -1, "select"); // 5 -> 4
+  lua_getfield(L, -2, "deregister_fd"); // 6 -> 5
   lua_remove(L, -3);
 
-  luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY); // 5
-  pgeff_userdata_helper(); // 12
-  luaL_setfuncs(L, pgeff_dbconn_methods, 3);
-  luaL_setfuncs(L, pgeff_dbconn_metamethods, 4);
-  lua_setfield(L, 1, "dbconn_mt"); // 4
+  luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY); // 6
+  pgeff_userdata_helper(); // 15
+  luaL_setfuncs(L, pgeff_dbconn_methods, 4);
+  luaL_setfuncs(L, pgeff_dbconn_metamethods, 5);
+  lua_setfield(L, 1, "dbconn_mt"); // 5
 
-  luaL_newmetatable(L, PGEFF_RESULT_MT_REGKEY); // 5
-  lua_setfield(L, 1, "result_mt"); // 4
+  luaL_newmetatable(L, PGEFF_RESULT_MT_REGKEY); // 6
+  lua_setfield(L, 1, "result_mt"); // 5
 
-  luaL_newmetatable(L, PGEFF_ERROR_MT_REGKEY); // 5
-  pgeff_userdata_helper(); // 12
-  luaL_setfuncs(L, pgeff_error_methods, 3);
-  luaL_setfuncs(L, pgeff_error_metamethods, 4);
-  lua_setfield(L, 1, "error_mt"); // 4
+  luaL_newmetatable(L, PGEFF_ERROR_MT_REGKEY); // 6
+  pgeff_userdata_helper(); // 15
+  luaL_setfuncs(L, pgeff_error_methods, 4);
+  luaL_setfuncs(L, pgeff_error_metamethods, 5);
+  lua_setfield(L, 1, "error_mt"); // 5
 
-  luaL_setfuncs(L, pgeff_funcs, 3);
+  luaL_setfuncs(L, pgeff_funcs, 4);
   return 1;
 }
