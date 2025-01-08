@@ -1,5 +1,4 @@
 local checkpoint = require "checkpoint"
-local effect = require "neumond.effect"
 local runtime = require "neumond.runtime"
 local fiber = require "neumond.fiber"
 local wait = require "neumond.wait"

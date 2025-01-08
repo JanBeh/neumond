@@ -1,4 +1,3 @@
-local effect = require "neumond.effect"
 local runtime = require "neumond.runtime"
 local pgeff = require "neumond.pgeff"
 
