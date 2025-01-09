@@ -232,13 +232,13 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
       return 2;
     }
     while (!PQisBusy(dbconn->pgconn)) {
-      pgeff_tmpres_t *tmpres = lua_newuserdatauv(L, sizeof(pgeff_tmpres_t), 0);
       PGresult *pgres = PQgetResult(dbconn->pgconn);
       if (!pgres) return lua_gettop(L) - 2;
       if (lua_type(L, 3) == LUA_TNIL) {
         PQclear(pgres);
         continue;
       }
+      pgeff_tmpres_t *tmpres = lua_newuserdatauv(L, sizeof(pgeff_tmpres_t), 0);
       tmpres->pgres = pgres;
       luaL_setmetatable(L, PGEFF_TMPRES_MT_REGKEY);
       if (!lua_checkstack(L, 10)) { // TODO: use tighter bound?
