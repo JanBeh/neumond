@@ -58,6 +58,7 @@ typedef struct {
   PGconn *pgconn;
   int query_waiting;
   int listen_waiting;
+  int sync_count;
 } pgeff_dbconn_t;
 
 typedef struct {
@@ -160,6 +161,11 @@ static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
           pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
           return 2;
         }
+        if (!PQenterPipelineMode(dbconn->pgconn)) {
+          lua_pushnil(L);
+          pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
+          return 2;
+        }
         return 1;
       case PGRES_POLLING_READING:
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
@@ -216,18 +222,99 @@ static int pgeff_connect(lua_State *L) {
   );
   dbconn->query_waiting = 0;
   dbconn->listen_waiting = 0;
+  dbconn->sync_count = 0;
   luaL_setmetatable(L, PGEFF_DBCONN_MT_REGKEY);
   PQsetNoticeProcessor(dbconn->pgconn, pgeff_notice_processor, L);
   return pgeff_connect_cont_notify(L, LUA_OK, 0);
 }
 
-static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
-  pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
+static int pgeff_send_query(lua_State *L) {
+  pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+  const char *querystring = luaL_checkstring(L, 2);
+  int nparams = lua_gettop(L) - 2;
+  if (!dbconn->pgconn) {
+    return luaL_error(L, "database handle has been closed");
+  }
+  Oid *type_oids = lua_newuserdatauv(L, nparams * sizeof(Oid), 0);
+  const char **values = lua_newuserdatauv(L, nparams * sizeof(char *), 0);
+  lua_getfield(L, 1, "input_converter");
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    lua_getfield(L,
+      lua_upvalueindex(PGEFF_MODULE_UPVALIDX), "input_converter"
+    );
+  }
+  int input_conversion = !lua_isnil(L, -1);
+  for (int i=0; i<nparams; i++) {
+    int j = i+3;
+    if (input_conversion) {
+      lua_pushvalue(L, -1);
+      lua_pushvalue(L, j);
+      lua_call(L, 1, 1);
+      lua_replace(L, j);
+    }
+    switch (lua_type(L, j)) {
+      case LUA_TBOOLEAN:
+        type_oids[i] = PGEFF_OID_BOOL;
+        values[i] = lua_toboolean(L, j) ? "t" : "f";
+        break;
+      default:
+        if (input_conversion && !lua_isnil(L, j) && !lua_tostring(L, j)) {
+          return luaL_error(L, "input converter did not return a string");
+        }
+        type_oids[i] = 0;
+        values[i] = luaL_optstring(L, j, NULL);
+    }
+  }
+  if (
+    !PQsendQueryParams(
+      dbconn->pgconn, querystring, nparams, type_oids, values, NULL, NULL, 0
+    ) ||
+    PQflush(dbconn->pgconn) < 0
+  ) {
+    lua_pushboolean(L, 0);
+    lua_newtable(L);
+    pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
+    lua_setfield(L, -2, "message");
+    lua_pushliteral(L, "");
+    lua_setfield(L, -2, "code");
+    luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+    return 2;
+  }
+  lua_pushboolean(L, 1);
+  return 1;
+}
+
+static int pgeff_send_sync(lua_State *L) {
+  pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+  if (!dbconn->pgconn) {
+    return luaL_error(L, "database handle has been closed");
+  }
+  if (dbconn->sync_count == INT_MAX) {
+    return luaL_error(L, "too many synchronization requests in queue");
+  }
+  if (!PQpipelineSync(dbconn->pgconn)) {
+    lua_pushboolean(L, 0);
+    lua_newtable(L);
+    pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
+    lua_setfield(L, -2, "message");
+    lua_pushliteral(L, "");
+    lua_setfield(L, -2, "code");
+    luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+    return 2;
+  }
+  dbconn->sync_count++;
+  lua_pushboolean(L, 1);
+  return 1;
+}
+
+static int pgeff_get_sync_cont(lua_State *L, int status, lua_KContext ctx) {
+  pgeff_dbconn_t *dbconn = lua_touserdata(L, 1);
   while (1) {
     dbconn->query_waiting = 0;
-    if (!dbconn->pgconn) {
-      return luaL_error(L, "database handle has been closed during query");
-    }
+    if (!dbconn->pgconn) return luaL_error(L,
+      "database handle has been closed while getting sync status"
+    );
     lua_getiuservalue(L, 1, PGEFF_DBCONN_LISTEN_WAKER_USERVALIDX);
     lua_call(L, 0, 0);
     int flushresult;
@@ -246,9 +333,149 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
     }
     while (!PQisBusy(dbconn->pgconn)) {
       PGresult *pgres = PQgetResult(dbconn->pgconn);
-      if (!pgres) return lua_gettop(L) - 2;
+      if (!pgres) {
+        if (!ctx) {
+          lua_pushnil(L);
+          lua_newtable(L);
+          lua_pushliteral(L,
+            "unexpected end of results when waiting for pipeline sync"
+          );
+          lua_setfield(L, -2, "message");
+          lua_pushliteral(L, "");
+          lua_setfield(L, -2, "code");
+          luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+          return 2;
+        }
+        continue;
+      }
+      ExecStatusType stype = PQresultStatus(pgres);
+      if (stype == PGRES_PIPELINE_SYNC) {
+        PQclear(pgres);
+        lua_pushinteger(L, --dbconn->sync_count);
+        return 1;
+      }
+      PQclear(pgres);
+      ctx = 1;
+    }
+    dbconn->query_waiting = 1;
+    if (dbconn->listen_waiting) {
+      lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
+      lua_pushliteral(L, "handle");
+      lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
+      lua_pushboolean(L, 0);
+      lua_setfield(L, -2, "ready");
+      lua_callk(L, 2, 0, ctx, pgeff_get_sync_cont);
+    } else {
+      if (flushresult) {
+        lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
+        int fd = PQsocket(dbconn->pgconn);
+        lua_pushliteral(L, "fd_read");
+        lua_pushinteger(L, fd);
+        lua_pushliteral(L, "fd_write");
+        lua_pushinteger(L, fd);
+        lua_pushliteral(L, "handle");
+        lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
+        lua_pushboolean(L, 0);
+        lua_setfield(L, -2, "ready");
+        lua_callk(L, 6, 0, ctx, pgeff_get_sync_cont);
+      } else {
+        lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
+        lua_pushliteral(L, "fd_read");
+        lua_pushinteger(L, PQsocket(dbconn->pgconn));
+        lua_pushliteral(L, "handle");
+        lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
+        lua_pushboolean(L, 0);
+        lua_setfield(L, -2, "ready");
+        lua_callk(L, 4, 0, ctx, pgeff_get_sync_cont);
+      }
+    }
+  }
+}
+
+static int pgeff_get_sync(lua_State *L) {
+  pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+  if (!dbconn->pgconn) {
+    return luaL_error(L, "database handle has been closed");
+  }
+  if (dbconn->query_waiting) return luaL_error(L,
+    "cannot get result (or sync) concurrently on same database connection"
+  );
+  if (!dbconn->sync_count) {
+    lua_pushinteger(L, 0);
+    return 1;
+  }
+  return pgeff_get_sync_cont(L, LUA_OK, 0);
+}
+
+static int pgeff_get_result_cont(lua_State *L, int status, lua_KContext ctx) {
+  pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
+  while (1) {
+    dbconn->query_waiting = 0;
+    if (!dbconn->pgconn) return luaL_error(L,
+      "database handle has been closed while getting result"
+    );
+    lua_getiuservalue(L, 1, PGEFF_DBCONN_LISTEN_WAKER_USERVALIDX);
+    lua_call(L, 0, 0);
+    int flushresult;
+    if (
+      !PQconsumeInput(dbconn->pgconn) ||
+      (flushresult = PQflush(dbconn->pgconn), flushresult < 0)
+    ) {
+      lua_pushnil(L);
+      lua_newtable(L);
+      pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
+      lua_setfield(L, -2, "message");
+      lua_pushliteral(L, "");
+      lua_setfield(L, -2, "code");
+      luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+      return 2;
+    }
+    while (!PQisBusy(dbconn->pgconn)) {
+      PGresult *pgres = PQgetResult(dbconn->pgconn);
+      if (!pgres) {
+        int rescnt = lua_gettop(L) - 2;
+        if (!rescnt) {
+          lua_pushnil(L);
+          lua_newtable(L);
+          lua_pushliteral(L, "no database query active/sent");
+          lua_setfield(L, -2, "message");
+          lua_pushliteral(L, "");
+          lua_setfield(L, -2, "code");
+          luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+          return 2;
+        }
+        return rescnt;
+      }
+      ExecStatusType stype = PQresultStatus(pgres);
+      if (stype == PGRES_PIPELINE_SYNC) {
+        PQclear(pgres);
+        if (!dbconn->sync_count) {
+          lua_pushnil(L);
+          lua_newtable(L);
+          lua_pushliteral(L, "unexpected PGRES_PIPELINE_SYNC");
+          lua_setfield(L, -2, "message");
+          lua_pushliteral(L, "");
+          lua_setfield(L, -2, "code");
+          luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+          return 2;
+        }
+        dbconn->sync_count--;
+        continue;
+      }
       if (lua_type(L, 3) == LUA_TNIL) {
         PQclear(pgres);
+        continue;
+      }
+      if (stype == PGRES_PIPELINE_ABORTED) {
+        PQclear(pgres);
+        lua_settop(L, 2);
+        lua_pushnil(L); // 3
+        lua_newtable(L); // 4
+        lua_pushliteral(L, "pipeline aborted");
+        lua_setfield(L, -2, "message");
+        lua_pushliteral(L, "");
+        lua_setfield(L, -2, "code");
+        luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
         continue;
       }
       pgeff_tmpres_t *tmpres = lua_newuserdatauv(L, sizeof(pgeff_tmpres_t), 0);
@@ -345,7 +572,7 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
       lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
       lua_pushboolean(L, 0);
       lua_setfield(L, -2, "ready");
-      lua_callk(L, 2, 0, ctx, pgeff_query_cont);
+      lua_callk(L, 2, 0, ctx, pgeff_get_result_cont);
     } else {
       if (flushresult) {
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
@@ -358,7 +585,7 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
         lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
         lua_pushboolean(L, 0);
         lua_setfield(L, -2, "ready");
-        lua_callk(L, 6, 0, ctx, pgeff_query_cont);
+        lua_callk(L, 6, 0, ctx, pgeff_get_result_cont);
       } else {
         lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
         lua_pushliteral(L, "fd_read");
@@ -367,68 +594,20 @@ static int pgeff_query_cont(lua_State *L, int status, lua_KContext ctx) {
         lua_getiuservalue(L, 1, PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX);
         lua_pushboolean(L, 0);
         lua_setfield(L, -2, "ready");
-        lua_callk(L, 4, 0, ctx, pgeff_query_cont);
+        lua_callk(L, 4, 0, ctx, pgeff_get_result_cont);
       }
     }
   }
 }
 
-static int pgeff_query(lua_State *L) {
+static int pgeff_get_result(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
-  const char *querystring = luaL_checkstring(L, 2);
-  int nparams = lua_gettop(L) - 2;
   if (!dbconn->pgconn) {
     return luaL_error(L, "database handle has been closed");
   }
   if (dbconn->query_waiting) return luaL_error(L,
-    "cannot execute two queries concurrently on same database connection"
+    "cannot get result (or sync) concurrently on same database connection"
   );
-  Oid *type_oids = lua_newuserdatauv(L, nparams * sizeof(Oid), 0);
-  const char **values = lua_newuserdatauv(L, nparams * sizeof(char *), 0);
-  lua_getfield(L, 1, "input_converter");
-  if (lua_isnil(L, -1)) {
-    lua_pop(L, 1);
-    lua_getfield(L,
-      lua_upvalueindex(PGEFF_MODULE_UPVALIDX), "input_converter"
-    );
-  }
-  int input_conversion = !lua_isnil(L, -1);
-  for (int i=0; i<nparams; i++) {
-    int j = i+3;
-    if (input_conversion) {
-      lua_pushvalue(L, -1);
-      lua_pushvalue(L, j);
-      lua_call(L, 1, 1);
-      lua_replace(L, j);
-    }
-    switch (lua_type(L, j)) {
-      case LUA_TBOOLEAN:
-        type_oids[i] = PGEFF_OID_BOOL;
-        values[i] = lua_toboolean(L, j) ? "t" : "f";
-        break;
-      default:
-        if (input_conversion && !lua_isnil(L, j) && !lua_tostring(L, j)) {
-          return luaL_error(L, "input converter did not return a string");
-        }
-        type_oids[i] = 0;
-        values[i] = luaL_optstring(L, j, NULL);
-    }
-  }
-  if (
-    !PQsendQueryParams(
-      dbconn->pgconn, querystring, nparams, type_oids, values, NULL, NULL, 0
-    ) ||
-    PQflush(dbconn->pgconn) < 0
-  ) {
-    lua_pushnil(L);
-    lua_newtable(L);
-    pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
-    lua_setfield(L, -2, "message");
-    lua_pushliteral(L, "");
-    lua_setfield(L, -2, "code");
-    luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
-    return 2;
-  }
   lua_settop(L, 1);
   lua_getfield(L, 1, "output_converters"); // 2
   if (lua_isnil(L, -1)) {
@@ -436,12 +615,12 @@ static int pgeff_query(lua_State *L) {
     lua_getfield(L,
       lua_upvalueindex(PGEFF_MODULE_UPVALIDX), "output_converters"
     );
+    if (lua_isnil(L, -1)) {
+      lua_pop(L, 1);
+      lua_newtable(L);
+    }
   }
-  if (lua_isnil(L, -1)) {
-    lua_pop(L, 1);
-    lua_newtable(L);
-  }
-  return pgeff_query_cont(L, LUA_OK, (lua_KContext)dbconn);
+  return pgeff_get_result_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
 static int pgeff_listen_cont(lua_State *L, int status, lua_KContext ctx) {
@@ -513,7 +692,10 @@ static int pgeff_error_tostring(lua_State *L) {
 
 static const struct luaL_Reg pgeff_dbconn_methods[] = {
   {"close", pgeff_dbconn_close},
-  {"query", pgeff_query},
+  {"send_query", pgeff_send_query},
+  {"send_sync", pgeff_send_sync},
+  {"get_result", pgeff_get_result},
+  {"get_sync", pgeff_get_sync},
   {"listen", pgeff_listen},
   {NULL, NULL}
 };
