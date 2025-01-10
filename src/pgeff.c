@@ -10,6 +10,7 @@
 
 #define PGEFF_DBCONN_MT_REGKEY "pgeff_dbconn"
 #define PGEFF_TMPRES_MT_REGKEY "pgeff_tmpres"
+#define PGEFF_TMPNFY_MT_REGKEY "pgeff_tmpnfy"
 #define PGEFF_RESULT_MT_REGKEY "pgeff_result"
 #define PGEFF_ERROR_MT_REGKEY "pgeff_error"
 
@@ -63,6 +64,10 @@ typedef struct {
   PGresult *pgres;
 } pgeff_tmpres_t;
 
+typedef struct {
+  PGnotify *pgnfy;
+} pgeff_tmpnfy_t;
+
 static void pgeff_push_string_trim(lua_State *L, const char *s) {
   size_t len = strlen(s);
   if (s[len-1] == '\n') len--;
@@ -105,13 +110,21 @@ static int pgeff_dbconn_close(lua_State *L) {
 }
 
 static int pgeff_tmpres_gc(lua_State *L) {
-  // luaL_checkudata not necessary as userdata value is never exposed to user:
-  //pgeff_tmpres_t *tmpres = luaL_checkudata(L, 1, PGEFF_RESULT_MT_REGKEY);
+  // luaL_checkudata not necessary as userdata value is never exposed to user
   pgeff_tmpres_t *tmpres = lua_touserdata(L, 1);
   if (tmpres->pgres) {
     PQclear(tmpres->pgres);
-    // setting to NULL not necessary as __gc metamethod is only called once:
-    //tmpres->pgres = NULL;
+    // setting to NULL not necessary as __gc metamethod is only called once
+  }
+  return 0;
+}
+
+static int pgeff_tmpnfy_gc(lua_State *L) {
+  // luaL_checkudata not necessary as userdata value is never exposed to user
+  pgeff_tmpnfy_t *tmpnfy = lua_touserdata(L, 1);
+  if (tmpnfy->pgnfy) {
+    PQfreemem(tmpnfy->pgnfy);
+    // setting to NULL not necessary as __gc metamethod is only called once
   }
   return 0;
 }
@@ -452,6 +465,9 @@ static int pgeff_listen_cont(lua_State *L, int status, lua_KContext ctx) {
       return 2;
     }
     if ((notify = PQnotifies(dbconn->pgconn))) {
+      pgeff_tmpnfy_t *tmpnfy = lua_newuserdatauv(L, sizeof(pgeff_tmpnfy_t), 0);
+      tmpnfy->pgnfy = notify;
+      luaL_setmetatable(L, PGEFF_TMPRES_MT_REGKEY);
       lua_createtable(L, 0, 3);
       lua_pushstring(L, notify->relname);
       lua_setfield(L, -2, "name");
@@ -459,7 +475,8 @@ static int pgeff_listen_cont(lua_State *L, int status, lua_KContext ctx) {
       lua_setfield(L, -2, "backend_pid");
       lua_pushstring(L, notify->extra);
       lua_setfield(L, -2, "payload");
-      PQfreemem(notify); // TODO: free when lua exception above
+      tmpnfy->pgnfy = NULL;
+      PQfreemem(notify);
       return 1;
     }
     lua_pushvalue(L, lua_upvalueindex(PGEFF_SELECT_UPVALIDX));
@@ -524,6 +541,11 @@ static const struct luaL_Reg pgeff_tmpres_metamethods[] = {
   {NULL, NULL}
 };
 
+static const struct luaL_Reg pgeff_tmpnfy_metamethods[] = {
+  {"__gc", pgeff_tmpnfy_gc},
+  {NULL, NULL}
+};
+
 static const struct luaL_Reg pgeff_funcs[] = {
   {"connect", pgeff_connect},
   {NULL, NULL}
@@ -547,6 +569,10 @@ int luaopen_neumond_pgeff(lua_State *L) {
 
   luaL_newmetatable(L, PGEFF_TMPRES_MT_REGKEY); // 1
   luaL_setfuncs(L, pgeff_tmpres_metamethods, 0);
+  lua_pop(L, 1); // 0
+
+  luaL_newmetatable(L, PGEFF_TMPNFY_MT_REGKEY); // 1
+  luaL_setfuncs(L, pgeff_tmpnfy_metamethods, 0);
   lua_pop(L, 1); // 0
 
   luaL_newlibtable(L, pgeff_funcs); // 1
