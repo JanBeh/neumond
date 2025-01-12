@@ -287,7 +287,9 @@ effects, but usually shouldn't be handled manually):
 
 A fiber handle `f` provides the following attributes and methods:
 
-  * **`f:wake()`** wakes up fiber `f` if it has not terminated yet.
+  * **`f:wake()`** wakes up fiber `f` if it has not terminated yet. If `f` is
+    the currently running fiber, the next call to `fiber.sleep()` will perform
+    a yield instead, unless `f` yields before attempting to sleep.
 
   * **`f:kill()`** kills fiber `f` if it has not terminated yet.
 
