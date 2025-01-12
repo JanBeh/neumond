@@ -8,6 +8,9 @@
 // Lua registry key for module table, needed for notice processor:
 #define PGEFF_MODULE_REGKEY "pgeff_module"
 
+// Lua registry key for "send" closure:
+#define PGEFF_SEND_REGKEY "pgeff_send"
+
 // Lua registry keys for metatables:
 #define PGEFF_DBCONN_MT_REGKEY "pgeff_dbconn"
 #define PGEFF_TMPRES_MT_REGKEY "pgeff_tmpres"
@@ -249,8 +252,8 @@ static int pgeff_connect(lua_State *L) {
   return pgeff_connect_cont_notify(L, LUA_OK, 0);
 }
 
-// Method "send_query" for database connection handle:
-static int pgeff_send_query(lua_State *L) {
+// Method "send" for database connection handle:
+static int pgeff_send(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   const char *querystring = luaL_checkstring(L, 2);
   int nparams = lua_gettop(L) - 2;
@@ -288,12 +291,39 @@ static int pgeff_send_query(lua_State *L) {
         values[i] = luaL_optstring(L, j, NULL);
     }
   }
-  if (
-    !PQsendQueryParams(
-      dbconn->pgconn, querystring, nparams, type_oids, values, NULL, NULL, 0
-    ) ||
-    PQflush(dbconn->pgconn) < 0
-  ) {
+  if (!PQsendQueryParams(
+    dbconn->pgconn, querystring, nparams, type_oids, values, NULL, NULL, 0
+  )) {
+    lua_pushboolean(L, 0);
+    lua_newtable(L);
+    pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
+    lua_setfield(L, -2, "message");
+    lua_pushliteral(L, "");
+    lua_setfield(L, -2, "code");
+    luaL_setmetatable(L, PGEFF_ERROR_MT_REGKEY);
+    return 2;
+  }
+  lua_pushboolean(L, 1);
+  return 1;
+}
+
+// Method "send_flush" for database connection handle:
+static int pgeff_send_flush(lua_State *L) {
+  int argc = lua_gettop(L);
+  if (argc >= 2) {
+    lua_getfield(L, LUA_REGISTRYINDEX, PGEFF_SEND_REGKEY);
+    lua_insert(L, 2);
+    lua_pushvalue(L, 1);
+    lua_insert(L, 3);
+    lua_call(L, argc, 2);
+    if (!lua_toboolean(L, -2)) return 2;
+    lua_settop(L, 1);
+  }
+  pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
+  if (!dbconn->pgconn) {
+    return luaL_error(L, "database handle has been closed");
+  }
+  if (!PQsendFlushRequest(dbconn->pgconn) || PQflush(dbconn->pgconn) < 0) {
     lua_pushboolean(L, 0);
     lua_newtable(L);
     pgeff_push_string_trim(L, PQerrorMessage(dbconn->pgconn));
@@ -309,6 +339,16 @@ static int pgeff_send_query(lua_State *L) {
 
 // Method "send_sync" for database connection handle:
 static int pgeff_send_sync(lua_State *L) {
+  int argc = lua_gettop(L);
+  if (argc >= 2) {
+    lua_getfield(L, LUA_REGISTRYINDEX, PGEFF_SEND_REGKEY);
+    lua_insert(L, 2);
+    lua_pushvalue(L, 1);
+    lua_insert(L, 3);
+    lua_call(L, argc, 2);
+    if (!lua_toboolean(L, -2)) return 2;
+    lua_settop(L, 1);
+  }
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   if (!dbconn->pgconn) {
     return luaL_error(L, "database handle has been closed");
@@ -723,7 +763,8 @@ static int pgeff_error_tostring(lua_State *L) {
 // Methods for database connection handle:
 static const struct luaL_Reg pgeff_dbconn_methods[] = {
   {"close", pgeff_dbconn_close},
-  {"send_query", pgeff_send_query},
+  {"send", pgeff_send},
+  {"send_flush", pgeff_send_flush},
   {"send_sync", pgeff_send_sync},
   {"get_result", pgeff_get_result},
   {"get_sync", pgeff_get_sync},
@@ -812,6 +853,13 @@ int luaopen_neumond_pgeff(lua_State *L) {
   lua_getfield(L, -1, "select"); // 5 -> 4
   lua_getfield(L, -2, "deregister_fd"); // 6 -> 5
   lua_remove(L, -3);
+
+  lua_pushvalue(L, -4);
+  lua_pushvalue(L, -4);
+  lua_pushvalue(L, -4);
+  lua_pushvalue(L, -4);
+  lua_pushcclosure(L, pgeff_send, 4);
+  lua_setfield(L, LUA_REGISTRYINDEX, PGEFF_SEND_REGKEY);
 
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY); // 6
   pgeff_userdata_helper(); // 15
