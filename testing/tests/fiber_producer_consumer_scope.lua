@@ -34,9 +34,7 @@ local retval = fiber.scope(function()
         log("Started.")
         checkpoint(6)
         for i = 1, 5 do
-          while value ~= nil do
-            fiber.sleep()
-          end
+          if value ~= nil then fiber.sleep() end
           value = i
           consumer:wake()
         end
@@ -45,9 +43,7 @@ local retval = fiber.scope(function()
       end)
       consumer = fiber.spawn(function()
         while not producer.results do
-          while value == nil do
-            fiber.sleep()
-          end
+          if value == nil then fiber.sleep() end
           if value == 1 then checkpoint(7) end
           if value == 5 then checkpoint(9) end
           value = nil
