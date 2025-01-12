@@ -328,7 +328,7 @@ local function state_close(state)
 end
 
 -- Metatable for internal states:
-local state_metatbl = {
+local state_metatable = {
   -- Invoked when to-be-closed variable goes out of scope:
   __close = function(self)
     -- Check if automatic discontinuation is enabled:
@@ -366,7 +366,7 @@ local traceback = new("neumond.effect.traceback")
 local handle
 
 -- Metatable for exposed continuation objects:
-local continuation_metatbl = {
+local continuation_metatable = {
   -- Calling a continuation object will resume the interrupted action:
   __call = function(self, ...)
     -- Ensure auto-discontinuation and call stored resume function with
@@ -501,11 +501,11 @@ function handle(handlers, action, ...)
       auto_discontinue = true,
       closing = false,
     },
-    state_metatbl
+    state_metatable
   )
   local state <close> = state
   -- Create continuation object and associate state:
-  resume = setmetatable({}, continuation_metatbl)
+  resume = setmetatable({}, continuation_metatable)
   states[resume] = state
   -- Call resume_func with arguments for pcall_traceback:
   return resume_func(action, ...)

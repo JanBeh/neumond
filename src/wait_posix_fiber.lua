@@ -34,7 +34,7 @@ local function handle_call_reset(self)
   self.ready = false
 end
 
-local handle_reset_metatbl = {
+local handle_reset_metatable = {
   __call = handle_call_reset,
 }
 
@@ -54,7 +54,7 @@ function _M.main(...)
       fib:wake()
     end
   end
-  local poll_state_metatbl = {
+  local poll_state_metatable = {
     __close = function(self)
       local entries = self.read_fds
       for fd in pairs(entries) do
@@ -93,7 +93,7 @@ function _M.main(...)
     if not poll_state then
       poll_state = setmetatable(
         { read_fds = {}, write_fds = {}, pids = {}, handles = {} },
-        poll_state_metatbl
+        poll_state_metatable
       )
       fiber_poll_states[current_fiber] = poll_state
     end
@@ -172,7 +172,7 @@ function _M.main(...)
     end
     local handle = setmetatable(
       { ready = false, _fiber = false },
-      handle_reset_metatbl
+      handle_reset_metatable
     )
     handles[handle] = true
     return handle
@@ -184,7 +184,7 @@ function _M.main(...)
       eventqueue:remove_timeout(seconds, inner_handle)
     end
   end
-  local timeout_metatbl = {
+  local timeout_metatable = {
     __call = handle_call_noreset,
     __close = clean_timeout,
     __gc = clean_timeout,
@@ -192,7 +192,7 @@ function _M.main(...)
   local function timeout(seconds)
     local handle = setmetatable(
       { ready = false, _fiber = false, _inner_handle = false },
-      timeout_metatbl
+      timeout_metatable
     )
     handle._inner_handle = eventqueue:add_timeout(
       seconds,
@@ -215,7 +215,7 @@ function _M.main(...)
       eventqueue:remove_interval(seconds, inner_handle)
     end
   end
-  local interval_metatbl = {
+  local interval_metatable = {
     __call = handle_call_reset,
     __newindex = handle_newindex,
     __close = clean_interval,
@@ -224,7 +224,7 @@ function _M.main(...)
   local function interval(seconds)
     local handle = setmetatable(
       { ready = false, _fiber = false, _inner_handle = false },
-      interval_metatbl
+      interval_metatable
     )
     handle._inner_handle = eventqueue:add_interval(
       seconds,
@@ -243,7 +243,7 @@ function _M.main(...)
   local function notify()
     local sleeper = setmetatable(
       { ready = false, _waiting = false },
-      handle_reset_metatbl
+      handle_reset_metatable
     )
     local function waker()
       sleeper.ready = true

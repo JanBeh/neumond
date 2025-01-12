@@ -9,15 +9,15 @@ local function int_array_converter(s)
   return seq
 end
 
-local point_metatbl = {}
+local point_metatable = {}
 
 local function point(x, y)
-  return setmetatable({x = x, y = y}, point_metatbl)
+  return setmetatable({x = x, y = y}, point_metatable)
 end
 
 local function input_converter(v)
   local mt = getmetatable(v)
-  if mt == point_metatbl then
+  if mt == point_metatable then
     return v.x .. "," ..v.y
   end
   return v

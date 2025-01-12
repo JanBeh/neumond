@@ -102,6 +102,7 @@ local fiber_methods = {
   -- table with return values of fiber's function or false if fiber was killed:
   results = getter_magic,
 }
+_M.fiber_methods = fiber_methods
 
 -- Method waking up the fiber (note that "self" is named "fiber" below):
 function fiber_methods.wake(fiber)
@@ -221,7 +222,7 @@ function fiber_methods.kill(self)
 end
 
 -- Metatable for fiber handles:
-_M.fiber_metatbl = {
+local fiber_metatable = {
   __index = function(self, key)
     -- Lookup method or attribute magic:
     local value = fiber_methods[key]
@@ -236,6 +237,7 @@ _M.fiber_metatbl = {
     return value
   end,
 }
+_M.fiber_metatable = fiber_metatable
 
 -- Function checking if there is any woken fiber:
 function _M.pending()
@@ -344,7 +346,7 @@ local function scope(...)
   -- Implementation of spawn function for current scheduler:
   function spawn_impl(func, ...)
     -- Create new fiber handle:
-    local fiber = setmetatable({}, _M.fiber_metatbl)
+    local fiber = setmetatable({}, fiber_metatable)
     -- Create storage table for fiber's attributes:
     local attrs = {
       -- Store certain upvalues as private attributes:

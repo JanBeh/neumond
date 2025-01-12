@@ -376,7 +376,7 @@ local body_keys = {
   post_params_content_type_params = true,
 }
 
-local request_metatbl = {
+local request_metatable = {
   __index = function(self, key)
     if body_keys[key] then
       if self._request_body_mode == "stream" then
@@ -445,7 +445,7 @@ function _M.connection_handler(conn, request_handler)
       get_params = get_params,
       get_params_array = get_params_array,
     },
-    request_metatbl
+    request_metatable
   )
   local success, errmsg = fiber.scope(
     effect.pcall_stringify_errors, request_handler, request

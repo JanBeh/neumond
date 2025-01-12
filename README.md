@@ -305,6 +305,10 @@ A fiber handle `f` provides the following attributes and methods:
     `f` has terminated. If `f` was killed, this method returns `false`,
     otherwise returns `true` followed by `f`'s return values.
 
+The metatable for fiber handles is exported as `fiber.fiber_metatable`. The
+table `fiber.fiber_methods` can be extended to add methods to all fiber
+handles.
+
 
 ## Module `neumond.wait`
 
@@ -580,6 +584,12 @@ An I/O handle `h` provides the following attributes and methods:
 
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.
+
+The metatables for I/O handles as well as listener and child handles are
+exported as `eio.handle_metatable`, `eio.listener_metatable`, and
+`eio.child_metatable`, respectively. The tables `eio.handle_methods`,
+`eio.listener_methods`, and `eio.child_methods` can be extended to add methods
+to all respective handles.
 
 
 ## Caveats

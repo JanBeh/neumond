@@ -13,6 +13,7 @@ local nbio = require "neumond.nbio"
 local wait_posix = require "neumond.wait_posix"
 
 local handle_methods = {}
+_M.handle_methods = handle_methods
 
 function handle_methods:close()
   local nbio_handle = self.nbio_handle
@@ -34,7 +35,7 @@ function handle_methods:shutdown()
   return nbio_handle:shutdown()
 end
 
-_M.handle_metatbl = {
+local handle_metatable = {
   __close = handle_methods.close,
   -- NOTE: Closing is not possible during garbage collection, because closing
   -- requires the deregister_fd effect to be handled. The following line is
@@ -42,6 +43,7 @@ _M.handle_metatbl = {
   --__gc = handle_methods.close,
   __index = handle_methods,
 }
+_M.handle_metatable = handle_metatable
 
 function handle_methods:read_nonblocking(maxlen)
   if maxlen == 0 then
@@ -154,7 +156,7 @@ function handle_methods:flush(data, ...)
 end
 
 local function wrap_handle(handle)
-  return setmetatable({ nbio_handle = handle }, _M.handle_metatbl)
+  return setmetatable({ nbio_handle = handle }, handle_metatable)
 end
 
 function _M.open(...)
@@ -182,6 +184,7 @@ function _M.tcpconnect(...)
 end
 
 local listener_methods = {}
+_M.listener_methods = listener_methods
 
 function listener_methods:close()
   local nbio_listener = self.nbio_listener
@@ -192,7 +195,7 @@ function listener_methods:close()
   nbio_listener:close()
 end
 
-_M.listener_metatbl = {
+local listener_metatable = {
   __close = listener_methods.close,
   -- NOTE: Closing is not possible during garbage collection, because closing
   -- requires the deregister_fd effect to be handled. The following line is
@@ -200,6 +203,7 @@ _M.listener_metatbl = {
   --__gc = listener_methods.close,
   __index = listener_methods,
 }
+_M.listener_metatable = listener_metatable
 
 function listener_methods:accept()
   local nbio_listener = self.nbio_listener
@@ -215,7 +219,7 @@ function listener_methods:accept()
 end
 
 local function wrap_listener(listener)
-  return setmetatable({ nbio_listener = listener }, _M.listener_metatbl)
+  return setmetatable({ nbio_listener = listener }, listener_metatable)
 end
 
 function _M.locallisten(...)
@@ -235,6 +239,7 @@ function _M.tcplisten(...)
 end
 
 local child_methods = {}
+_M.child_methods = child_methods
 
 function child_methods:close()
   self.stdin:close()
@@ -243,7 +248,7 @@ function child_methods:close()
   return self.nbio_child:close()
 end
 
-_M.child_metatbl = {
+local child_metatable = {
   __close = child_methods.close,
   -- NOTE: Closing is not possible during garbage collection, because closing
   -- requires the deregister_fd effect to be handled. The following line is
@@ -251,6 +256,7 @@ _M.child_metatbl = {
   --__gc = child_methods.close,
   __index = child_methods,
 }
+_M.child_metatable = child_metatable
 
 function child_methods:kill(sig)
   return self.nbio_child:kill(sig)
@@ -278,7 +284,7 @@ local function wrap_child(child)
       stdout = wrap_handle(child.stdout),
       stderr = wrap_handle(child.stderr),
     },
-    _M.child_metatbl
+    child_metatable
   )
 end
 

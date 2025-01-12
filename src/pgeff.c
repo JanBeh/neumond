@@ -777,17 +777,21 @@ int luaopen_neumond_pgeff(lua_State *L) {
   luaL_newmetatable(L, PGEFF_DBCONN_MT_REGKEY); // 6
   pgeff_userdata_helper(); // 15
   luaL_setfuncs(L, pgeff_dbconn_methods, 4);
+  lua_pushvalue(L, -1);
+  lua_setfield(L, 1, "dbconn_methods");
   luaL_setfuncs(L, pgeff_dbconn_metamethods, 5);
-  lua_setfield(L, 1, "dbconn_mt"); // 5
+  lua_setfield(L, 1, "dbconn_metatable"); // 5
 
   luaL_newmetatable(L, PGEFF_RESULT_MT_REGKEY); // 6
-  lua_setfield(L, 1, "result_mt"); // 5
+  lua_setfield(L, 1, "result_metatable"); // 5
 
   luaL_newmetatable(L, PGEFF_ERROR_MT_REGKEY); // 6
   pgeff_userdata_helper(); // 15
   luaL_setfuncs(L, pgeff_error_methods, 4);
+  lua_pushvalue(L, -1);
+  lua_setfield(L, 1, "error_methods");
   luaL_setfuncs(L, pgeff_error_metamethods, 5);
-  lua_setfield(L, 1, "error_mt"); // 5
+  lua_setfield(L, 1, "error_metatable"); // 5
 
   luaL_setfuncs(L, pgeff_funcs, 4);
   return 1;

@@ -55,7 +55,7 @@ local function mutex()
   -- Guard to be returned when mutex has been locked:
   local guard = setmetatable({}, { __close = unlock })
   -- Metatable for waiter entries in queue:
-  local waiter_metatbl = {
+  local waiter_metatable = {
     -- Function executed when waiter is closed:
     __close = function(self)
       -- Check if this waiter is currently waking up:
@@ -82,7 +82,7 @@ local function mutex()
       local sleeper, waker = notify()
       local waiter <close> = setmetatable(
         { waker = waker, waking = false },
-        waiter_metatbl
+        waiter_metatable
       )
       -- Check if queue is full:
       local new_wpos = waiters_wpos + 1
@@ -176,7 +176,7 @@ function queue_methods:pop()
 end
 
 -- Metatable for FIFO queues with backpressure:
-local queue_metatbl = {
+local queue_metatable = {
   __index = queue_methods,
   __len = function(self)
     return self._used
@@ -184,7 +184,7 @@ local queue_metatbl = {
 }
 
 -- Metatable for helper guard that undoes counting a pending push:
-local queue_writer_guard_metatbl = {
+local queue_writer_guard_metatable = {
   __close = function(self)
     local queue = self.queue
     queue._used = queue._used - 1
@@ -192,7 +192,7 @@ local queue_writer_guard_metatbl = {
 }
 
 -- Metatable for helper guard that undoes counting a pending pop:
-local queue_reader_guard_metatbl = {
+local queue_reader_guard_metatable = {
   __close = function(self)
     local queue = self.queue
     queue._used = queue._used + 1
@@ -213,13 +213,13 @@ function _M.queue(size)
       size = size, -- maximum number of buffered entries
       _used = 0, -- number of buffered entries plus minus pending
     },
-    queue_metatbl
+    queue_metatable
   )
   queue._writer_guard = setmetatable(
-    {queue = queue}, queue_writer_guard_metatbl
+    {queue = queue}, queue_writer_guard_metatable
   )
   queue._reader_guard = setmetatable(
-    {queue = queue}, queue_reader_guard_metatbl
+    {queue = queue}, queue_reader_guard_metatable
   )
   return queue
 end
