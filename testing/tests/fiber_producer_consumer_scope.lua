@@ -44,7 +44,7 @@ local retval = fiber.scope(function()
         return "producer"
       end)
       consumer = fiber.spawn(function()
-        while producer.results == nil do
+        while not producer.results do
           while value == nil do
             fiber.sleep()
           end
