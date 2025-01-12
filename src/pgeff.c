@@ -5,22 +5,26 @@
 #include <lauxlib.h>
 #include <libpq-fe.h>
 
-// NOTE: only needed for notice processor:
+// Lua registry key for module table, needed for notice processor:
 #define PGEFF_MODULE_REGKEY "pgeff_module"
 
+// Lua registry keys for metatables:
 #define PGEFF_DBCONN_MT_REGKEY "pgeff_dbconn"
 #define PGEFF_TMPRES_MT_REGKEY "pgeff_tmpres"
 #define PGEFF_TMPNFY_MT_REGKEY "pgeff_tmpnfy"
 #define PGEFF_RESULT_MT_REGKEY "pgeff_result"
 #define PGEFF_ERROR_MT_REGKEY "pgeff_error"
 
+// Upvalue indices for methods:
 #define PGEFF_MODULE_UPVALIDX 1
 #define PGEFF_NOTIFY_UPVALIDX 2
 #define PGEFF_SELECT_UPVALIDX 3
 #define PGEFF_DEREGISTER_FD_UPVALIDX 4
 
+// Additional upvalue indices for meta-methods:
 #define PGEFF_METHODS_UPVALIDX 5
 
+// Uservalue indices for database connection handles:
 #define PGEFF_DBCONN_ATTR_USERVALIDX 1
 #define PGEFF_DBCONN_QUERY_SLEEPER_USERVALIDX 2
 #define PGEFF_DBCONN_QUERY_WAKER_USERVALIDX 3
@@ -28,13 +32,16 @@
 #define PGEFF_DBCONN_LISTEN_WAKER_USERVALIDX 5
 #define PGEFF_DBCONN_USERVAL_COUNT 5
 
+// PostgreSQL's OID for boolean type:
+#define PGEFF_OID_BOOL 16
+
+// Return values of pgeff_sqltype function:
 #define PGEFF_SQLTYPE_OTHER 0
 #define PGEFF_SQLTYPE_BOOL 1
 #define PGEFF_SQLTYPE_INT 2
 #define PGEFF_SQLTYPE_FLOAT 3
 
-#define PGEFF_OID_BOOL 16
-
+// Convert PostgreSQL OID into type class (bool, int, float, other):
 static int pgeff_sqltype(Oid oid) {
   switch (oid) {
     case 16:   /* BOOL */
@@ -54,6 +61,7 @@ static int pgeff_sqltype(Oid oid) {
   }
 }
 
+// Database connection handle:
 typedef struct {
   PGconn *pgconn;
   int query_waiting;
@@ -61,20 +69,24 @@ typedef struct {
   int sync_count;
 } pgeff_dbconn_t;
 
+// Internal temporary database result handle:
 typedef struct {
   PGresult *pgres;
 } pgeff_tmpres_t;
 
+// Internal temporary PQnotifies result handle:
 typedef struct {
   PGnotify *pgnfy;
 } pgeff_tmpnfy_t;
 
+// Push string without trailing newline character onto Lua stack:
 static void pgeff_push_string_trim(lua_State *L, const char *s) {
   size_t len = strlen(s);
   if (s[len-1] == '\n') len--;
   lua_pushlstring(L, s, len);
 }
 
+// Callback function for PQsetNoticeProcessor:
 static void pgeff_notice_processor(void *ptr, const char *message) {
   lua_State *const L = ptr;
   lua_getfield(L, LUA_REGISTRYINDEX, PGEFF_MODULE_REGKEY);
@@ -88,6 +100,7 @@ static void pgeff_notice_processor(void *ptr, const char *message) {
   }
 }
 
+// Continuation function for pgeff_dbconn_close:
 static int pgeff_dbconn_close_cont(
   lua_State *L, int status, lua_KContext ctx
 ) {
@@ -99,6 +112,7 @@ static int pgeff_dbconn_close_cont(
   return 0;
 }
 
+// Method "close" for database connection handle:
 static int pgeff_dbconn_close(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   int fd = PQsocket(dbconn->pgconn);
@@ -110,6 +124,7 @@ static int pgeff_dbconn_close(lua_State *L) {
   return pgeff_dbconn_close_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
+// Destructor for internal/temporary database result handles:
 static int pgeff_tmpres_gc(lua_State *L) {
   // luaL_checkudata not necessary as userdata value is never exposed to user
   pgeff_tmpres_t *tmpres = lua_touserdata(L, 1);
@@ -120,6 +135,7 @@ static int pgeff_tmpres_gc(lua_State *L) {
   return 0;
 }
 
+// Destructor for internal/temporary PQnotifies result handles:
 static int pgeff_tmpnfy_gc(lua_State *L) {
   // luaL_checkudata not necessary as userdata value is never exposed to user
   pgeff_tmpnfy_t *tmpnfy = lua_touserdata(L, 1);
@@ -130,6 +146,7 @@ static int pgeff_tmpnfy_gc(lua_State *L) {
   return 0;
 }
 
+// Attribute and method lookup for database connection handles:
 static int pgeff_dbconn_index(lua_State *L) {
   luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   lua_settop(L, 2);
@@ -142,6 +159,7 @@ static int pgeff_dbconn_index(lua_State *L) {
   return 1;
 }
 
+// Attribute storage for database connection handles:
 static int pgeff_dbconn_newindex(lua_State *L) {
   luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   lua_settop(L, 3);
@@ -151,6 +169,7 @@ static int pgeff_dbconn_newindex(lua_State *L) {
   return 0;
 }
 
+// Final continuation function for pgeff_connect, finishing I/O and setup:
 static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   while (1) {
@@ -189,6 +208,7 @@ static int pgeff_connect_cont(lua_State *L, int status, lua_KContext ctx) {
   }
 }
 
+// Continuation function for pgeff_connect which obtains sleeper/waker pairs:
 static int pgeff_connect_cont_notify(
   lua_State *L, int status, lua_KContext ctx
 ) {
@@ -209,6 +229,7 @@ static int pgeff_connect_cont_notify(
   }
 }
 
+// Module function "connect":
 static int pgeff_connect(lua_State *L) {
   const char *conninfo = luaL_checkstring(L, 1);
   pgeff_dbconn_t *dbconn = lua_newuserdatauv(L,
@@ -228,6 +249,7 @@ static int pgeff_connect(lua_State *L) {
   return pgeff_connect_cont_notify(L, LUA_OK, 0);
 }
 
+// Method "send_query" for database connection handle:
 static int pgeff_send_query(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   const char *querystring = luaL_checkstring(L, 2);
@@ -285,6 +307,7 @@ static int pgeff_send_query(lua_State *L) {
   return 1;
 }
 
+// Method "send_sync" for database connection handle:
 static int pgeff_send_sync(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   if (!dbconn->pgconn) {
@@ -308,6 +331,7 @@ static int pgeff_send_sync(lua_State *L) {
   return 1;
 }
 
+// Continuation function for pgeff_get_sync:
 static int pgeff_get_sync_cont(lua_State *L, int status, lua_KContext ctx) {
   pgeff_dbconn_t *dbconn = lua_touserdata(L, 1);
   while (1) {
@@ -392,6 +416,7 @@ static int pgeff_get_sync_cont(lua_State *L, int status, lua_KContext ctx) {
   }
 }
 
+// Method "get_sync" for database connection handle:
 static int pgeff_get_sync(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   if (!dbconn->pgconn) {
@@ -407,6 +432,7 @@ static int pgeff_get_sync(lua_State *L) {
   return pgeff_get_sync_cont(L, LUA_OK, 0);
 }
 
+// Continuation function for pgeff_get_result:
 static int pgeff_get_result_cont(lua_State *L, int status, lua_KContext ctx) {
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   while (1) {
@@ -600,6 +626,7 @@ static int pgeff_get_result_cont(lua_State *L, int status, lua_KContext ctx) {
   }
 }
 
+// Method "get_result" for database connection handle:
 static int pgeff_get_result(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   if (!dbconn->pgconn) {
@@ -623,6 +650,7 @@ static int pgeff_get_result(lua_State *L) {
   return pgeff_get_result_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
+// Continuation function for pgeff_listen:
 static int pgeff_listen_cont(lua_State *L, int status, lua_KContext ctx) {
   pgeff_dbconn_t *dbconn = (pgeff_dbconn_t *)ctx;
   PGnotify *notify;
@@ -674,6 +702,7 @@ static int pgeff_listen_cont(lua_State *L, int status, lua_KContext ctx) {
   }
 }
 
+// Method "listen" for database connection handle:
 static int pgeff_listen(lua_State *L) {
   pgeff_dbconn_t *dbconn = luaL_checkudata(L, 1, PGEFF_DBCONN_MT_REGKEY);
   if (!dbconn->pgconn) {
@@ -685,11 +714,13 @@ static int pgeff_listen(lua_State *L) {
   return pgeff_listen_cont(L, LUA_OK, (lua_KContext)dbconn);
 }
 
+// String conversion for error objects:
 static int pgeff_error_tostring(lua_State *L) {
   lua_getfield(L, 1, "message");
   return 1;
 }
 
+// Methods for database connection handle:
 static const struct luaL_Reg pgeff_dbconn_methods[] = {
   {"close", pgeff_dbconn_close},
   {"send_query", pgeff_send_query},
@@ -700,6 +731,7 @@ static const struct luaL_Reg pgeff_dbconn_methods[] = {
   {NULL, NULL}
 };
 
+// Metmethods for database connection handle:
 static const struct luaL_Reg pgeff_dbconn_metamethods[] = {
   {"__close", pgeff_dbconn_close},
   // NOTE: closing requires deregister_fd, thus can't run through GC:
@@ -709,30 +741,37 @@ static const struct luaL_Reg pgeff_dbconn_metamethods[] = {
   {NULL, NULL}
 };
 
+// Methods for error objects:
 static const struct luaL_Reg pgeff_error_methods[] = {
   {NULL, NULL}
 };
 
+// Metamethods for error objects:
 static const struct luaL_Reg pgeff_error_metamethods[] = {
   {"__tostring", pgeff_error_tostring},
   {NULL, NULL}
 };
 
+// Metamethods for internal/temporary database result handles:
 static const struct luaL_Reg pgeff_tmpres_metamethods[] = {
   {"__gc", pgeff_tmpres_gc},
   {NULL, NULL}
 };
 
+// Metamethods for internal/temporary PQnotifies result handles:
 static const struct luaL_Reg pgeff_tmpnfy_metamethods[] = {
   {"__gc", pgeff_tmpnfy_gc},
   {NULL, NULL}
 };
 
+// Module functions:
 static const struct luaL_Reg pgeff_funcs[] = {
   {"connect", pgeff_connect},
   {NULL, NULL}
 };
 
+// Helper macro, which pushes elements -5, -4, -3, -2 plus an empty table,
+// and then pushes the same 4 elements (without the empty table) again:
 #define pgeff_userdata_helper() do { \
     lua_pushvalue(L, -5); \
     lua_pushvalue(L, -5); \
