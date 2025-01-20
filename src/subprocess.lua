@@ -66,9 +66,9 @@ function _M.execute_collect(stdin, maxlen, stderr_handler, ...)
     local retval = proc:wait()
     if retval ~= 0 then
       if retval < 0 then
-        return nil, "process terminated due to signal " .. -retval
+        return nil, "process terminated due to signal " .. -retval, retval
       else
-        return nil, "process exited with exit code " .. retval
+        return nil, "process exited with exit code " .. retval, retval
       end
     end
     return stdout_fiber:await()
