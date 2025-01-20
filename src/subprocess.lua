@@ -20,7 +20,10 @@ _M.execute = eio.execute
 -- collects and returns its stdout (with maxlen bytes) and calls stderr_handler
 -- for each line received through stderr:
 function _M.execute_collect(stdin, maxlen, stderr_handler, ...)
-  local proc = assert(eio.execute(...))
+  local proc, errmsg = eio.execute(...)
+  if not proc then
+    return nil, errmsg
+  end
   return fiber.scope(function()
     if stdin and stdin ~= "" then
       fiber.spawn(function()
