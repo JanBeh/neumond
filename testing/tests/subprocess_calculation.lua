@@ -4,14 +4,13 @@ local runtime = require "neumond.runtime"
 local function shell_add(a, b)
   local a = assert(tonumber(a))
   local b = assert(tonumber(b))
-  return assert(tonumber(
-    assert(subprocess.execute_collect(
-      "",
-      1024,
-      true,
-      "sh", "-c", "echo $((" .. a .. "+" .. b.. "))"
-    ))
+  local result = assert(subprocess.execute_collect(
+    nil,
+    true,
+    "sh", "-c", "echo $((" .. a .. "+" .. b.. "))"
   ))
+  assert(result.exitcode == 0)
+  return tonumber(result.stdout)
 end
 
 local function main(...)

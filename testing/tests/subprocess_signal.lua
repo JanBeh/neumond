@@ -3,13 +3,13 @@ local runtime = require "neumond.runtime"
 
 local function main(...)
   local result = assert(subprocess.execute_collect(
-    "Line one\nLine two\n",
+    nil,
     true,
-    "head", "-n", "1"
+    "sh", "-c", "kill -9 $$"
   ))
-  assert(result.exitcode == 0)
-  assert(result.signal == nil)
-  assert(result.stdout == "Line one\n")
+  assert(result.exitcode == nil)
+  assert(result.signal == 9)
+  assert(result.stdout == "")
   assert(result.stderr == "")
 end
 
