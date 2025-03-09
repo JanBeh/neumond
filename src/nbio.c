@@ -153,18 +153,33 @@ static int nbio_push_handle(
 ) {
 #ifndef NBIO_IGNORE_SIGPIPE_COMPLETELY
   if (!shared) {
-    static const int val = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
+    struct stat sb;
+    if (fstat(fd, &sb)) {
       nbio_prepare_errmsg(errno);
       close(fd);
       if (throw) return luaL_error(L,
-        "cannot set SO_NOSIGPIPE socket option: %s", errmsg
+        "cannot call fstat on file descriptor: %s", errmsg
       ); else {
         lua_pushnil(L);
-        lua_pushfstring(L,
-          "cannot set SO_NOSIGPIPE socket option: %s", errmsg
-        );
+        lua_pushfstring(L, "cannot call fstat on file descriptor: %s", errmsg);
         return 2;
+      }
+    }
+    if (S_ISSOCK(sb.st_mode)) {
+      // TODO: what about FIFO pipes?
+      static const int val = 1;
+      if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
+        nbio_prepare_errmsg(errno);
+        close(fd);
+        if (throw) return luaL_error(L,
+          "cannot set SO_NOSIGPIPE socket option: %s", errmsg
+        ); else {
+          lua_pushnil(L);
+          lua_pushfstring(L,
+            "cannot set SO_NOSIGPIPE socket option: %s", errmsg
+          );
+          return 2;
+        }
       }
     }
   }
