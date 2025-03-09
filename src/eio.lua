@@ -10,6 +10,7 @@ _ENV = setmetatable({}, {
 local _M = {}
 
 local nbio = require "neumond.nbio"
+local wait = require "neumond.wait"
 local wait_posix = require "neumond.wait_posix"
 
 local handle_methods = {}
@@ -296,6 +297,8 @@ function _M.execute(...)
   return wrap_child(child)
 end
 
+_M.timeout = wait.timeout
+_M.interval = wait.interval
 _M.catch_signal = wait_posix.catch_signal
 
 _M.stdin = wrap_handle(nbio.stdin)

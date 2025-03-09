@@ -499,11 +499,11 @@ Available functions:
     otherwise). Note that no shell is involved unless `file` is a shell. The
     search path for executables (`PATH` environment variable) applies.
 
-  * **`eio.catch_signal(sig)`** is an alias for `waitio.catch_signal(sig)`.
+  * **`eio.timeout(seconds)`** is an alias for `wait.timeout(seconds)`.
 
-  * **`eio.timeout(seconds)`** is an alias for `waitio.timeout(seconds)`.
+  * **`eio.interval(seconds)`** is an alias for `wait.interval(seconds)`.
 
-  * **`eio.interval(seconds)`** is an alias for `waitio.interval(seconds)`.
+  * **`eio.catch_signal(sig)`** is an alias for `wait_posix.catch_signal(sig)`.
 
 Note that name resolution is blocking, even though any other I/O is handled
 async.
