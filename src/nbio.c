@@ -103,36 +103,26 @@ typedef struct {
 } nbio_child_t;
 
 // Control flushing for TCP connections via TCP_NOPUSH or TCP_CORK:
-static void nbio_handle_set_nopush(
+static int nbio_handle_set_nopush(
   lua_State *L, nbio_handle_t *handle, int nopush
 ) {
-  // TODO: avoid error prefix when used during writing/flushing
 #if defined(TCP_NOPUSH) || defined(TCP_CORK)
   if (
     handle->nopush == nopush || handle->shared ||
     !(handle->addrfam == AF_INET6 || handle->addrfam == AF_INET)
-  ) return;
+  ) return 0;
 #if defined(TCP_NOPUSH)
-  if (
-    setsockopt(handle->fd, IPPROTO_TCP, TCP_NOPUSH, &nopush, sizeof(nopush))
-  ) {
-    nbio_prepare_errmsg(errno);
-    luaL_error(L,
-      "setsockopt TCP_NOPUSH=%d failed: %s", nopush, errmsg
-    );
-  }
+  return setsockopt(
+    handle->fd, IPPROTO_TCP, TCP_NOPUSH, &nopush, sizeof(nopush)
+  );
 #elif defined(TCP_CORK)
-  if (
-    setsockopt(handle->fd, IPPROTO_TCP, TCP_CORK, &nopush, sizeof(nopush))
-  ) {
-    nbio_prepare_errmsg(errno);
-    luaL_error(L,
-      "setsockopt TCP_CORK=%d failed: %s", nopush, errmsg
-    );
-  }
+  return setsockopt(
+    handle->fd, IPPROTO_TCP, TCP_CORK, &nopush, sizeof(nopush)
+  );
 #endif
 #else
 #warning Neither TCP_NOPUSH nor TCP_CORK is available.
+  return 0;
 #endif
 }
 
@@ -862,22 +852,30 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
         handle->writebuf_written = 0;
         handle->writebuf_read = 0;
       } else {
-        nbio_handle_set_nopush(L, handle, 0);
+        if (nbio_handle_set_nopush(L, handle, 0)) {
+          nbio_prepare_errmsg(errno);
+          lua_pushnil(L);
+          lua_pushstring(L, errmsg);
+          return 2;
+        }
         lua_pushinteger(L, 0);
         return 1;
       }
     } else if (errno == EAGAIN || errno == EINTR) {
-      nbio_handle_set_nopush(L, handle, 0);
+      if (nbio_handle_set_nopush(L, handle, 0)) {
+        nbio_prepare_errmsg(errno);
+        lua_pushnil(L);
+        lua_pushstring(L, errmsg);
+        return 2;
+      }
       lua_pushinteger(L, 0);
       return 1;
     } else if (errno == EPIPE) {
-      nbio_handle_set_nopush(L, handle, 0);
       lua_pushboolean(L, 0);
       lua_pushliteral(L, "peer closed stream");
       return 2;
     } else {
       nbio_prepare_errmsg(errno);
-      nbio_handle_set_nopush(L, handle, 0);
       lua_pushnil(L);
       lua_pushstring(L, errmsg);
       return 2;
@@ -894,21 +892,29 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
   }
   written = write(handle->fd, buf-1+start, end-start+1);
   if (written >= 0) {
-    nbio_handle_set_nopush(L, handle, 0);
+    if (nbio_handle_set_nopush(L, handle, 0)) {
+      nbio_prepare_errmsg(errno);
+      lua_pushnil(L);
+      lua_pushstring(L, errmsg);
+      return 2;
+    }
     lua_pushinteger(L, written);
     return 1;
   } else if (errno == EAGAIN || errno == EINTR) {
-    nbio_handle_set_nopush(L, handle, 0);
+    if (nbio_handle_set_nopush(L, handle, 0)) {
+      nbio_prepare_errmsg(errno);
+      lua_pushnil(L);
+      lua_pushstring(L, errmsg);
+      return 2;
+    }
     lua_pushinteger(L, 0);
     return 1;
   } else if (errno == EPIPE) {
-    nbio_handle_set_nopush(L, handle, 0);
     lua_pushboolean(L, 0);
     lua_pushliteral(L, "peer closed stream");
     return 2;
   } else {
     nbio_prepare_errmsg(errno);
-    nbio_handle_set_nopush(L, handle, 0);
     lua_pushnil(L);
     lua_pushstring(L, errmsg);
     return 2;
@@ -931,7 +937,12 @@ static int nbio_handle_write(lua_State *L) {
   if (handle->state == NBIO_STATE_SHUTDOWN) {
     return luaL_error(L, "write to shut down handle");
   }
-  nbio_handle_set_nopush(L, handle, 1);
+  if (nbio_handle_set_nopush(L, handle, 1)) {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
   if (start <= -(lua_Integer)bufsize) start = 1;
   else if (start < 0) start = bufsize + start + 1;
   else if (start == 0) start = 1;
@@ -1033,19 +1044,22 @@ static int nbio_handle_flush(lua_State *L) {
     } else if (errno == EAGAIN || errno == EINTR) {
       // nothing
     } else if (errno == EPIPE) {
-      nbio_handle_set_nopush(L, handle, 0);
       lua_pushboolean(L, 0);
       lua_pushliteral(L, "peer closed stream");
       return 2;
     } else {
       nbio_prepare_errmsg(errno);
-      nbio_handle_set_nopush(L, handle, 0);
       lua_pushnil(L);
       lua_pushstring(L, errmsg);
       return 2;
     }
   }
-  nbio_handle_set_nopush(L, handle, 0);
+  if (nbio_handle_set_nopush(L, handle, 0)) {
+    nbio_prepare_errmsg(errno);
+    lua_pushnil(L);
+    lua_pushstring(L, errmsg);
+    return 2;
+  }
   size_t remaining = handle->writebuf_written - handle->writebuf_read;
   if (remaining == 0) {
     handle->writebuf_written = 0;
