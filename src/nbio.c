@@ -142,34 +142,22 @@ static int nbio_push_handle(
   lua_State *L, int fd, sa_family_t addrfam, int shared, int throw
 ) {
 #ifndef NBIO_IGNORE_SIGPIPE_COMPLETELY
-  if (!shared) {
-    struct stat sb;
-    if (fstat(fd, &sb)) {
+  if (
+    !shared &&
+    (addrfam == AF_LOCAL || addrfam == AF_INET || addrfam == AF_INET6)
+  ) {
+    static const int val = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
       nbio_prepare_errmsg(errno);
       close(fd);
       if (throw) return luaL_error(L,
-        "cannot call fstat on file descriptor: %s", errmsg
+        "cannot set SO_NOSIGPIPE socket option: %s", errmsg
       ); else {
         lua_pushnil(L);
-        lua_pushfstring(L, "cannot call fstat on file descriptor: %s", errmsg);
-        return 2;
-      }
-    }
-    if (S_ISSOCK(sb.st_mode)) {
-      // TODO: what about FIFO pipes?
-      static const int val = 1;
-      if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
-        nbio_prepare_errmsg(errno);
-        close(fd);
-        if (throw) return luaL_error(L,
+        lua_pushfstring(L,
           "cannot set SO_NOSIGPIPE socket option: %s", errmsg
-        ); else {
-          lua_pushnil(L);
-          lua_pushfstring(L,
-            "cannot set SO_NOSIGPIPE socket option: %s", errmsg
-          );
-          return 2;
-        }
+        );
+        return 2;
       }
     }
   }
