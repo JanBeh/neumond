@@ -103,9 +103,7 @@ typedef struct {
 } nbio_child_t;
 
 // Control flushing for TCP connections via TCP_NOPUSH or TCP_CORK:
-static int nbio_handle_set_nopush(
-  lua_State *L, nbio_handle_t *handle, int nopush
-) {
+static int nbio_handle_set_nopush(nbio_handle_t *handle, int nopush) {
 #if defined(TCP_NOPUSH) || defined(TCP_CORK)
   if (
     handle->nopush == nopush || handle->shared ||
@@ -840,7 +838,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
         handle->writebuf_written = 0;
         handle->writebuf_read = 0;
       } else {
-        if (nbio_handle_set_nopush(L, handle, 0)) {
+        if (nbio_handle_set_nopush(handle, 0)) {
           nbio_prepare_errmsg(errno);
           lua_pushnil(L);
           lua_pushstring(L, errmsg);
@@ -850,7 +848,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
         return 1;
       }
     } else if (errno == EAGAIN || errno == EINTR) {
-      if (nbio_handle_set_nopush(L, handle, 0)) {
+      if (nbio_handle_set_nopush(handle, 0)) {
         nbio_prepare_errmsg(errno);
         lua_pushnil(L);
         lua_pushstring(L, errmsg);
@@ -880,7 +878,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
   }
   written = write(handle->fd, buf-1+start, end-start+1);
   if (written >= 0) {
-    if (nbio_handle_set_nopush(L, handle, 0)) {
+    if (nbio_handle_set_nopush(handle, 0)) {
       nbio_prepare_errmsg(errno);
       lua_pushnil(L);
       lua_pushstring(L, errmsg);
@@ -889,7 +887,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
     lua_pushinteger(L, written);
     return 1;
   } else if (errno == EAGAIN || errno == EINTR) {
-    if (nbio_handle_set_nopush(L, handle, 0)) {
+    if (nbio_handle_set_nopush(handle, 0)) {
       nbio_prepare_errmsg(errno);
       lua_pushnil(L);
       lua_pushstring(L, errmsg);
@@ -925,7 +923,7 @@ static int nbio_handle_write(lua_State *L) {
   if (handle->state == NBIO_STATE_SHUTDOWN) {
     return luaL_error(L, "write to shut down handle");
   }
-  if (nbio_handle_set_nopush(L, handle, 1)) {
+  if (nbio_handle_set_nopush(handle, 1)) {
     nbio_prepare_errmsg(errno);
     lua_pushnil(L);
     lua_pushstring(L, errmsg);
@@ -1042,7 +1040,7 @@ static int nbio_handle_flush(lua_State *L) {
       return 2;
     }
   }
-  if (nbio_handle_set_nopush(L, handle, 0)) {
+  if (nbio_handle_set_nopush(handle, 0)) {
     nbio_prepare_errmsg(errno);
     lua_pushnil(L);
     lua_pushstring(L, errmsg);
