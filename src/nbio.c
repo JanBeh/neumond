@@ -825,8 +825,26 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
   if (handle->state == NBIO_STATE_SHUTDOWN) {
     return luaL_error(L, "write to shut down handle");
   }
+  if (start <= -(lua_Integer)bufsize) start = 1;
+  else if (start < 0) start = bufsize + start + 1;
+  else if (start == 0) start = 1;
+  if (end < 0) end = bufsize + end + 1;
+  else if (end > bufsize) end = bufsize;
+  if (end < start) {
+    start = 1;
+    end = 0;
+  }
+  size_t to_write = end - start + 1;
   ssize_t written;
   if (handle->writebuf_written > 0) {
+    if (to_write > 0) {
+      if (nbio_handle_set_nopush(handle, 1)) {
+        nbio_prepare_errmsg(errno);
+        lua_pushnil(L);
+        lua_pushstring(L, errmsg);
+        return 2;
+      }
+    }
     written = write(
       handle->fd,
       handle->writebuf + handle->writebuf_read,
@@ -837,6 +855,16 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
       if (handle->writebuf_read == handle->writebuf_written) {
         handle->writebuf_written = 0;
         handle->writebuf_read = 0;
+        if (to_write == 0) {
+          if (nbio_handle_set_nopush(handle, 0)) {
+            nbio_prepare_errmsg(errno);
+            lua_pushnil(L);
+            lua_pushstring(L, errmsg);
+            return 2;
+          }
+          lua_pushinteger(L, 0);
+          return 1;
+        }
       } else {
         if (nbio_handle_set_nopush(handle, 0)) {
           nbio_prepare_errmsg(errno);
@@ -867,16 +895,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
       return 2;
     }
   }
-  if (start <= -(lua_Integer)bufsize) start = 1;
-  else if (start < 0) start = bufsize + start + 1;
-  else if (start == 0) start = 1;
-  if (end < 0) end = bufsize + end + 1;
-  else if (end > bufsize) end = bufsize;
-  if (end < start) {
-    start = 1;
-    end = 0;
-  }
-  written = write(handle->fd, buf-1+start, end-start+1);
+  written = write(handle->fd, buf-1+start, to_write);
   if (written >= 0) {
     if (nbio_handle_set_nopush(handle, 0)) {
       nbio_prepare_errmsg(errno);
