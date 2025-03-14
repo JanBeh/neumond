@@ -142,10 +142,29 @@ static int nbio_push_handle(
 #ifndef NBIO_IGNORE_SIGPIPE_COMPLETELY
   if (
     !shared &&
-    (addrfam == AF_LOCAL || addrfam == AF_INET || addrfam == AF_INET6)
+    (addrfam == AF_LOCAL || addrfam == AF_INET6 || addrfam == AF_INET)
   ) {
-    static const int val = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val))) {
+    if (addrfam == AF_INET6 || addrfam == AF_INET) {
+      struct linger lingerval = { 0, };
+      lingerval.l_onoff = 1;
+      if (setsockopt(
+        fd, SOL_SOCKET, SO_LINGER, &lingerval, sizeof(lingerval)
+      )) {
+        nbio_prepare_errmsg(errno);
+        close(fd);
+        if (throw) return luaL_error(L,
+          "cannot set SO_LINGER socket option: %s", errmsg
+        ); else {
+          lua_pushnil(L);
+          lua_pushfstring(L,
+            "cannot set SO_LINGER socket option: %s", errmsg
+          );
+          return 2;
+        }
+      }
+    }
+    static const int intval = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &intval, sizeof(intval))) {
       nbio_prepare_errmsg(errno);
       close(fd);
       if (throw) return luaL_error(L,
@@ -213,6 +232,17 @@ static int nbio_handle_shutdown(lua_State *L) {
   if (handle->state == NBIO_STATE_OPEN) {
     handle->state = NBIO_STATE_SHUTDOWN;
     if (handle->addrfam == AF_INET6 || handle->addrfam == AF_INET) {
+      if (handle->writebuf_written == 0) {
+        struct linger lingerval = { 0, };
+        if (setsockopt(
+          handle->fd, SOL_SOCKET, SO_LINGER, &lingerval, sizeof(lingerval)
+        )) {
+          nbio_prepare_errmsg(errno);
+          lua_pushnil(L);
+          lua_pushstring(L, errmsg);
+          return 2;
+        }
+      }
       if (shutdown(handle->fd, SHUT_WR)) {
         nbio_prepare_errmsg(errno);
         lua_pushnil(L);
@@ -220,6 +250,8 @@ static int nbio_handle_shutdown(lua_State *L) {
         return 2;
       }
     } else {
+      // If socket shutdown is not supported (e.g. in case of local sockets or
+      // files that are a FIFO pipe), then we need to close completely.
       if (close(handle->fd)) {
         handle->fd = -1;
         nbio_prepare_errmsg(errno);

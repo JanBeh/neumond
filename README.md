@@ -573,14 +573,19 @@ An I/O handle `h` provides the following attributes and methods:
     pipe), and `nil` and an error message in case of other I/O errors. Multiple
     arguments may be supplied in which case they get concatenated.
 
-  * **`h:shutdown()`** closes the sending part but not the receiving part of a
-    connection. This function returns immediately and may discard any
-    non-flushed data. Returns `true` on success, or `nil` and an error message
-    otherwise.
+  * **`h:shutdown(...)`** acts like `h:flush(...)` and afterwards closes the
+    sending part but not the receiving part of a connection. Return values are
+    like `h:flush`. In case of TCP connections, a TCP FIN packet will be sent.
+    Note that file handles and local sockets do not support closing only the
+    sending part of a connection. In those cases, the underlying file or socket
+    is closed completely and reading will result in EOF being reported.
 
   * **`h:close()`** closes the handle (sending and receiving part). Any
     non-flushed data may be discarded. This function returns immediately and
-    does not report any errors.
+    does not report any errors. It is also used when `h` is a to-be-closed
+    variable. Note that you ***must*** call `h:shutdown()` first to close a TCP
+    connection gracefully as otherwise a TCP RST will be sent, which may cause
+    some already flushed data to get lost.
 
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.

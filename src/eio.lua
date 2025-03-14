@@ -25,7 +25,11 @@ function handle_methods:close()
   nbio_handle:close()
 end
 
-function handle_methods:shutdown()
+function handle_methods:shutdown(...)
+  local result, errmsg = self:flush(...)
+  if not result then
+    return result, errmsg
+  end
   -- NOTE: For some sockets, shutdown may close the file descriptor; thus it is
   -- necessary to call deregister_fd here.
   local nbio_handle = self.nbio_handle
