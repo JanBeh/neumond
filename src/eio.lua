@@ -161,7 +161,14 @@ function handle_methods:flush(data, ...)
 end
 
 local function wrap_handle(handle)
-  return setmetatable({ nbio_handle = handle }, handle_metatable)
+  return setmetatable(
+    {
+      nbio_handle = handle,
+      peer_addr = handle.peer_addr,
+      peer_port = handle.peer_port,
+    },
+    handle_metatable
+  )
 end
 
 function _M.open(...)

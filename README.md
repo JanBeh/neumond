@@ -587,6 +587,12 @@ An I/O handle `h` provides the following attributes and methods:
     connection gracefully as otherwise a TCP RST will be sent, which may cause
     some already flushed data to get lost.
 
+  * **`h.peer_addr`** is a string containing the remote IP address. The value
+    is only set for incoming TCP connections and otherwise `nil`.
+
+  * **`h.peer_port`** is an integer containing the remote port. The value is
+    only set for incoming TCP connections and otherwise `nil`.
+
 There are three preopened handles **`eio.stdin`**, **`eio.stdout`**, and
 **`eio.stderr`**, which may exhibit blocking behavior, however.
 

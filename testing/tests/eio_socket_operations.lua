@@ -44,6 +44,10 @@ local function main(...)
         checkpoint(6)
       end)
       local h <close> = assert(listener:accept())
+      local peer_addr = h.peer_addr
+      local peer_port = h.peer_port
+      assert(peer_addr == "::1" or peer_addr == "127.0.0.1")
+      assert(peer_port >= 1024 and peer_port <= 65535)
       assert(h:read(nil, "\n") == "data1\n")
       checkpoint(5)
       waker()
@@ -57,6 +61,10 @@ local function main(...)
         assert(h:shutdown("data2\n"))
       end)
       local h <close> = assert(listener:accept())
+      local peer_addr = h.peer_addr
+      local peer_port = h.peer_port
+      assert(peer_addr == "::1" or peer_addr == "127.0.0.1")
+      assert(peer_port >= 1024 and peer_port <= 65535)
       assert(h:read(nil, "\n") == "data2\n")
       assert(h:read(nil, "\n") == "")
     end

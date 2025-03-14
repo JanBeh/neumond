@@ -20,6 +20,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/wait.h>
@@ -88,6 +89,8 @@ typedef struct {
   size_t writebuf_written; // number of bytes written to write buffer
   size_t writebuf_read; // number of bytes read from write buffer
   int nopush; // state of TCP_NOPUSH or TCP_CORK: 0=off, 1=on, -1=unknown
+  char peer_addr[INET6_ADDRSTRLEN];
+  int peer_port;
 } nbio_handle_t;
 
 // Listener handle:
@@ -208,6 +211,8 @@ static int nbio_push_handle(
   handle->writebuf_written = 0;
   handle->writebuf_read = 0;
   handle->nopush = -1;
+  handle->peer_addr[0] = 0;
+  handle->peer_port = -1;
   luaL_setmetatable(L, NBIO_HANDLE_MT_REGKEY);
   return 1;
 }
@@ -571,6 +576,16 @@ static int nbio_handle_index(lua_State *L) {
     if (!strcmp(key, "fd")) {
       if (handle->fd == -1) lua_pushboolean(L, 0);
       else lua_pushinteger(L, handle->fd);
+      return 1;
+    }
+    if (!strcmp(key, "peer_addr")) {
+      if (handle->peer_addr[0]) lua_pushstring(L, handle->peer_addr);
+      else lua_pushnil(L);
+      return 1;
+    }
+    if (!strcmp(key, "peer_port")) {
+      if (handle->peer_port >= 0) lua_pushinteger(L, handle->peer_port);
+      else lua_pushnil(L);
       return 1;
     }
   }
@@ -1141,7 +1156,63 @@ static int nbio_listener_accept(lua_State *L) {
         close(fd);
         return luaL_error(L, "error in fcntl call: %s", errmsg);
       }
-      return nbio_push_handle(L, fd, listener->addrfam, 0, 1);
+      nbio_push_handle(L, fd, listener->addrfam, 0, 1);
+      if (listener->addrfam == AF_INET6) {
+        nbio_handle_t *handle = lua_touserdata(L, -1);
+        struct sockaddr_in6 addr_in6;
+        socklen_t addrlen = sizeof(addr_in6);
+        if (getpeername(fd, (struct sockaddr *)&addr_in6, &addrlen)) {
+          nbio_prepare_errmsg(errno);
+          close(fd);
+          return luaL_error(L, "error in getpeername call: %s", errmsg);
+        }
+        if (addrlen > sizeof(addr_in6)) {
+          nbio_prepare_errmsg(errno);
+          close(fd);
+          return luaL_error(L, "getpeername result exceeded buffer size");
+        }
+        char addr_buffer[INET6_ADDRSTRLEN];
+        const char *addr = inet_ntop(
+          AF_INET6, &addr_in6.sin6_addr.s6_addr,
+          addr_buffer, sizeof(addr_buffer)
+        );
+        if (!addr) {
+          nbio_prepare_errmsg(errno);
+          close(fd);
+          return luaL_error(L, "could not format peer address");
+        }
+        strncpy(handle->peer_addr, addr, sizeof(handle->peer_addr));
+        handle->peer_addr[sizeof(handle->peer_addr)-1] = 0;
+        handle->peer_port = ntohs(addr_in6.sin6_port);
+      } else if (listener->addrfam == AF_INET) {
+        nbio_handle_t *handle = lua_touserdata(L, -1);
+        struct sockaddr_in addr_in;
+        socklen_t addrlen = sizeof(addr_in);
+        if (getpeername(fd, (struct sockaddr *)&addr_in, &addrlen)) {
+          nbio_prepare_errmsg(errno);
+          close(fd);
+          return luaL_error(L, "error in getpeername call: %s", errmsg);
+        }
+        if (addrlen > sizeof(addr_in)) {
+          nbio_prepare_errmsg(errno);
+          close(fd);
+          return luaL_error(L, "getpeername result exceeded buffer size");
+        }
+        char addr_buffer[INET_ADDRSTRLEN];
+        const char *addr = inet_ntop(
+          AF_INET, &addr_in.sin_addr.s_addr,
+          addr_buffer, sizeof(addr_buffer)
+        );
+        if (!addr) {
+          nbio_prepare_errmsg(errno);
+          close(fd);
+          return luaL_error(L, "could not format peer address");
+        }
+        strncpy(handle->peer_addr, addr, sizeof(handle->peer_addr));
+        handle->peer_addr[sizeof(handle->peer_addr)-1] = 0;
+        handle->peer_port = ntohs(addr_in.sin_port);
+      }
+      return 1;
     }
   }
 }
