@@ -875,7 +875,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
         lua_pushinteger(L, 0);
         return 1;
       }
-    } else if (errno == EAGAIN || errno == EINTR) {
+    } else if (errno == EAGAIN || errno == EINTR || errno == ENOTCONN) {
       if (nbio_handle_set_nopush(handle, 0)) {
         nbio_prepare_errmsg(errno);
         lua_pushnil(L);
@@ -905,7 +905,7 @@ static int nbio_handle_write_unbuffered(lua_State *L) {
     }
     lua_pushinteger(L, written);
     return 1;
-  } else if (errno == EAGAIN || errno == EINTR) {
+  } else if (errno == EAGAIN || errno == EINTR || errno == ENOTCONN) {
     if (nbio_handle_set_nopush(handle, 0)) {
       nbio_prepare_errmsg(errno);
       lua_pushnil(L);
@@ -979,7 +979,7 @@ static int nbio_handle_write(lua_State *L) {
         lua_pushinteger(L, 0);
         return 1;
       }
-    } else if (errno == EAGAIN || errno == EINTR) {
+    } else if (errno == EAGAIN || errno == EINTR || errno == ENOTCONN) {
       lua_pushinteger(L, 0);
       return 1;
     } else if (errno == EPIPE) {
@@ -1014,7 +1014,7 @@ static int nbio_handle_write(lua_State *L) {
   if (written >= 0) {
     lua_pushinteger(L, written);
     return 1;
-  } else if (errno == EAGAIN || errno == EINTR) {
+  } else if (errno == EAGAIN || errno == EINTR || errno == ENOTCONN) {
     lua_pushinteger(L, 0);
     return 1;
   } else if (errno == EPIPE) {
@@ -1046,7 +1046,7 @@ static int nbio_handle_flush(lua_State *L) {
     );
     if (written >= 0) {
       handle->writebuf_read += written;
-    } else if (errno == EAGAIN || errno == EINTR) {
+    } else if (errno == EAGAIN || errno == EINTR || errno == ENOTCONN) {
       // nothing
     } else if (errno == EPIPE) {
       lua_pushboolean(L, 0);
